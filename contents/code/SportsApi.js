@@ -954,23 +954,38 @@ function normalizeEspnTable(payload) {
     let entries = [];
     const children = Array.isArray(payload && payload.children) ? payload.children : [];
 
-    children.forEach(child => {
+    children.forEach((child, groupIndex) => {
         const standings = child && child.standings ? child.standings : {};
         if (Array.isArray(standings.entries)) {
-            entries = entries.concat(standings.entries);
+            entries = entries.concat(standings.entries.map(entry => {
+                return {
+                    entry,
+                    group: tableGroupName(child, groupIndex, children.length),
+                    groupIndex
+                };
+            }));
         }
     });
 
     if (entries.length === 0 && payload && payload.standings && Array.isArray(payload.standings.entries)) {
-        entries = payload.standings.entries;
+        entries = payload.standings.entries.map(entry => {
+            return {
+                entry,
+                group: "",
+                groupIndex: 0
+            };
+        });
     }
 
-    return entries.map(entry => {
+    return entries.map(item => {
+        const entry = item.entry || {};
         const team = entry.team || {};
         const stats = Array.isArray(entry.stats) ? entry.stats : [];
         return {
             position: numberValue(espnStat(stats, ["rank"])),
             team: stringValue(team.shortDisplayName || team.displayName || team.name || team.location),
+            group: item.group,
+            groupIndex: item.groupIndex,
             played: numberValue(espnStat(stats, ["gamesPlayed", "gamesplayed"])),
             won: numberValue(espnStat(stats, ["wins"])),
             draw: numberValue(espnStat(stats, ["ties", "draws"])),
@@ -983,7 +998,7 @@ function normalizeEspnTable(payload) {
             crest: espnLogo(team)
         };
     }).filter(row => row.team.length > 0)
-        .sort((left, right) => left.position - right.position);
+        .sort((left, right) => left.groupIndex - right.groupIndex || left.position - right.position);
 }
 
 function normalizeEspnMatchStats(payload) {
@@ -1020,25 +1035,34 @@ function normalizeEspnMatchStats(payload) {
 
 function normalizeTable(payload) {
     const data = payload && payload.data ? payload.data : payload;
-    const standings = data && data.standings && data.standings.length > 0 ? data.standings[0] : {};
-    const table = Array.isArray(standings.table) ? standings.table : [];
-    return table.map(row => {
-        const team = row.team || {};
-        return {
-            position: numberValue(row.position),
-            team: stringValue(team.shortName || team.name || row.teamName),
-            played: numberValue(row.playedGames),
-            won: numberValue(row.won),
-            draw: numberValue(row.draw),
-            lost: numberValue(row.lost),
-            goalsFor: numberValue(row.goalsFor ?? row.for),
-            goalsAgainst: numberValue(row.goalsAgainst ?? row.against),
-            points: numberValue(row.points),
-            goalDifference: numberValue(row.goalDifference),
-            form: stringValue(row.form),
-            crest: stringValue(team.crest || team.badge || "")
-        };
-    }).filter(row => row.team.length > 0);
+    const standings = data && Array.isArray(data.standings) ? data.standings : [];
+    let rows = [];
+    standings.forEach((standing, groupIndex) => {
+        const group = tableGroupName(standing, groupIndex, standings.length);
+        const table = Array.isArray(standing && standing.table) ? standing.table : [];
+        rows = rows.concat(table.map(row => {
+            const team = row.team || {};
+            return {
+                position: numberValue(row.position),
+                team: stringValue(team.shortName || team.name || row.teamName),
+                group,
+                groupIndex,
+                played: numberValue(row.playedGames),
+                won: numberValue(row.won),
+                draw: numberValue(row.draw),
+                lost: numberValue(row.lost),
+                goalsFor: numberValue(row.goalsFor ?? row.for),
+                goalsAgainst: numberValue(row.goalsAgainst ?? row.against),
+                points: numberValue(row.points),
+                goalDifference: numberValue(row.goalDifference),
+                form: stringValue(row.form),
+                crest: stringValue(team.crest || team.badge || "")
+            };
+        }));
+    });
+
+    return rows.filter(row => row.team.length > 0)
+        .sort((left, right) => left.groupIndex - right.groupIndex || left.position - right.position);
 }
 
 function normalizeScoresFixtures(payload) {
@@ -1050,6 +1074,17 @@ function normalizeScoresFixtures(payload) {
     return live.concat(upcoming).concat(scheduled).concat(finished)
         .map(normalizeScoreFixture)
         .filter(match => match.homeTeam && match.awayTeam);
+}
+
+function tableGroupName(item, index, count) {
+    const explicitName = stringValue(item && (item.name || item.groupName || item.group || item.abbreviation || item.shortName || item.displayName));
+    if (explicitName.length > 0 && explicitName.toUpperCase() !== "ALL")
+        return explicitName;
+
+    if (count > 1)
+        return `Group ${String.fromCharCode(65 + index)}`;
+
+    return "";
 }
 
 function normalizeScoreFixture(match) {

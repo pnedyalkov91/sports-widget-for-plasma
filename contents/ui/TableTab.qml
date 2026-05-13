@@ -20,6 +20,28 @@ Item {
     property string sport: "football"
     property string favoriteTeam: ""
     readonly property int rowCount: tableRows ? tableRows.length : 0
+    readonly property var displayRows: groupedRows()
+
+    function groupedRows() {
+        const rows = root.tableRows || [];
+        if (!rows.some(row => String(row.group || "").trim().length > 0))
+            return rows;
+
+        let result = [];
+        let currentGroup = "";
+        rows.forEach(row => {
+            const group = String(row.group || "").trim();
+            if (group.length > 0 && group !== currentGroup) {
+                currentGroup = group;
+                result.push({
+                    "isGroupHeader": true,
+                    "group": group
+                });
+            }
+            result.push(row);
+        });
+        return result;
+    }
 
     function isFavoriteTeam(teamName) {
         const favorite = root.favoriteTeam.toLowerCase();
@@ -54,7 +76,7 @@ Item {
         clip: true
         spacing: 0
         boundsBehavior: Flickable.StopAtBounds
-        model: root.tableRows
+        model: root.displayRows
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
         }
@@ -66,21 +88,20 @@ Item {
             title: root.leagueTitle()
         }
 
-        delegate: TableRow {
+        delegate: Loader {
+            id: rowLoader
+
             width: tableList.contentColumnWidth
-            position: modelData.position || 0
-            team: modelData.team || ""
-            played: modelData.played || 0
-            won: modelData.won || 0
-            draw: modelData.draw || 0
-            lost: modelData.lost || 0
-            goalsFor: modelData.goalsFor || 0
-            goalsAgainst: modelData.goalsAgainst || 0
-            points: modelData.points || 0
-            goalDifference: modelData.goalDifference || 0
-            form: modelData.form || ""
-            crest: modelData.crest || ""
-            favorite: root.isFavoriteTeam(modelData.team || "")
+            height: item ? item.height : 0
+            sourceComponent: modelData.isGroupHeader ? groupHeaderComponent : tableRowComponent
+
+            readonly property var rowData: modelData
+
+            onLoaded: item.rowData = rowData
+            onRowDataChanged: {
+                if (item)
+                    item.rowData = rowData;
+            }
         }
     }
 
@@ -220,6 +241,61 @@ Item {
 
         HoverHandler {
             id: hoverHandler
+        }
+    }
+
+    Component {
+        id: groupHeaderComponent
+
+        Rectangle {
+            property var rowData: ({})
+
+            width: tableList.contentColumnWidth
+            height: Kirigami.Units.gridUnit * 1.9
+            color: "transparent"
+
+            PlasmaComponents.Label {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: Kirigami.Units.smallSpacing
+                anchors.rightMargin: Kirigami.Units.smallSpacing
+                text: parent.rowData.group || ""
+                color: "#ff9f1a"
+                font.bold: true
+                elide: Text.ElideRight
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: Qt.rgba(1, 0.62, 0.10, 0.28)
+            }
+        }
+    }
+
+    Component {
+        id: tableRowComponent
+
+        TableRow {
+            property var rowData: ({})
+
+            width: tableList.contentColumnWidth
+            position: rowData.position || 0
+            team: rowData.team || ""
+            played: rowData.played || 0
+            won: rowData.won || 0
+            draw: rowData.draw || 0
+            lost: rowData.lost || 0
+            goalsFor: rowData.goalsFor || 0
+            goalsAgainst: rowData.goalsAgainst || 0
+            points: rowData.points || 0
+            goalDifference: rowData.goalDifference || 0
+            form: rowData.form || ""
+            crest: rowData.crest || ""
+            favorite: root.isFavoriteTeam(rowData.team || "")
         }
     }
 
