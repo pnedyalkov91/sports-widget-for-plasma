@@ -918,6 +918,8 @@ function normalizeEspnCompetition(event, competition, sport, leagueName) {
         league: stringValue(leagueName),
         homeTeam: espnCompetitorName(home),
         awayTeam: espnCompetitorName(away),
+        homeTeamAliases: espnCompetitorAliases(home),
+        awayTeamAliases: espnCompetitorAliases(away),
         homeScore: status.scheduled ? "" : stringValue(home.score),
         awayScore: status.scheduled ? "" : stringValue(away.score),
         status: status.label,
@@ -1209,18 +1211,31 @@ function formByTeam(matches) {
         result[key].push(value);
     }
 
+    function appendAll(teamName, aliases, value) {
+        let seen = {};
+        const names = [teamName].concat(Array.isArray(aliases) ? aliases : []);
+        names.forEach(name => {
+            const key = normalizedText(name);
+            if (key.length === 0 || seen[key])
+                return;
+
+            seen[key] = true;
+            append(name, value);
+        });
+    }
+
     finished.forEach(match => {
         const homeGoals = numberValue(match.homeScore);
         const awayGoals = numberValue(match.awayScore);
         if (homeGoals > awayGoals) {
-            append(match.homeTeam, "W");
-            append(match.awayTeam, "L");
+            appendAll(match.homeTeam, match.homeTeamAliases, "W");
+            appendAll(match.awayTeam, match.awayTeamAliases, "L");
         } else if (homeGoals < awayGoals) {
-            append(match.homeTeam, "L");
-            append(match.awayTeam, "W");
+            appendAll(match.homeTeam, match.homeTeamAliases, "L");
+            appendAll(match.awayTeam, match.awayTeamAliases, "W");
         } else {
-            append(match.homeTeam, "D");
-            append(match.awayTeam, "D");
+            appendAll(match.homeTeam, match.homeTeamAliases, "D");
+            appendAll(match.awayTeam, match.awayTeamAliases, "D");
         }
     });
 
@@ -1276,6 +1291,8 @@ function teamAliasKey(value) {
         "brighton": "brightonhove",
         "brightonhove": "brightonhove",
         "brightonandhovealbion": "brightonhove",
+        "cpalace": "crystalpalace",
+        "crystalpalace": "crystalpalace",
         "internazionale": "intermilan",
         "inter": "intermilan",
         "intermilan": "intermilan",
@@ -1291,6 +1308,7 @@ function teamAliasKey(value) {
         "newcastleunited": "newcastleunited",
         "nottingham": "nottinghamforest",
         "nottinghamforest": "nottinghamforest",
+        "nottmforest": "nottinghamforest",
         "psg": "parissaintgermain",
         "parissaintgermain": "parissaintgermain",
         "real": "realmadrid",
@@ -1474,6 +1492,25 @@ function espnCompetitorName(competitor) {
     const athlete = competitor.athlete || {};
     const roster = competitor.roster || {};
     return stringValue(team.shortDisplayName || team.displayName || team.name || athlete.shortName || athlete.displayName || athlete.fullName || roster.shortDisplayName || roster.displayName);
+}
+
+function espnCompetitorAliases(competitor) {
+    const team = competitor.team || {};
+    const athlete = competitor.athlete || {};
+    const roster = competitor.roster || {};
+    const candidates = [
+        team.displayName,
+        team.shortDisplayName,
+        team.name,
+        team.location,
+        team.abbreviation,
+        athlete.displayName,
+        athlete.shortName,
+        athlete.fullName,
+        roster.displayName,
+        roster.shortDisplayName
+    ];
+    return uniqueValues(candidates.map(stringValue).filter(value => value.length > 0));
 }
 
 function espnCompetitorLogo(competitor) {
