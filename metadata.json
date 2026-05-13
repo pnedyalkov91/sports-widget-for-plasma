@@ -1,0 +1,25 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "org.kde.plasma.sports-widget-for-plasma",
+        "Name": "Sports Widget for Plasma",
+        "Description": "A modern, highly customizable sports scores widget built specifically for KDE Plasma 6",
+        "Icon": "applications-games",
+        "Category": "Online Services",
+        "License": "GPL-3.0-only",
+        "Authors": [
+            {
+                "Name": "Petar Nedyalkov",
+                "Email": "petar.nedyalkov91@gmail.com",
+                "Role": "Author, design and development"
+            }
+        ],
+        "Version": "0.1.0",
+        "Website": "https://github.com/pnedyalkov/sports-widget-for-plasma",
+        "BugReportUrl": "https://github.com/pnedyalkov/sports-widget-for-plasma/issues"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml",
+    "X-Plasma-NotificationArea": true,
+    "X-Plasma-NotificationAreaCategory": "SystemServices"
+}
