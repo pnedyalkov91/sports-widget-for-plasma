@@ -13,6 +13,8 @@ function normalizedSport(value) {
         return "basketball";
     if (sport.indexOf("base") >= 0 || sport === "mlb")
         return "baseball";
+    if (sport.indexOf("cricket") >= 0)
+        return "cricket";
     if (sport.indexOf("hockey") >= 0 || sport === "nhl")
         return "hockey";
     if (sport.indexOf("snooker") >= 0)
@@ -32,6 +34,7 @@ function label(value) {
         "american-football": "American Football",
         "baseball": "Baseball",
         "basketball": "Basketball",
+        "cricket": "Cricket",
         "football": "Football",
         "hockey": "Hockey",
         "snooker": "Snooker",

@@ -7,10 +7,10 @@
 
   <group name="General">
     <entry name="provider" type="String">
-      <default>auto</default>
+      <default>sportscore</default>
     </entry>
     <entry name="apiBaseUrl" type="String">
-      <default>https://api.sportsrc.org</default>
+      <default>https://sportscore.com/api/widget</default>
     </entry>
     <entry name="apiKey" type="String">
       <default></default>
@@ -18,16 +18,19 @@
     <entry name="selectedSports" type="String">
       <default>football</default>
     </entry>
+    <entry name="country" type="String">
+      <default>england</default>
+    </entry>
     <entry name="league" type="String">
-      <default>PL</default>
+      <default>english-premier-league</default>
     </entry>
     <entry name="favoriteTeam" type="String">
       <default></default>
     </entry>
     <entry name="refreshInterval" type="Int">
-      <default>60</default>
-      <min>30</min>
-      <max>900</max>
+      <default>15</default>
+      <min>1</min>
+      <max>1440</max>
     </entry>
     <entry name="panelLayoutMode" type="String">
       <default>singleLine</default>

@@ -3,6 +3,7 @@
     SPDX-License-Identifier: GPL-3.0-only
 */
 
+import "../code/providers/ProviderCatalog.js" as ProviderCatalog
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -52,21 +53,8 @@ Item {
     }
 
     function leagueTitle() {
-        const names = {
-            "BL1": i18nc("@label", "Bundesliga Table"),
-            "BSA": i18nc("@label", "Brasileirao Serie A Table"),
-            "CL": i18nc("@label", "UEFA Champions League Table"),
-            "DED": i18nc("@label", "Eredivisie Table"),
-            "EC": i18nc("@label", "European Championship Table"),
-            "ELC": i18nc("@label", "Championship Table"),
-            "FL1": i18nc("@label", "Ligue 1 Table"),
-            "PD": i18nc("@label", "La Liga Table"),
-            "PL": i18nc("@label", "Premier League Table"),
-            "PPL": i18nc("@label", "Primeira Liga Table"),
-            "SA": i18nc("@label", "Serie A Table"),
-            "WC": i18nc("@label", "World Cup Table")
-        };
-        return names[String(root.league || "PL").toUpperCase()] || i18nc("@label", "League Table");
+        const label = ProviderCatalog.leagueLabel(root.league);
+        return label.length > 0 ? i18nc("@label", "%1 Table", label) : i18nc("@label", "League Table");
     }
 
     ListView {

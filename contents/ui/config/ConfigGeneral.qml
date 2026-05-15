@@ -29,47 +29,14 @@ KCM.SimpleKCM {
     }
 
     function providerNeedsKey(providerId) {
-        return providerId === "sportdb" || providerId === "thesportsdb" || ProviderCatalog.requiresApiKey(providerId);
+        return false;
     }
 
     function providerPlaceholder(providerId) {
-        if (providerId === "auto")
-            return i18nc("@info:placeholder", "Automatic no-key sources");
-
-        if (providerId === "sportsrc")
-            return "https://api.sportsrc.org";
-
-        if (providerId === "espn")
-            return "https://site.api.espn.com/apis/site/v2/sports";
-
-        if (providerId === "sportdb")
-            return "https://api.sportdb.dev";
-
-        if (ProviderCatalog.isProvider(providerId))
-            return ProviderCatalog.defaultBaseUrl(providerId);
-
-        return "";
+        return ProviderCatalog.defaultBaseUrl("sportscore");
     }
 
     function apiKeyPlaceholder(providerId) {
-        if (providerId === "sportdb")
-            return i18nc("@info:placeholder", "SportDB.dev API key");
-
-        if (providerId === "football-data")
-            return i18nc("@info:placeholder", "football-data.org X-Auth-Token");
-
-        if (providerId === "balldontlie")
-            return i18nc("@info:placeholder", "balldontlie Authorization key");
-
-        if (providerId === "apisports")
-            return i18nc("@info:placeholder", "API-SPORTS x-apisports-key");
-
-        if (providerId === "highlightly")
-            return i18nc("@info:placeholder", "Highlightly x-rapidapi-key");
-
-        if (providerId === "thesportsdb")
-            return i18nc("@info:placeholder", "Optional premium key; empty uses free key 123");
-
         return i18nc("@info:placeholder", "Optional API key");
     }
 
@@ -84,7 +51,10 @@ KCM.SimpleKCM {
             textRole: "label"
             valueRole: "value"
             model: ProviderCatalog.providerOptions()
-            Component.onCompleted: currentIndex = root.indexFor(model, root.cfg_provider)
+            Component.onCompleted: {
+                currentIndex = root.indexFor(model, root.cfg_provider);
+                root.cfg_provider = currentValue;
+            }
             onActivated: root.cfg_provider = currentValue
         }
 
@@ -110,12 +80,12 @@ KCM.SimpleKCM {
             id: refreshInterval
 
             Kirigami.FormData.label: i18nc("@label:spinbox", "Refresh:")
-            from: 30
-            to: 900
-            stepSize: 15
+            from: 1
+            to: 1440
+            stepSize: 5
             editable: true
             textFromValue: (value) => {
-                return i18ncp("@item:valuesuffix seconds", "%1 second", "%1 seconds", value);
+                return i18ncp("@item:valuesuffix minutes", "%1 minute", "%1 minutes", value);
             }
             valueFromText: (text) => {
                 return parseInt(text, 10);

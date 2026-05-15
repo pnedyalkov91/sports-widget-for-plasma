@@ -26,11 +26,12 @@ PlasmoidItem {
     property bool pendingRefresh: false
     property bool tableRequestCompleted: false
     property bool currentManualRefresh: false
-    property string selectedLeague: String(Plasmoid.configuration.league || "PL").trim() || "PL"
+    property string selectedCountry: String(Plasmoid.configuration.country || "england").trim() || "england"
+    property string selectedLeague: String(Plasmoid.configuration.league || "english-premier-league").trim() || "english-premier-league"
     property string favoriteTeam: String(Plasmoid.configuration.favoriteTeam || "").trim()
     property string providerLabel: providerDisplayName(effectiveProvider())
-    property string sourceText: effectiveProvider() === "sportdb" ? i18nc("@info:status", "API key provider") : i18nc("@info:status", "No API key required")
-    property string primaryMatchText: scoresModel.count > 0 ? scoresModel.get(0).homeTeam + " vs " + scoresModel.get(0).awayTeam : i18nc("@info:status", "No matches")
+    property string sourceText: i18nc("@info:status", "No API key required")
+    property string primaryMatchText: scoresModel.count > 0 ? scoresModel.get(0).homeTeam + " vs " + scoresModel.get(0).awayTeam : i18nc("@info:status", "No scheduled matches")
     property string secondaryMatchText: scoresModel.count > 0 ? scoresModel.get(0).startTime || scoresModel.get(0).status : sourceText
     property string selectedSport: SportsApi.normalizeSports(Plasmoid.configuration.selectedSports)[0] || "football"
     property string primarySport: scoresModel.count > 0 ? scoresModel.get(0).sport : SportVisuals.normalizedSport(selectedSport)
@@ -49,9 +50,12 @@ PlasmoidItem {
             "baseUrl": effectiveBaseUrl(),
             "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
             "sports": root.selectedSport,
-            "league": root.selectedLeague
+            "country": root.selectedCountry,
+            "league": root.selectedLeague,
+            "scoreboardDaysBack": 14,
+            "scoreboardDaysForward": 90
         };
-        root.pendingRequests = 3;
+        root.pendingRequests = 2;
         root.refreshErrors = [];
         root.pendingRefresh = false;
         root.tableRequestCompleted = false;
@@ -61,14 +65,6 @@ PlasmoidItem {
         applyInitialTableState();
         statsModel.clear();
         tableFallbackTimer.restart();
-        refreshSportSrcTable(options, manual);
-        SportsApi.fetchLiveScores(options, (matches) => {
-            applyMatches(matches, i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm")));
-            refreshMatchStats(options);
-            finishRefresh(manual, "");
-        }, (message) => {
-            finishRefresh(manual, message);
-        });
         SportsApi.fetchLeagueTable(options, (table) => {
             const alreadyCounted = root.tableRequestCompleted;
             table = Array.isArray(table) ? table : [];
@@ -95,38 +91,13 @@ PlasmoidItem {
                 finishRefresh(manual, message);
         });
         SportsApi.fetchScoresFixtures(options, (fixtures) => {
+            applySchedules(fixtures, i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm")));
             applyFixtures(fixtures);
             refreshFixtureStats(options);
             finishRefresh(manual, "");
         }, (message) => {
+            applySchedules([], i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm")));
             finishRefresh(manual, message);
-        });
-    }
-
-    function refreshSportSrcTable(options, manual) {
-        const sport = SportVisuals.normalizedSport(options.sports);
-        const league = String(options.league || "").trim().toUpperCase();
-        if ((sport !== "football" && sport !== "soccer") || league.length === 0)
-            return;
-
-        root.tableErrorMessage = i18nc("@info:status", "Loading %1 table from SportSRC...", league);
-        SportsApi.fetchLeagueTable(Object.assign({}, options, {
-            "provider": "sportsrc",
-            "baseUrl": "https://api.sportsrc.org"
-        }), (rows) => {
-            rows = Array.isArray(rows) ? rows : [];
-            if (rows.length === 0) {
-                if (tableModel.count === 0)
-                    root.tableErrorMessage = i18nc("@info:status", "SportSRC returned no table rows for %1.", league);
-                return;
-            }
-
-            applyTable(rows);
-            root.tableErrorMessage = i18ncp("@info:status", "Loaded %1 table row from SportSRC.", "Loaded %1 table rows from SportSRC.", rows.length);
-            enrichTableForm(options);
-        }, (message) => {
-            if (tableModel.count === 0)
-                root.tableErrorMessage = i18nc("@info:status", "SportSRC table request for %1 failed: %2", league, message);
         });
     }
 
@@ -134,8 +105,9 @@ PlasmoidItem {
         const requestSport = SportVisuals.normalizedSport(options.sports);
         const requestLeague = String(options.league || "").trim().toUpperCase();
         SportsApi.fetchLeagueForm(Object.assign({}, options, {
-            "provider": "espn",
-            "baseUrl": "https://site.api.espn.com/apis/site/v2/sports"
+            "provider": "sportscore",
+            "baseUrl": "https://sportscore.com/api/widget",
+            "tableRows": root.tableRows
         }), (formByTeam) => {
             if (requestSport !== SportVisuals.normalizedSport(root.selectedSport) || requestLeague !== String(root.selectedLeague || "").trim().toUpperCase())
                 return;
@@ -182,8 +154,8 @@ PlasmoidItem {
 
     function fallbackTableRows() {
         const sport = SportVisuals.normalizedSport(root.selectedSport);
-        const league = String(root.selectedLeague || "").trim().toUpperCase();
-        if ((sport === "football" || sport === "soccer") && league === "PL")
+        const league = ProviderCatalog.sportScoreSlug(root.selectedLeague);
+        if ((sport === "football" || sport === "soccer") && league === "english-premier-league")
             return SportsApi.demoTable();
 
         return [];
@@ -198,8 +170,8 @@ PlasmoidItem {
             return ;
 
         root.loading = false;
-        if (root.refreshErrors.length > 0 && effectiveProvider() === "sportsrc" && scoresModel.count === 0 && tableModel.count === 0 && fixturesModel.count === 0) {
-            applyMatches(SportsApi.demoMatches(), i18nc("@info:status", "Offline sample data"));
+        if (root.refreshErrors.length > 0 && scoresModel.count === 0 && tableModel.count === 0 && fixturesModel.count === 0) {
+            applySchedules(SportsApi.demoFixtures(), i18nc("@info:status", "Offline sample data"));
             applyTable(SportsApi.demoTable());
             applyFixtures(SportsApi.demoFixtures());
             root.errorMessage = manual ? root.refreshErrors.join(", ") : "";
@@ -213,8 +185,9 @@ PlasmoidItem {
         }
     }
 
-    function applyMatches(matches, updateText) {
+    function applySchedules(matches, updateText) {
         scoresModel.clear();
+        matches = scheduledMatches(matches);
         matches = prioritizeFavorite(matches);
         if (Plasmoid.configuration.prioritizePopular) {
             matches = matches.slice().sort((left, right) => {
@@ -225,8 +198,39 @@ PlasmoidItem {
         matches.forEach((match) => {
             return scoresModel.append(match);
         });
-        root.errorMessage = matches.length === 0 ? i18nc("@info:status", "No live matches right now.") : "";
+        root.errorMessage = matches.length === 0 ? i18nc("@info:status", "No scheduled matches for the selected league.") : "";
         root.lastUpdatedText = updateText;
+    }
+
+    function scheduledMatches(matches) {
+        const now = Date.now();
+        return (Array.isArray(matches) ? matches : []).filter((match) => {
+            const status = String(match.status || "").toLowerCase();
+            const timestamp = Number(match.timestamp || 0);
+            if (status.indexOf("finished") >= 0 || status.indexOf("final") >= 0)
+                return false;
+
+            if (status.indexOf("upcoming") >= 0 || status.indexOf("scheduled") >= 0 || status.indexOf("not started") >= 0 || status.indexOf("postponed") >= 0)
+                return true;
+
+            if (timestamp > 0)
+                return timestamp >= now - 3 * 60 * 60 * 1000;
+
+            return String(match.homeScore || "").length === 0 && String(match.awayScore || "").length === 0;
+        }).sort((left, right) => {
+            const leftTime = Number(left.timestamp || 0);
+            const rightTime = Number(right.timestamp || 0);
+            if (leftTime > 0 && rightTime > 0 && leftTime !== rightTime)
+                return leftTime - rightTime;
+
+            if (leftTime > 0 && rightTime === 0)
+                return -1;
+
+            if (rightTime > 0 && leftTime === 0)
+                return 1;
+
+            return String(left.homeTeam || "").localeCompare(String(right.homeTeam || ""));
+        });
     }
 
     function applyTable(rows) {
@@ -268,7 +272,7 @@ PlasmoidItem {
             return ;
         }
 
-        if (!match || (options.provider === "auto" && match.statsProvider !== "espn"))
+        if (!match || match.statsProvider !== "sportscore")
             return ;
 
         const matchId = String(match.id || "").trim();
@@ -328,28 +332,11 @@ PlasmoidItem {
     }
 
     function providerDisplayName(provider) {
-        if (provider === "auto")
-            return "Auto";
-
-        if (ProviderCatalog.isProvider(provider))
-            return ProviderCatalog.displayName(provider);
-
-        if (provider === "sportdb")
-            return "SportDB.dev";
-
-        if (provider === "espn")
-            return "ESPN";
-
-        return "SportSRC";
+        return ProviderCatalog.displayName("sportscore");
     }
 
     function effectiveProvider() {
-        const provider = Plasmoid.configuration.provider || "auto";
-        const apiKey = String(Plasmoid.configuration.apiKey || "").trim();
-        if (provider === "sportdb" && apiKey.length === 0)
-            return "auto";
-
-        return provider;
+        return "sportscore";
     }
 
     function effectiveBaseUrl() {
@@ -363,23 +350,11 @@ PlasmoidItem {
     }
 
     function providerDefaultBaseUrl(provider) {
-        if (provider === "auto")
-            return "";
-
-        if (ProviderCatalog.isProvider(provider))
-            return ProviderCatalog.defaultBaseUrl(provider);
-
-        if (provider === "sportdb")
-            return "https://api.sportdb.dev";
-
-        if (provider === "espn")
-            return "https://site.api.espn.com/apis/site/v2/sports";
-
-        return "https://api.sportsrc.org";
+        return ProviderCatalog.defaultBaseUrl("sportscore");
     }
 
     function isKnownProviderUrl(url) {
-        const known = ["api.sportsrc.org", "api.sportdb.dev", "site.api.espn.com", "football.api-sports.io", "thesportsdb.com", "api.football-data.org", "sports.highlightly.net", "openligadb.de", "balldontlie.io"];
+        const known = ["sportscore.com"];
         for (let index = 0; index < known.length; index += 1) {
             if (url.indexOf(known[index]) >= 0)
                 return true;
@@ -396,7 +371,7 @@ PlasmoidItem {
     Plasmoid.icon: "applications-games"
     Plasmoid.title: i18n("Sports Widget for Plasma")
     toolTipMainText: Plasmoid.title
-    toolTipSubText: liveCount > 0 ? i18ncp("@info:tooltip", "%1 live match", "%1 live matches", liveCount) : i18nc("@info:tooltip", "No live matches")
+    toolTipSubText: liveCount > 0 ? i18ncp("@info:tooltip", "%1 scheduled match", "%1 scheduled matches", liveCount) : i18nc("@info:tooltip", "No scheduled matches")
     preferredRepresentation: Plasmoid.formFactor === PlasmaCore.Types.Planar ? fullRepresentation : compactRepresentation
     Component.onCompleted: refreshScores(false)
     Plasmoid.contextualActions: [
@@ -426,7 +401,7 @@ PlasmoidItem {
     Timer {
         id: refreshTimer
 
-        interval: Math.max(30, Plasmoid.configuration.refreshInterval) * 1000
+        interval: Math.max(1, Plasmoid.configuration.refreshInterval) * 60 * 1000
         repeat: true
         running: true
         onTriggered: root.refreshScores(false)
@@ -468,6 +443,10 @@ PlasmoidItem {
         }
 
         function onFavoriteTeamChanged() {
+            root.scheduleConfigRefresh();
+        }
+
+        function onCountryChanged() {
             root.scheduleConfigRefresh();
         }
 

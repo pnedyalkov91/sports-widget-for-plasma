@@ -144,7 +144,7 @@ Item {
             awayTeam: root.hasMatches ? root.scoreModel.get(0).awayTeam : i18nc("@info:placeholder", "Away team")
             homeScore: root.hasMatches ? root.scoreModel.get(0).homeScore : ""
             awayScore: root.hasMatches ? root.scoreModel.get(0).awayScore : ""
-            status: root.hasMatches ? root.scoreModel.get(0).status : i18nc("@info:status", "No live scores")
+            status: root.hasMatches ? root.scoreModel.get(0).status : i18nc("@info:status", "No schedules")
             minute: root.hasMatches ? root.scoreModel.get(0).minute : ""
             startTime: root.hasMatches ? root.scoreModel.get(0).startTime : ""
             homeBadge: root.hasMatches ? root.scoreModel.get(0).homeBadge : ""
@@ -166,7 +166,7 @@ Item {
                 spacing: 0
 
                 WeatherStyleTab {
-                    label: i18n("Live Score")
+                    label: i18n("Schedules")
                     active: root.activeTab === 0
                     visible: root.tabVisible(0)
                     onClicked: root.activateTab(0)
@@ -187,7 +187,7 @@ Item {
                 }
 
                 WeatherStyleTab {
-                    label: i18n("Fixtures")
+                    label: i18n("Scores & Fixtures")
                     active: root.activeTab === 3
                     visible: root.tabVisible(3)
                     onClicked: root.activateTab(3)
@@ -209,63 +209,13 @@ Item {
             Layout.fillHeight: true
             currentIndex: root.activeTab
 
-            ListView {
-                id: scoreList
-
-                clip: true
-                spacing: 0
-                model: root.scoreModel
-
-                EmptyState {
-                    anchors.fill: parent
-                    visible: scoreList.count === 0
-                    text: i18nc("@info:placeholder", "No live scores")
-                }
-
-                delegate: ScoreDelegate {
-                    width: scoreList.width
-                    sport: model.sport
-                    league: model.league
-                    homeTeam: model.homeTeam
-                    awayTeam: model.awayTeam
-                    homeScore: model.homeScore
-                    awayScore: model.awayScore
-                    status: model.status
-                    minute: model.minute
-                    startTime: model.startTime
-                    homeBadge: model.homeBadge
-                    awayBadge: model.awayBadge
-                    poster: model.poster
-                    popular: model.popular
-                    favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
-                }
-
+            ScheduleTab {
+                scheduleModel: root.scoreModel
+                favoriteTeam: root.favoriteTeam
             }
 
-            ListView {
-                id: statsList
-
-                clip: true
-                spacing: Kirigami.Units.smallSpacing
-                model: root.statsModel
-
-                EmptyState {
-                    anchors.fill: parent
-                    visible: statsList.count === 0
-                    text: i18nc("@info:placeholder", "No match stats available")
-                }
-
-                delegate: StatsRow {
-                    width: statsList.width
-                    label: model.label
-                    homeValue: model.homeValue
-                    awayValue: model.awayValue
-                    homeRatio: model.homeRatio
-                    awayRatio: model.awayRatio
-                    homeHighlight: model.homeHighlight
-                    awayHighlight: model.awayHighlight
-                }
-
+            StatsTab {
+                statsModel: root.statsModel
             }
 
             TableTab {
@@ -278,33 +228,9 @@ Item {
                 favoriteTeam: root.favoriteTeam
             }
 
-            ListView {
-                id: fixturesList
-
-                clip: true
-                spacing: 0
-                model: root.fixturesModel
-
-                EmptyState {
-                    anchors.fill: parent
-                    visible: fixturesList.count === 0
-                    text: i18nc("@info:placeholder", "No scores or fixtures")
-                }
-
-                delegate: FixtureRow {
-                    width: fixturesList.width
-                    homeTeam: model.homeTeam
-                    awayTeam: model.awayTeam
-                    homeScore: model.homeScore
-                    awayScore: model.awayScore
-                    status: model.status
-                    startTime: model.startTime
-                    matchday: model.matchday
-                    homeBadge: model.homeBadge
-                    awayBadge: model.awayBadge
-                    favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
-                }
-
+            FixturesTab {
+                fixturesModel: root.fixturesModel
+                favoriteTeam: root.favoriteTeam
             }
 
         }
