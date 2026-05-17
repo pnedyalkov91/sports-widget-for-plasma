@@ -183,8 +183,7 @@ KCM.SimpleKCM {
             countryIcon: root.countryIcon(root.cfg_country),
             league: root.cfg_league || "",
             leagueLabel: root.leagueLabel(),
-            favoriteTeam: root.cfg_favoriteTeam || "",
-            starred: false
+            favoriteTeam: root.cfg_favoriteTeam || ""
         };
     }
 
@@ -195,20 +194,12 @@ KCM.SimpleKCM {
             && String(left.favoriteTeam || "") === String(right.favoriteTeam || "");
     }
 
-    function saveOrReplaceLeague(entry, replaceIndex, makeFavorite) {
+    function saveOrReplaceLeague(entry, replaceIndex) {
         if (entry.league.length === 0)
             return -1;
 
         const saved = root.savedLeagues();
         const copy = Object.assign({}, entry);
-        if (makeFavorite) {
-            saved.forEach(item => {
-                delete item.starred;
-            });
-            copy.starred = true;
-        } else {
-            delete copy.starred;
-        }
 
         let targetIndex = replaceIndex;
         if (targetIndex < 0 || targetIndex >= saved.length) {
@@ -222,10 +213,7 @@ KCM.SimpleKCM {
         }
 
         if (targetIndex >= 0) {
-            const previous = saved[targetIndex] || {};
-            saved[targetIndex] = Object.assign({}, previous, copy);
-            if (!makeFavorite && previous.starred)
-                saved[targetIndex].starred = true;
+            saved[targetIndex] = copy;
         } else {
             saved.push(copy);
             targetIndex = saved.length - 1;
@@ -235,14 +223,6 @@ KCM.SimpleKCM {
         root.cfg_activeSavedLeagueIndex = targetIndex;
         root.applySavedLeague(saved[targetIndex], targetIndex);
         return targetIndex;
-    }
-
-    function saveFavoriteEntry(entry) {
-        return root.saveOrReplaceLeague(entry, -1, true);
-    }
-
-    function saveCurrentLeague() {
-        root.saveFavoriteEntry(root.currentEntry());
     }
 
     function applySavedLeague(entry, index) {
@@ -275,32 +255,13 @@ KCM.SimpleKCM {
         root.applySavedLeague(saved[nextIndex], nextIndex);
     }
 
-    function starSavedLeague(index) {
-        const saved = root.savedLeagues();
-        if (index < 0 || index >= saved.length)
-            return;
-
-        const wasStarred = !!saved[index].starred;
-        saved.forEach(entry => {
-            delete entry.starred;
-        });
-        if (!wasStarred)
-            saved[index].starred = true;
-
-        root.saveLeagues(saved);
-        if (!wasStarred) {
-            root.cfg_activeSavedLeagueIndex = index;
-            root.applySavedLeague(saved[index]);
-        }
-    }
-
-    function finishWizard(entry, saveFavorite) {
+    function finishWizard(entry) {
         if (root.wizardEditingIndex >= 0) {
             const saved = root.savedLeagues();
             const previous = saved[root.wizardEditingIndex] || {};
             entry = Object.assign({}, previous, entry);
         }
-        root.saveOrReplaceLeague(entry, root.wizardEditingIndex, saveFavorite);
+        root.saveOrReplaceLeague(entry, root.wizardEditingIndex);
         root.cfg_selectionRevision += 1;
         root.pageIndex = 0;
     }
@@ -361,7 +322,7 @@ KCM.SimpleKCM {
             initialEntry: root.wizardInitialEntry
             editingIndex: root.wizardEditingIndex
             onCloseRequested: root.pageIndex = 0
-            onFinishRequested: (entry, saveFavorite) => root.finishWizard(entry, saveFavorite)
+            onFinishRequested: (entry) => root.finishWizard(entry)
         }
     }
 
@@ -372,26 +333,10 @@ KCM.SimpleKCM {
         ColumnLayout {
             spacing: Kirigami.Units.largeSpacing
 
-            RowLayout {
-                Layout.fillWidth: true
-
-                Kirigami.Heading {
-                    Layout.fillWidth: true
-                    text: i18nc("@title:group", "Sport")
-                    level: 2
-                }
-
-                Button {
-                    Layout.alignment: Qt.AlignTop
-                    icon.name: "list-add"
-                    text: i18nc("@action:button", "Add Sport")
-                    onClicked: root.openAddSportWizard()
-                }
-            }
-
             SavedLeaguesList {
                 Layout.fillWidth: true
                 configRoot: root
+                onAddSportRequested: root.openAddSportWizard()
             }
 
             Item {

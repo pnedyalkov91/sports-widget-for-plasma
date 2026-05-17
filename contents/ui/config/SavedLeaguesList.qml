@@ -15,8 +15,61 @@ ColumnLayout {
 
     property var configRoot
     property int renameIndex: -1
+    property int deleteIndex: -1
+
+    signal addSportRequested()
 
     spacing: Kirigami.Units.smallSpacing
+
+    function parseEntry(entryJson) {
+        try {
+            const parsed = JSON.parse(entryJson || "{}");
+            return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function rebuildModel() {
+        savedLeagueModel.clear();
+        const saved = root.configRoot ? root.configRoot.savedLeagues() : [];
+        saved.forEach(entry => {
+            const safeEntry = Object.assign({}, entry || {});
+            const parts = [SportVisuals.label(safeEntry.sport), root.configRoot.displayCountryLabel(safeEntry)];
+            const favorite = root.configRoot.displayFavoriteTeam(safeEntry);
+            if (favorite.length > 0)
+                parts.push(i18nc("@label", "Favorite: %1", favorite));
+
+            savedLeagueModel.append({
+                entryJson: JSON.stringify(safeEntry),
+                leagueLabel: root.configRoot.displayLeagueLabel(safeEntry),
+                metaLabel: parts.filter(part => String(part || "").length > 0).join(" · "),
+                countryIcon: safeEntry.countryIcon || root.configRoot.countryIconForEntry(safeEntry)
+            });
+        });
+    }
+
+    function applyModelOrder() {
+        if (!root.configRoot)
+            return;
+
+        const previousSaved = root.configRoot.savedLeagues();
+        const previousActive = previousSaved[root.configRoot.cfg_activeSavedLeagueIndex] || null;
+        let reordered = [];
+        for (let index = 0; index < savedLeagueModel.count; index += 1)
+            reordered.push(root.parseEntry(savedLeagueModel.get(index).entryJson));
+
+        root.configRoot.saveLeagues(reordered);
+        if (!previousActive)
+            return;
+
+        for (let index = 0; index < reordered.length; index += 1) {
+            if (root.configRoot.sameEntry(reordered[index], previousActive)) {
+                root.configRoot.cfg_activeSavedLeagueIndex = index;
+                return;
+            }
+        }
+    }
 
     function openRenameDialog(index, entry) {
         root.renameIndex = index;
@@ -26,8 +79,38 @@ ColumnLayout {
         renameDialog.open();
     }
 
+    function requestRemoveSavedLeague(index) {
+        if (!root.configRoot)
+            return;
+
+        if (root.configRoot.savedLeagues().length === 1) {
+            root.deleteIndex = index;
+            deleteLastLeagueDialog.open();
+            return;
+        }
+
+        root.configRoot.removeSavedLeague(index);
+    }
+
+    onConfigRootChanged: rebuildModel()
+    Component.onCompleted: rebuildModel()
+
+    Connections {
+        target: root.configRoot
+        ignoreUnknownSignals: true
+
+        function onCfg_savedLeaguesChanged() {
+            root.rebuildModel();
+        }
+    }
+
+    ListModel {
+        id: savedLeagueModel
+    }
+
     RowLayout {
         Layout.fillWidth: true
+        spacing: Kirigami.Units.smallSpacing
 
         Kirigami.Heading {
             text: i18nc("@title:group", "Saved Leagues")
@@ -40,6 +123,12 @@ ColumnLayout {
             color: Kirigami.Theme.separatorColor
             opacity: 0.6
         }
+
+        Button {
+            icon.name: "list-add"
+            text: i18nc("@action:button", "Add Sport")
+            onClicked: root.addSportRequested()
+        }
     }
 
     Label {
@@ -50,99 +139,136 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
-    Repeater {
-        model: root.configRoot ? root.configRoot.savedLeagues() : []
+    ListView {
+        id: savedLeagueList
 
-        delegate: ItemDelegate {
-            id: savedDelegate
+        Layout.fillWidth: true
+        Layout.preferredHeight: contentHeight
+        interactive: false
+        reuseItems: false
+        clip: false
+        spacing: Kirigami.Units.smallSpacing
+        model: savedLeagueModel
+
+        moveDisplaced: Transition {
+            NumberAnimation {
+                properties: "y"
+                duration: 120
+                easing.type: Easing.OutQuad
+            }
+        }
+        displaced: Transition {
+            NumberAnimation {
+                properties: "y"
+                duration: 120
+                easing.type: Easing.OutQuad
+            }
+        }
+
+        delegate: Item {
+            id: savedDelegateRoot
 
             required property int index
-            required property var modelData
+            required property string entryJson
+            required property string leagueLabel
+            required property string metaLabel
+            required property string countryIcon
 
-            Layout.fillWidth: true
-            implicitHeight: savedContent.implicitHeight + Kirigami.Units.smallSpacing
-            hoverEnabled: true
-            onClicked: root.configRoot.applySavedLeague(modelData, savedDelegate.index)
+            width: savedLeagueList.width
+            implicitHeight: savedDelegate.implicitHeight
 
-            readonly property bool active: root.configRoot && root.configRoot.sameEntry(modelData, root.configRoot.currentEntry())
+            readonly property var entryData: root.parseEntry(entryJson)
+            readonly property bool active: root.configRoot && root.configRoot.sameEntry(entryData, root.configRoot.currentEntry())
 
-            background: Rectangle {
-                radius: 4
-                color: savedDelegate.active ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.20) : savedDelegate.hovered ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.10) : "transparent"
-                border.color: savedDelegate.active ? Kirigami.Theme.highlightColor : Kirigami.Theme.separatorColor
-                border.width: savedDelegate.active ? 1 : 0
-            }
+            ItemDelegate {
+                id: savedDelegate
 
-            contentItem: RowLayout {
-                id: savedContent
+                width: parent.width
+                implicitHeight: Math.max(Kirigami.Units.gridUnit * 2.6, savedContent.implicitHeight + Kirigami.Units.smallSpacing * 2)
+                topPadding: Kirigami.Units.smallSpacing
+                bottomPadding: Kirigami.Units.smallSpacing
+                leftPadding: Kirigami.Units.smallSpacing
+                rightPadding: Kirigami.Units.smallSpacing
+                hoverEnabled: true
+                down: false
+                onClicked: root.configRoot.applySavedLeague(savedDelegateRoot.entryData, savedDelegateRoot.index)
 
-                spacing: Kirigami.Units.smallSpacing
-
-                CountryFlag {
-                    sourceUrl: modelData.countryIcon || root.configRoot.countryIconForEntry(modelData)
+                background: Rectangle {
+                    radius: 4
+                    color: savedDelegateRoot.active ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.24) : savedDelegate.hovered ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.10) : "transparent"
+                    border.color: savedDelegateRoot.active ? Kirigami.Theme.highlightColor : Kirigami.Theme.separatorColor
+                    border.width: savedDelegateRoot.active ? 1 : 0
                 }
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
+                contentItem: RowLayout {
+                    id: savedContent
 
-                    Label {
-                        Layout.fillWidth: true
-                        text: root.configRoot.displayLeagueLabel(modelData)
-                        color: savedDelegate.active ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
-                        font.bold: savedDelegate.active
-                        elide: Text.ElideRight
-                    }
+                    spacing: Kirigami.Units.smallSpacing
 
-                    Label {
-                        Layout.fillWidth: true
-                        text: {
-                            const parts = [SportVisuals.label(modelData.sport), root.configRoot.displayCountryLabel(modelData)];
-                            const favorite = root.configRoot.displayFavoriteTeam(modelData);
-                            if (favorite.length > 0)
-                                parts.push(i18nc("@label", "Favorite: %1", favorite));
-                            return parts.join(" · ");
+                    Kirigami.ListItemDragHandle {
+                        Layout.alignment: Qt.AlignVCenter
+                        listItem: savedDelegate
+                        listView: savedLeagueList
+                        onMoveRequested: function(oldIndex, newIndex) {
+                            if (oldIndex !== newIndex)
+                                savedLeagueModel.move(oldIndex, newIndex, 1);
                         }
-                        color: Kirigami.Theme.disabledTextColor
-                        elide: Text.ElideRight
-                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        onDropped: root.applyModelOrder()
                     }
-                }
 
-                ToolButton {
-                    icon.name: modelData.starred ? "starred-symbolic" : "non-starred-symbolic"
-                    display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Default")
-                    ToolTip.visible: hovered
-                    ToolTip.text: modelData.starred ? i18nc("@info:tooltip", "Favorite league") : i18nc("@info:tooltip", "Mark as favorite")
-                    onClicked: root.configRoot.starSavedLeague(savedDelegate.index)
-                }
+                    CountryFlag {
+                        Layout.alignment: Qt.AlignVCenter
+                        sourceUrl: savedDelegateRoot.countryIcon
+                    }
 
-                ToolButton {
-                    icon.name: "edit-rename"
-                    display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Rename")
-                    ToolTip.visible: hovered
-                    ToolTip.text: i18nc("@info:tooltip", "Rename saved league labels")
-                    onClicked: root.openRenameDialog(savedDelegate.index, modelData)
-                }
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.fillWidth: true
+                        spacing: 0
 
-                ToolButton {
-                    icon.name: "configure"
-                    display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Edit")
-                    ToolTip.visible: hovered
-                    ToolTip.text: i18nc("@info:tooltip", "Change sport, country, league or favorite team")
-                    onClicked: root.configRoot.openEditSavedLeague(modelData, savedDelegate.index)
-                }
+                        Label {
+                            Layout.fillWidth: true
+                            text: savedDelegateRoot.leagueLabel
+                            color: Kirigami.Theme.textColor
+                            font.bold: savedDelegateRoot.active
+                            elide: Text.ElideRight
+                        }
 
-                ToolButton {
-                    icon.name: "edit-delete"
-                    display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Delete")
-                    ToolTip.visible: hovered
-                    ToolTip.text: i18nc("@info:tooltip", "Remove saved league")
-                    onClicked: root.configRoot.removeSavedLeague(savedDelegate.index)
+                        Label {
+                            Layout.fillWidth: true
+                            text: savedDelegateRoot.metaLabel
+                            color: Kirigami.Theme.disabledTextColor
+                            elide: Text.ElideRight
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        }
+                    }
+
+                    ToolButton {
+                        icon.name: "edit-rename"
+                        display: AbstractButton.IconOnly
+                        text: i18nc("@action:button", "Rename")
+                        ToolTip.visible: hovered
+                        ToolTip.text: i18nc("@info:tooltip", "Rename saved league labels")
+                        onClicked: root.openRenameDialog(savedDelegateRoot.index, savedDelegateRoot.entryData)
+                    }
+
+                    ToolButton {
+                        icon.name: "configure"
+                        display: AbstractButton.IconOnly
+                        text: i18nc("@action:button", "Edit")
+                        ToolTip.visible: hovered
+                        ToolTip.text: i18nc("@info:tooltip", "Change sport, country, league or favorite team")
+                        onClicked: root.configRoot.openEditSavedLeague(savedDelegateRoot.entryData, savedDelegateRoot.index)
+                    }
+
+                    ToolButton {
+                        icon.name: "edit-delete"
+                        display: AbstractButton.IconOnly
+                        text: i18nc("@action:button", "Delete")
+                        ToolTip.visible: hovered
+                        ToolTip.text: i18nc("@info:tooltip", "Remove saved league")
+                        onClicked: root.requestRemoveSavedLeague(savedDelegateRoot.index)
+                    }
                 }
             }
         }
@@ -196,5 +322,79 @@ ColumnLayout {
         }
 
         onAccepted: root.configRoot.renameSavedLeague(root.renameIndex, leagueNameField.text, countryNameField.text, favoriteNameField.text)
+    }
+
+    Kirigami.Dialog {
+        id: deleteLastLeagueDialog
+
+        title: i18nc("@title:window", "Remove last league?")
+        standardButtons: Kirigami.Dialog.NoButton
+        leftPadding: Kirigami.Units.gridUnit * 2
+        rightPadding: Kirigami.Units.gridUnit * 2
+        topPadding: Kirigami.Units.gridUnit
+        bottomPadding: Kirigami.Units.gridUnit
+
+        contentItem: Item {
+            implicitWidth: Kirigami.Units.gridUnit * 22
+            implicitHeight: deleteLastLeagueColumn.implicitHeight
+
+            ColumnLayout {
+                id: deleteLastLeagueColumn
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                spacing: Kirigami.Units.largeSpacing
+
+                Kirigami.Icon {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.huge
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.huge
+                    source: "edit-delete"
+                    isMask: true
+                    color: Kirigami.Theme.negativeTextColor
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: i18nc("@info", "Are you sure? This is your last saved league. If you remove it, the widget will no longer show sports information.")
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                }
+
+                Item {
+                    Layout.preferredHeight: Kirigami.Units.smallSpacing
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: Kirigami.Units.mediumSpacing
+
+                    Button {
+                        icon.name: "edit-delete"
+                        text: i18nc("@action:button", "Yes, remove it")
+                        onClicked: {
+                            root.configRoot.removeSavedLeague(root.deleteIndex);
+                            root.deleteIndex = -1;
+                            deleteLastLeagueDialog.close();
+                        }
+                    }
+
+                    Button {
+                        icon.name: "dialog-cancel"
+                        text: i18nc("@action:button", "Cancel")
+                        onClicked: {
+                            root.deleteIndex = -1;
+                            deleteLastLeagueDialog.close();
+                        }
+                    }
+                }
+
+                Item {
+                    Layout.preferredHeight: Kirigami.Units.smallSpacing
+                }
+            }
+        }
+
+        onClosed: root.deleteIndex = -1
     }
 }

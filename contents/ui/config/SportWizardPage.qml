@@ -25,7 +25,7 @@ Item {
     readonly property string currentProvider: settingsRoot ? settingsRoot.currentProvider : "sportscore"
 
     signal closeRequested()
-    signal finishRequested(var entry, bool saveFavorite)
+    signal finishRequested(var entry)
 
     function firstSport() {
         return String(root.cfg_selectedSports || "").split(",")[0];
@@ -135,8 +135,7 @@ Item {
             countryIcon: root.countryIcon(root.cfg_country),
             league: root.cfg_league || "",
             leagueLabel: root.leagueLabel(),
-            favoriteTeam: root.cfg_favoriteTeam || "",
-            starred: true
+            favoriteTeam: root.cfg_favoriteTeam || ""
         };
     }
 
@@ -243,7 +242,7 @@ Item {
                         return;
 
                     if (root.pageIndex === root.pageCount - 1) {
-                        favoriteDialog.open();
+                        root.finishRequested(root.currentEntry());
                     } else {
                         root.pageIndex += 1;
                     }
@@ -277,23 +276,5 @@ Item {
         FavoriteTeamSelectPage {
             configRoot: root
         }
-    }
-
-    Dialog {
-        id: favoriteDialog
-
-        anchors.centerIn: parent
-        modal: true
-        title: i18nc("@title:window", "Save Favorite")
-        standardButtons: Dialog.Yes | Dialog.No
-
-        Label {
-            width: Math.min(Kirigami.Units.gridUnit * 24, root.width - Kirigami.Units.gridUnit * 4)
-            text: i18nc("@info", "Do you want to mark %1 as a favorite?", root.leagueLabel())
-            wrapMode: Text.WordWrap
-        }
-
-        onAccepted: root.finishRequested(root.currentEntry(), true)
-        onRejected: root.finishRequested(root.currentEntry(), false)
     }
 }

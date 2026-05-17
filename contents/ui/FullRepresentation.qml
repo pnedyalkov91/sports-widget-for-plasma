@@ -31,6 +31,7 @@ Item {
     property string favoriteTeam: ""
     property string sport: "football"
     property bool hasSavedLeagues: true
+    property var savedLeagues: []
     property int savedLeagueCount: 0
     property int activeSavedLeagueIndex: -1
     property string activeLeagueLabel: ""
@@ -47,8 +48,7 @@ Item {
 
     signal refreshRequested()
     signal configureRequested()
-    signal previousLeagueRequested()
-    signal nextLeagueRequested()
+    signal leagueSelected(int index)
 
     function isFavoriteTeam(teamName) {
         const favorite = root.favoriteTeam.toLowerCase();
@@ -92,6 +92,15 @@ Item {
 
     function withAlpha(color, alpha) {
         return Qt.rgba(color.r, color.g, color.b, alpha);
+    }
+
+    function savedLeagueMenuText(entry) {
+        entry = entry || {};
+        const league = String(entry.customLeagueLabel || entry.leagueLabel || entry.league || "").trim();
+        const country = String(entry.customCountryLabel || entry.countryLabel || entry.country || "").trim();
+        const sport = SportVisuals.label(entry.sport);
+        const meta = [sport, country].filter(part => String(part || "").length > 0).join(" · ");
+        return meta.length > 0 ? league + " - " + meta : league;
     }
 
     onWidgetTabsChanged: activateTab(activeTab)
@@ -166,14 +175,6 @@ Item {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
-                ToolButton {
-                    icon.name: "go-previous"
-                    display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Previous saved league")
-                    visible: root.savedLeagueCount > 1
-                    onClicked: root.previousLeagueRequested()
-                }
-
                 Kirigami.Icon {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                     Layout.preferredHeight: Layout.preferredWidth
@@ -205,11 +206,35 @@ Item {
                 }
 
                 ToolButton {
-                    icon.name: "go-next"
+                    id: savedLeagueSwitcher
+
+                    icon.name: "go-down"
                     display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Next saved league")
+                    text: i18nc("@action:button", "Switch saved league")
                     visible: root.savedLeagueCount > 1
-                    onClicked: root.nextLeagueRequested()
+                    ToolTip.visible: hovered
+                    ToolTip.text: i18nc("@info:tooltip", "Switch saved league")
+                    onClicked: savedLeagueMenu.open()
+
+                    Menu {
+                        id: savedLeagueMenu
+
+                        y: savedLeagueSwitcher.height
+
+                        Repeater {
+                            model: root.savedLeagues
+
+                            delegate: MenuItem {
+                                required property var modelData
+                                required property int index
+
+                                text: root.savedLeagueMenuText(modelData)
+                                checkable: true
+                                checked: index === root.activeSavedLeagueIndex
+                                onTriggered: root.leagueSelected(index)
+                            }
+                        }
+                    }
                 }
             }
 

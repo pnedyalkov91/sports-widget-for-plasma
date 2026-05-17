@@ -667,6 +667,7 @@ PlasmoidItem {
         sportCount: 1
         sport: root.primarySport
         hasSavedLeagues: root.savedLeagueCount > 0
+        savedLeagues: root.savedLeagueEntries
         savedLeagueCount: root.savedLeagueCount
         activeSavedLeagueIndex: root.activeSavedLeagueIndex
         activeLeagueLabel: root.selectedLeagueLabel
@@ -683,8 +684,7 @@ PlasmoidItem {
         favoriteTeam: root.favoriteTeam
         onRefreshRequested: root.refreshScores(true)
         onConfigureRequested: root.openSportSettings()
-        onPreviousLeagueRequested: root.setActiveSavedLeagueIndex(root.activeSavedLeagueIndex - 1)
-        onNextLeagueRequested: root.setActiveSavedLeagueIndex(root.activeSavedLeagueIndex + 1)
+        onLeagueSelected: (index) => root.setActiveSavedLeagueIndex(index)
     }
 
 }
