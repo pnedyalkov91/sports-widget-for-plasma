@@ -19,7 +19,8 @@ PlasmoidItem {
     property string errorMessage: ""
     property string tableErrorMessage: ""
     property string lastUpdatedText: ""
-    property int liveCount: scoresModel.count
+    property int liveCount: liveMatchesModel.count
+    property int scheduleCount: scoresModel.count
     property int tableCount: tableModel.count
     property int fixtureCount: fixturesModel.count
     property int statsCount: statsModel.count
@@ -36,15 +37,16 @@ PlasmoidItem {
     property string favoriteTeam: String(activeLeagueEntry.favoriteTeam || "").trim()
     property string providerLabel: providerDisplayName(effectiveProvider())
     property string sourceText: i18nc("@info:status", "No API key required")
-    property string primaryMatchText: scoresModel.count > 0 ? scoresModel.get(0).homeTeam + " vs " + scoresModel.get(0).awayTeam : root.hasSportSelection() ? i18nc("@info:status", "No scheduled matches") : i18nc("@action:button", "Add a sport")
-    property string secondaryMatchText: scoresModel.count > 0 ? scoresModel.get(0).startTime || scoresModel.get(0).status : root.hasSportSelection() ? sourceText : i18nc("@info:status", "Open settings to add a league")
+    property string primaryMatchText: liveMatchesModel.count > 0 ? liveMatchesModel.get(0).homeTeam + " vs " + liveMatchesModel.get(0).awayTeam : scoresModel.count > 0 ? scoresModel.get(0).homeTeam + " vs " + scoresModel.get(0).awayTeam : root.hasSportSelection() ? i18nc("@info:status", "No scheduled matches") : i18nc("@action:button", "Add a sport")
+    property string secondaryMatchText: liveMatchesModel.count > 0 ? liveMatchesModel.get(0).minute || liveMatchesModel.get(0).status : scoresModel.count > 0 ? scoresModel.get(0).startTime || scoresModel.get(0).status : root.hasSportSelection() ? sourceText : i18nc("@info:status", "Open settings to add a league")
     property string selectedSport: String(activeLeagueEntry.sport || "").trim()
     property string selectedLeagueLabel: displayLeagueLabel(activeLeagueEntry)
     property string selectedCountryLabel: displayCountryLabel(activeLeagueEntry)
-    property string primarySport: scoresModel.count > 0 ? scoresModel.get(0).sport : SportVisuals.normalizedSport(selectedSport)
+    property string primarySport: liveMatchesModel.count > 0 ? liveMatchesModel.get(0).sport : scoresModel.count > 0 ? scoresModel.get(0).sport : SportVisuals.normalizedSport(selectedSport)
     property int pendingRequests: 0
     property var refreshErrors: []
     property var tableRows: []
+    property var latestScheduleMatches: []
     property string pendingScheduleMessage: ""
 
     function hasSportSelection() {
@@ -133,11 +135,13 @@ PlasmoidItem {
             configRefreshTimer.stop();
             emptySchedulesTimer.stop();
             tableFallbackTimer.stop();
+            liveMatchesModel.clear();
             scoresModel.clear();
             tableModel.clear();
             fixturesModel.clear();
             statsModel.clear();
             root.tableRows = [];
+            root.latestScheduleMatches = [];
             root.loading = false;
             root.schedulesLoading = false;
             root.pendingRefresh = false;
@@ -167,7 +171,7 @@ PlasmoidItem {
             "scoreboardDaysBack": 14,
             "scoreboardDaysForward": 90
         };
-        root.pendingRequests = 2;
+        root.pendingRequests = 3;
         root.refreshErrors = [];
         root.pendingRefresh = false;
         root.tableRequestCompleted = false;
@@ -179,8 +183,17 @@ PlasmoidItem {
         root.errorMessage = "";
         applyTable([]);
         root.tableErrorMessage = "";
+        root.latestScheduleMatches = [];
         statsModel.clear();
         tableFallbackTimer.restart();
+        SportsApi.fetchLiveScores(options, (matches) => {
+            applyLiveMatches(matches);
+            refreshMatchStats(options);
+            finishRefresh(manual, "");
+        }, (message) => {
+            applyLiveMatches([]);
+            finishRefresh(manual, message);
+        });
         SportsApi.fetchLeagueTable(options, (table) => {
             const alreadyCounted = root.tableRequestCompleted;
             table = Array.isArray(table) ? table : [];
@@ -292,8 +305,9 @@ PlasmoidItem {
         if (root.pendingRequests > 0)
             return ;
 
+        promoteLiveMatches(root.latestScheduleMatches);
         root.loading = false;
-        if (root.refreshErrors.length > 0 && scoresModel.count === 0 && tableModel.count === 0 && fixturesModel.count === 0) {
+        if (root.refreshErrors.length > 0 && liveMatchesModel.count === 0 && scoresModel.count === 0 && tableModel.count === 0 && fixturesModel.count === 0) {
             emptySchedulesTimer.stop();
             root.schedulesLoading = false;
             root.errorMessage = manual ? root.refreshErrors.join(", ") : "";
@@ -316,7 +330,9 @@ PlasmoidItem {
 
     function applySchedules(matches, updateText) {
         scoresModel.clear();
-        matches = scheduledMatches(matches);
+        root.latestScheduleMatches = Array.isArray(matches) ? matches.slice() : [];
+        promoteLiveMatches(root.latestScheduleMatches);
+        matches = scheduledMatches(root.latestScheduleMatches);
         matches = prioritizeFavorite(matches);
         if (Plasmoid.configuration.prioritizePopular) {
             matches = matches.slice().sort((left, right) => {
@@ -337,6 +353,39 @@ PlasmoidItem {
         return matches.length;
     }
 
+    function applyLiveMatches(matches) {
+        liveMatchesModel.clear();
+        matches = prioritizeFavorite(Array.isArray(matches) ? matches : []);
+        matches.forEach((match) => {
+            return liveMatchesModel.append(match);
+        });
+        return matches.length;
+    }
+
+    function promoteLiveMatches(matches) {
+        if (liveMatchesModel.count > 0)
+            return 0;
+
+        const liveMatches = (Array.isArray(matches) ? matches : []).filter((match) => {
+            return SportsApi.isLiveMatch(match);
+        }).map((match) => liveMatchForModel(match));
+        if (liveMatches.length === 0)
+            return 0;
+
+        return applyLiveMatches(liveMatches);
+    }
+
+    function liveMatchForModel(match) {
+        const copy = Object.assign({}, match);
+        const status = String(copy.status || "").trim();
+        const lowerStatus = status.toLowerCase();
+        if (String(copy.minute || "").length === 0 && (lowerStatus === "ht" || lowerStatus === "1h" || lowerStatus === "2h" || /^\d+\+?$/.test(status)))
+            copy.minute = status;
+
+        copy.status = "Live";
+        return copy;
+    }
+
     function deferEmptySchedulesMessage(message) {
         if (scoresModel.count > 0)
             return;
@@ -352,6 +401,9 @@ PlasmoidItem {
         return (Array.isArray(matches) ? matches : []).filter((match) => {
             const status = String(match.status || "").toLowerCase();
             const timestamp = Number(match.timestamp || 0);
+            if (SportsApi.isLiveMatch(match))
+                return false;
+
             if (status.indexOf("finished") >= 0 || status.indexOf("final") >= 0)
                 return false;
 
@@ -396,7 +448,7 @@ PlasmoidItem {
 
     function refreshMatchStats(options) {
         statsModel.clear();
-        refreshStatsFromModel(scoresModel, options, true);
+        refreshStatsFromModel(liveMatchesModel, options, true);
     }
 
     function refreshFixtureStats(options) {
@@ -516,7 +568,7 @@ PlasmoidItem {
     Plasmoid.icon: "applications-games"
     Plasmoid.title: i18n("Sports Widget for Plasma")
     toolTipMainText: Plasmoid.title
-    toolTipSubText: !root.hasSportSelection() ? i18nc("@info:tooltip", "Add a sport") : liveCount > 0 ? i18ncp("@info:tooltip", "%1 scheduled match", "%1 scheduled matches", liveCount) : i18nc("@info:tooltip", "No scheduled matches")
+    toolTipSubText: !root.hasSportSelection() ? i18nc("@info:tooltip", "Add a sport") : liveCount > 0 ? i18ncp("@info:tooltip", "%1 live match", "%1 live matches", liveCount) : scheduleCount > 0 ? i18ncp("@info:tooltip", "%1 scheduled match", "%1 scheduled matches", scheduleCount) : i18nc("@info:tooltip", "No scheduled matches")
     preferredRepresentation: Plasmoid.formFactor === PlasmaCore.Types.Planar ? fullRepresentation : compactRepresentation
     Component.onCompleted: {
         migrateDefaultSelection();
@@ -530,6 +582,10 @@ PlasmoidItem {
             onTriggered: root.refreshScores(true)
         }
     ]
+
+    ListModel {
+        id: liveMatchesModel
+    }
 
     ListModel {
         id: scoresModel
@@ -654,6 +710,7 @@ PlasmoidItem {
     }
 
     fullRepresentation: FullRepresentation {
+        liveModel: liveMatchesModel
         scoreModel: scoresModel
         loading: root.loading
         schedulesLoading: root.schedulesLoading

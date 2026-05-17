@@ -27,10 +27,29 @@ function fetchLiveScores(options, onSuccess, onError) {
     }
 
     const provider = "sportscore";
-    fetchProviderMatches(provider, "live", Object.assign({}, options, {
-        provider,
-        baseUrl: ProviderCatalog.defaultBaseUrl(provider)
-    }), onSuccess, onError);
+
+    function fetchWidgetApi() {
+        fetchProviderMatches(provider, "live", Object.assign({}, options, {
+            provider,
+            baseUrl: ProviderCatalog.defaultBaseUrl(provider)
+        }), matches => {
+            onSuccess(matches.filter(isLiveMatch));
+        }, onError);
+    }
+
+    if (isFootballSelection(options)) {
+        fetchSportScoreLivePage(options, matches => {
+            if (matches.length > 0) {
+                onSuccess(matches);
+                return;
+            }
+
+            fetchWidgetApi();
+        }, fetchWidgetApi);
+        return;
+    }
+
+    fetchWidgetApi();
 }
 
 function fetchLeagueTable(options, onSuccess, onError) {
@@ -573,6 +592,267 @@ function requestTextWithHeaders(url, headers, onSuccess, onError) {
     request.send();
 }
 
+function fetchSportScoreLivePage(options, onSuccess, onError) {
+    function fetchGlobalLive() {
+        requestText(cacheBustedUrl("https://sportscore.com/football/live/"), html => {
+            try {
+                onSuccess(normalizeSportScoreLivePage(html, options));
+            } catch (error) {
+                onError(String(error));
+            }
+        }, onError);
+    }
+
+    if (canFetchSportScoreCompetitionFixtures(options)) {
+        const country = String(options.country || "england").trim().toLowerCase();
+        const league = ProviderCatalog.sportScoreSlug(options.league);
+        const sourceUrl = country === "world" ? "https://sportscore.com/football/competitions/" : `https://sportscore.com/football/country/${encodeURIComponent(country)}/`;
+
+        requestText(cacheBustedUrl(sourceUrl), html => {
+            const path = sportScoreCompetitionPath(html, country, league);
+            if (path.length === 0) {
+                fetchGlobalLive();
+                return;
+            }
+
+            requestText(cacheBustedUrl(`https://sportscore.com${path}`), page => {
+                try {
+                    const rows = normalizeSportScoreLivePage(page, options);
+                    if (rows.length > 0) {
+                        onSuccess(rows);
+                    } else {
+                        fetchGlobalLive();
+                    }
+                } catch (error) {
+                    fetchGlobalLive();
+                }
+            }, fetchGlobalLive);
+        }, fetchGlobalLive);
+        return;
+    }
+
+    fetchGlobalLive();
+}
+
+function normalizeSportScoreLivePage(html, options) {
+    const section = sportScoreLiveSection(html);
+    const schema = sportScoreLiveSchemaMap(html);
+    let rows = normalizeSportScoreGlobalLiveRows(section, schema);
+    if (rows.length === 0)
+        rows = normalizeSportScoreCompetitionLiveRows(section, schema);
+
+    return sortMatches(dedupeMatches(filterMatchesForSelection(rows, options).filter(isLiveMatch)));
+}
+
+function normalizeSportScoreGlobalLiveRows(section, schema) {
+    const pattern = /<div class="d-flex align-items-center"\s+data-match-id="([^"]+)"\s+data-live-row>([\s\S]*?)(?=\n\s*<div class="d-flex align-items-center"\s+data-match-id="[^"]+"\s+data-live-row>|\n\s*<div class="table-active d-flex align-items-center">|\n\s*<\/section>|$)/g;
+    let rows = [];
+    let match = pattern.exec(section);
+    while (match) {
+        const context = section.slice(Math.max(0, match.index - 6000), match.index);
+        const row = normalizeSportScoreLiveRow(match[1], match[0], context, schema);
+        if (hasTeams(row))
+            rows.push(row);
+
+        match = pattern.exec(section);
+    }
+    return rows;
+}
+
+function normalizeSportScoreCompetitionLiveRows(section, schema) {
+    const pattern = /<div class="football-match-table-container w-100 nostyle sc-row-stretched">([\s\S]*?)(?=\n\s*<div class="football-match-table-container w-100 nostyle sc-row-stretched">|\n\s*<h2 class="match-state-header|$)/g;
+    let rows = [];
+    let match = pattern.exec(section);
+    while (match) {
+        const context = section.slice(Math.max(0, match.index - 2000), match.index);
+        const row = normalizeSportScoreLiveRow("", match[0], context, schema);
+        if (hasTeams(row))
+            rows.push(row);
+
+        match = pattern.exec(section);
+    }
+    return rows;
+}
+
+function normalizeSportScoreLiveRow(id, block, context, schema) {
+    const label = sportScoreLiveAriaLabel(block);
+    const labelParts = label.split(" — ");
+    const teamLabel = htmlDecode(labelParts[0] || "");
+    const teamParts = splitSportScoreTeams(teamLabel);
+    const path = sportScoreMatchPath(block);
+    const details = schema[path] || {};
+    const logos = sportScoreLiveLogos(block);
+    const timestamp = Date.parse(htmlAttribute(block, "data-utc"));
+    const minute = htmlText(sportScoreLiveValue(block, "status"));
+    const league = htmlDecode(labelParts.slice(1).join(" — ")) || sportScoreLastCompetition(context);
+
+    return {
+        id: "sportscore-live-" + stringValue(id || path || teamLabel),
+        sport: "football",
+        league,
+        homeTeam: teamParts.home,
+        awayTeam: teamParts.away,
+        homeScore: htmlText(sportScoreLiveValue(block, "home-score")),
+        awayScore: htmlText(sportScoreLiveValue(block, "away-score")),
+        status: "Live",
+        minute,
+        startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp) : "",
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        matchday: sportScoreLastRound(context),
+        stadium: stringValue(details.stadium),
+        homeBadge: logos[0] || stringValue(details.homeBadge),
+        awayBadge: logos[1] || stringValue(details.awayBadge),
+        poster: "",
+        popular: false
+    };
+}
+
+function sportScoreLiveSection(html) {
+    const marker = 'data-section="live"';
+    const start = stringValue(html).indexOf(marker);
+    if (start < 0)
+        return sportScoreCompetitionLiveSection(html);
+
+    const nextUpcoming = html.indexOf('data-section="upcoming"', start + marker.length);
+    const nextFinished = html.indexOf('data-section="finished"', start + marker.length);
+    const candidates = [nextUpcoming, nextFinished].filter(index => index > start);
+    const end = candidates.length > 0 ? Math.min.apply(Math, candidates) : html.length;
+    return html.slice(start, end);
+}
+
+function sportScoreCompetitionLiveSection(html) {
+    const value = stringValue(html);
+    const headerPattern = /<h2 class="match-state-header[^"]*is-live[^"]*"[\s\S]*?<\/h2>/;
+    const match = headerPattern.exec(value);
+    if (!match)
+        return value;
+
+    const start = match.index;
+    const next = value.indexOf('<h2 class="match-state-header', start + match[0].length);
+    return next > start ? value.slice(start, next) : value.slice(start);
+}
+
+function sportScoreLiveAriaLabel(block) {
+    const stretched = /class="sc-stretched-link"[\s\S]{0,240}?aria-label="([^"]+)"/.exec(block);
+    if (stretched)
+        return htmlDecode(stretched[1]);
+
+    return htmlAttribute(block, "aria-label");
+}
+
+function splitSportScoreTeams(label) {
+    const separators = [" vs ", " v "];
+    for (let index = 0; index < separators.length; index += 1) {
+        const separator = separators[index];
+        const position = label.indexOf(separator);
+        if (position > 0) {
+            return {
+                home: label.slice(0, position).trim(),
+                away: label.slice(position + separator.length).trim()
+            };
+        }
+    }
+
+    return { home: "", away: "" };
+}
+
+function sportScoreLiveValue(block, name) {
+    const pattern = new RegExp('data-live="' + escapeRegExp(name) + '"[^>]*>([\\s\\S]*?)<\\/[^>]+>', "i");
+    const match = pattern.exec(block);
+    return match ? match[1] : "";
+}
+
+function sportScoreLiveLogos(block) {
+    let result = [];
+    let seen = {};
+    const pattern = /<img\b[^>]*>/g;
+    let match = pattern.exec(block);
+    while (match) {
+        const tag = match[0];
+        const alt = normalizedText(htmlAttribute(tag, "alt"));
+        const source = htmlAttribute(tag, "src");
+        if (alt.indexOf("logo") >= 0 && source.length > 0 && !seen[source]) {
+            seen[source] = true;
+            result.push(source);
+        }
+
+        match = pattern.exec(block);
+    }
+    return result;
+}
+
+function sportScoreMatchPath(block) {
+    const match = /href="(\/football\/match\/[^"]+)"/.exec(block);
+    return match ? match[1] : "";
+}
+
+function sportScoreLastCompetition(html) {
+    const pattern = /<a class="competition-name[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
+    let result = "";
+    let match = pattern.exec(html);
+    while (match) {
+        result = htmlText(match[1]);
+        match = pattern.exec(html);
+    }
+    return result;
+}
+
+function sportScoreLastRound(html) {
+    const pattern = /class="competition-round[^"]*"[^>]*>([\s\S]*?)<\/span>/g;
+    let result = "";
+    let match = pattern.exec(html);
+    while (match) {
+        result = htmlText(match[1]);
+        match = pattern.exec(html);
+    }
+    return result;
+}
+
+function sportScoreLiveSchemaMap(html) {
+    let result = {};
+    const lists = sportScoreJsonLdLists(html);
+    lists.forEach(list => {
+        if (normalizedText(list && list.name).indexOf("live football") < 0)
+            return;
+
+        arrayValue(list.itemListElement).forEach(item => {
+            const event = item && item.item ? item.item : {};
+            const path = sportScorePathFromUrl(event.url || event["@id"]);
+            if (path.length === 0)
+                return;
+
+            const images = arrayValue(event.image);
+            result[path] = {
+                stadium: schemaPlaceName(event.location),
+                homeBadge: stringValue(images[0]),
+                awayBadge: stringValue(images[1])
+            };
+        });
+    });
+    return result;
+}
+
+function sportScorePathFromUrl(url) {
+    const value = stringValue(url);
+    const match = /^https?:\/\/[^/]+(\/football\/match\/[^?#]+\/?)/.exec(value);
+    return match ? match[1] : value;
+}
+
+function schemaPlaceName(place) {
+    if (!place)
+        return "";
+
+    if (typeof place === "string")
+        return place;
+
+    return stringValue(place.name);
+}
+
+function cacheBustedUrl(url) {
+    const separator = stringValue(url).indexOf("?") >= 0 ? "&" : "?";
+    return url + separator + "_=" + Date.now();
+}
+
 function hasHeader(headers, headerName) {
     const normalized = String(headerName || "").toLowerCase();
     return Object.keys(headers || {}).some(header => header.toLowerCase() === normalized);
@@ -791,6 +1071,23 @@ function sortMatches(matches) {
     });
 }
 
+function isLiveMatch(match) {
+    const status = normalizedText(match && match.status);
+    if (status.indexOf("live") >= 0 || status.indexOf("in play") >= 0 || status.indexOf("in_play") >= 0 || status === "1h" || status === "2h" || status === "ht" || status.indexOf("half") >= 0)
+        return true;
+
+    if (status === "started" || /^\d+\+?$/.test(status))
+        return true;
+
+    if (/^q[1-4]$/.test(status) || status.indexOf("quarter") >= 0 || status.indexOf("period") >= 0 || status.indexOf("set ") >= 0)
+        return true;
+
+    if (status.indexOf("finish") >= 0 || status.indexOf("final") >= 0 || status === "ended" || status.indexOf("upcoming") >= 0 || status.indexOf("scheduled") >= 0 || status.indexOf("not started") >= 0)
+        return false;
+
+    return stringValue(match && match.homeScore).length > 0 && stringValue(match && match.awayScore).length > 0 && status.length > 0;
+}
+
 function filterMatchesForSelection(matches, options) {
     const sport = normalizeSports(options.sports)[0] || "football";
     if (sport !== "football" && sport !== "soccer")
@@ -985,9 +1282,33 @@ function stripTrailingSlash(value) {
     return String(value).replace(/\/+$/, "");
 }
 
+function htmlAttribute(html, name) {
+    const pattern = new RegExp(escapeRegExp(name) + '="([^"]*)"', "i");
+    const match = pattern.exec(stringValue(html));
+    return match ? htmlDecode(match[1]) : "";
+}
+
+function htmlText(html) {
+    return htmlDecode(stringValue(html).replace(/<[^>]*>/g, " "))
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function htmlDecode(value) {
+    return stringValue(value)
+        .replace(/&#x([0-9a-f]+);/gi, (match, code) => String.fromCharCode(parseInt(code, 16)))
+        .replace(/&#(\d+);/g, (match, code) => String.fromCharCode(parseInt(code, 10)))
+        .replace(/&nbsp;/g, " ")
+        .replace(/&middot;/g, "·")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'");
+}
+
 function statusLabel(value) {
     const status = stringValue(value).toUpperCase();
-    if (status.indexOf("LIVE") >= 0 || status.indexOf("IN_PLAY") >= 0 || status.indexOf("1H") >= 0 || status.indexOf("2H") >= 0)
+    if (status.indexOf("LIVE") >= 0 || status.indexOf("IN_PLAY") >= 0 || status === "STARTED" || status.indexOf("1H") >= 0 || status.indexOf("2H") >= 0)
         return "Live";
     if (status.indexOf("FINISH") >= 0 || status === "ENDED" || status.indexOf("FT") >= 0 || status.indexOf("AET") >= 0)
         return "Finished";

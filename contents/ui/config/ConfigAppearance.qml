@@ -60,16 +60,16 @@ KCM.SimpleKCM {
                 "label": i18nc("@item:inlistbox", "All tabs"),
                 "value": "all"
             }, {
-                "label": i18nc("@item:inlistbox", "Schedules + Stats"),
+                "label": i18nc("@item:inlistbox", "Live + Schedules + Stats"),
                 "value": "liveStats"
             }, {
-                "label": i18nc("@item:inlistbox", "Schedules + Tables"),
+                "label": i18nc("@item:inlistbox", "Live + Schedules + Tables"),
                 "value": "liveTables"
             }, {
-                "label": i18nc("@item:inlistbox", "Schedules + Fixtures"),
+                "label": i18nc("@item:inlistbox", "Live + Schedules + Fixtures"),
                 "value": "liveFixtures"
             }, {
-                "label": i18nc("@item:inlistbox", "Schedules only"),
+                "label": i18nc("@item:inlistbox", "Live + Schedules"),
                 "value": "liveOnly"
             }]
             Component.onCompleted: currentIndex = root.indexFor(model, root.cfg_widgetTabs || "all")

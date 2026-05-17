@@ -15,6 +15,9 @@ Item {
     property string favoriteTeam: ""
     property bool loading: false
     property int selectedIndex: 0
+    property string emptyText: i18nc("@info:placeholder", "No scheduled matches")
+    property string loadingText: i18nc("@info:status", "Loading schedules")
+    property string emptyIconName: "view-calendar-day"
 
     signal matchSelected(int index)
 
@@ -37,7 +40,8 @@ Item {
         EmptyState {
             anchors.fill: parent
             visible: scheduleList.count === 0 && !root.loading
-            text: i18nc("@info:placeholder", "No scheduled matches")
+            text: root.emptyText
+            iconName: root.emptyIconName
         }
 
         delegate: ScoreDelegate {
@@ -77,7 +81,7 @@ Item {
 
         PlasmaComponents.Label {
             Layout.fillWidth: true
-            text: i18nc("@info:status", "Loading schedules")
+            text: root.loadingText
             color: Kirigami.Theme.disabledTextColor
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
@@ -86,6 +90,7 @@ Item {
 
     component EmptyState: Item {
         property string text: ""
+        property string iconName: "view-calendar-day"
 
         ColumnLayout {
             anchors.centerIn: parent
@@ -96,7 +101,7 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Kirigami.Units.iconSizes.large
                 Layout.preferredHeight: Layout.preferredWidth
-                source: "view-calendar-day"
+                source: parent.parent.iconName
                 color: Kirigami.Theme.disabledTextColor
             }
 

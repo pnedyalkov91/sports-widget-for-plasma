@@ -14,6 +14,7 @@ Item {
     id: root
 
     property var scoreModel
+    property var liveModel
     property var tableModel
     property var tableRows: []
     property var fixturesModel
@@ -43,8 +44,9 @@ Item {
     property string widgetTabs: "all"
     property string nowText: Qt.formatDateTime(new Date(), "dd.MM.yyyy hh:mm:ss")
     property int activeTab: 0
+    property int selectedLiveIndex: 0
     property int selectedScoreIndex: 0
-    readonly property bool hasMatches: scoreModel && scoreModel.count > 0
+    readonly property bool hasMatches: currentHeroModel() && currentHeroModel().count > 0
 
     signal refreshRequested()
     signal configureRequested()
@@ -59,20 +61,20 @@ Item {
     }
 
     function tabVisible(tab) {
-        if (tab === 0)
+        if (tab === 0 || tab === 1)
             return true;
 
         if (root.widgetTabs === "all")
             return true;
 
         if (root.widgetTabs === "liveStats")
-            return tab === 1;
-
-        if (root.widgetTabs === "liveTables")
             return tab === 2;
 
-        if (root.widgetTabs === "liveFixtures")
+        if (root.widgetTabs === "liveTables")
             return tab === 3;
+
+        if (root.widgetTabs === "liveFixtures")
+            return tab === 4;
 
         return false;
     }
@@ -85,9 +87,34 @@ Item {
         if (!root.hasMatches)
             return fallback;
 
-        const index = Math.max(0, Math.min(root.selectedScoreIndex, root.scoreModel.count - 1));
-        const match = root.scoreModel.get(index);
+        const model = root.currentHeroModel();
+        const index = Math.max(0, Math.min(root.currentHeroIndex(), model.count - 1));
+        const match = model.get(index);
         return match && match[field] !== undefined ? match[field] : fallback;
+    }
+
+    function currentHeroModel() {
+        if (root.activeTab === 0)
+            return root.liveModel;
+
+        if (root.activeTab === 1)
+            return root.scoreModel;
+
+        return root.liveModel && root.liveModel.count > 0 ? root.liveModel : root.scoreModel;
+    }
+
+    function currentHeroIndex() {
+        if (root.activeTab === 0)
+            return root.liveModel && root.liveModel.count > 0 ? root.selectedLiveIndex : root.selectedScoreIndex;
+
+        if (root.activeTab === 1)
+            return root.selectedScoreIndex;
+
+        return root.liveModel && root.liveModel.count > 0 ? root.selectedLiveIndex : root.selectedScoreIndex;
+    }
+
+    function emptyHeroStatus() {
+        return root.activeTab === 0 ? i18nc("@info:status", "No live matches") : i18nc("@info:status", "No schedules");
     }
 
     function withAlpha(color, alpha) {
@@ -267,7 +294,7 @@ Item {
             awayTeam: root.selectedMatchValue("awayTeam", i18nc("@info:placeholder", "Away team"))
             homeScore: root.selectedMatchValue("homeScore", "")
             awayScore: root.selectedMatchValue("awayScore", "")
-            status: root.selectedMatchValue("status", i18nc("@info:status", "No schedules"))
+            status: root.selectedMatchValue("status", root.emptyHeroStatus())
             minute: root.selectedMatchValue("minute", "")
             startTime: root.selectedMatchValue("startTime", "")
             stadium: root.selectedMatchValue("stadium", "")
@@ -290,31 +317,38 @@ Item {
                 spacing: 0
 
                 WeatherStyleTab {
-                    label: i18n("Schedules")
+                    label: i18n("Live")
                     active: root.activeTab === 0
                     visible: root.tabVisible(0)
                     onClicked: root.activateTab(0)
                 }
 
                 WeatherStyleTab {
-                    label: i18n("Stats")
+                    label: i18n("Schedules")
                     active: root.activeTab === 1
                     visible: root.tabVisible(1)
                     onClicked: root.activateTab(1)
                 }
 
                 WeatherStyleTab {
-                    label: i18n("Tables")
+                    label: i18n("Stats")
                     active: root.activeTab === 2
                     visible: root.tabVisible(2)
                     onClicked: root.activateTab(2)
                 }
 
                 WeatherStyleTab {
-                    label: i18n("Scores & Fixtures")
+                    label: i18n("Tables")
                     active: root.activeTab === 3
                     visible: root.tabVisible(3)
                     onClicked: root.activateTab(3)
+                }
+
+                WeatherStyleTab {
+                    label: i18n("Scores & Fixtures")
+                    active: root.activeTab === 4
+                    visible: root.tabVisible(4)
+                    onClicked: root.activateTab(4)
                 }
 
             }
@@ -323,7 +357,7 @@ Item {
 
         Kirigami.InlineMessage {
             Layout.fillWidth: true
-            visible: root.errorMessage.length > 0 && !root.loading && !root.schedulesLoading
+            visible: root.activeTab === 1 && root.errorMessage.length > 0 && !root.loading && !root.schedulesLoading
             type: Kirigami.MessageType.Information
             text: root.errorMessage
         }
@@ -332,6 +366,16 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.activeTab
+
+            LiveTab {
+                liveModel: root.liveModel
+                favoriteTeam: root.favoriteTeam
+                loading: root.loading
+                selectedIndex: root.selectedLiveIndex
+                onMatchSelected: (index) => {
+                    root.selectedLiveIndex = index;
+                }
+            }
 
             ScheduleTab {
                 scheduleModel: root.scoreModel
