@@ -13,14 +13,16 @@ import org.kde.plasma.components as PlasmaComponents
 Item {
     id: root
 
-    property var scoreModel
-    property var liveModel
-    property var tableModel
+    property var scoreModel: null
+    property var liveModel: null
+    property var tableModel: null
     property var tableRows: []
-    property var fixturesModel
-    property var statsModel
+    property var fixturesModel: null
+    property var recentResultsModel: null
     property bool loading: false
+    property bool liveLoading: false
     property bool schedulesLoading: false
+    property bool recentResultsLoading: false
     property string errorMessage: ""
     property string tableErrorMessage: ""
     property string lastUpdatedText: ""
@@ -40,13 +42,18 @@ Item {
     property int sportCount: 0
     property int tableCount: 0
     property int fixtureCount: 0
-    property int statsCount: 0
+    property int recentResultsCount: 0
     property string widgetTabs: "all"
     property string nowText: Qt.formatDateTime(new Date(), "dd.MM.yyyy hh:mm:ss")
     property int activeTab: 0
     property int selectedLiveIndex: 0
     property int selectedScoreIndex: 0
-    readonly property bool hasMatches: currentHeroModel() && currentHeroModel().count > 0
+    property int selectedRecentResultIndex: 0
+    readonly property color liveColor: Qt.rgba(1, 0.32, 0.32, 1)
+    readonly property int liveModelCount: root.modelCount(root.liveModel)
+    readonly property int scoreModelCount: root.modelCount(root.scoreModel)
+    readonly property int currentHeroCount: root.activeTab === 0 ? root.liveModelCount : root.activeTab === 1 ? root.scoreModelCount : root.activeTab === 2 ? root.recentResultsCount : root.liveModelCount > 0 ? root.liveModelCount : root.scoreModelCount
+    readonly property bool hasMatches: root.currentHeroCount > 0
 
     signal refreshRequested()
     signal configureRequested()
@@ -88,9 +95,25 @@ Item {
             return fallback;
 
         const model = root.currentHeroModel();
-        const index = Math.max(0, Math.min(root.currentHeroIndex(), model.count - 1));
+        const count = root.currentHeroCount;
+        if (count <= 0)
+            return fallback;
+
+        const index = Math.max(0, Math.min(root.currentHeroIndex(), count - 1));
         const match = model.get(index);
         return match && match[field] !== undefined ? match[field] : fallback;
+    }
+
+    function modelCount(model) {
+        try {
+            if (!model || model.count === undefined || model.count === null)
+                return 0;
+
+            const count = Number(model.count);
+            return Number.isFinite(count) ? count : 0;
+        } catch (error) {
+            return 0;
+        }
     }
 
     function currentHeroModel() {
@@ -100,25 +123,60 @@ Item {
         if (root.activeTab === 1)
             return root.scoreModel;
 
-        return root.liveModel && root.liveModel.count > 0 ? root.liveModel : root.scoreModel;
+        if (root.activeTab === 2)
+            return root.recentResultsModel;
+
+        return root.modelCount(root.liveModel) > 0 ? root.liveModel : root.scoreModel;
     }
 
     function currentHeroIndex() {
         if (root.activeTab === 0)
-            return root.liveModel && root.liveModel.count > 0 ? root.selectedLiveIndex : root.selectedScoreIndex;
+            return root.modelCount(root.liveModel) > 0 ? root.selectedLiveIndex : root.selectedScoreIndex;
 
         if (root.activeTab === 1)
             return root.selectedScoreIndex;
 
-        return root.liveModel && root.liveModel.count > 0 ? root.selectedLiveIndex : root.selectedScoreIndex;
+        if (root.activeTab === 2)
+            return root.selectedRecentResultIndex;
+
+        return root.modelCount(root.liveModel) > 0 ? root.selectedLiveIndex : root.selectedScoreIndex;
     }
 
     function emptyHeroStatus() {
-        return root.activeTab === 0 ? i18nc("@info:status", "No live matches") : i18nc("@info:status", "No schedules");
+        if (root.activeTab === 0)
+            return i18nc("@info:status", "No live matches");
+
+        if (root.activeTab === 2)
+            return i18nc("@info:status", "No recent results");
+
+        return i18nc("@info:status", "No schedules");
+    }
+
+    function heroLoading() {
+        if (root.hasMatches)
+            return false;
+
+        if (root.activeTab === 0)
+            return root.liveLoading;
+
+        if (root.activeTab === 1)
+            return root.schedulesLoading;
+
+        if (root.activeTab === 2)
+            return root.recentResultsLoading;
+
+        return root.loading || root.schedulesLoading || root.liveLoading;
     }
 
     function withAlpha(color, alpha) {
-        return Qt.rgba(color.r, color.g, color.b, alpha);
+        try {
+            if (!color || color.r === undefined || color.g === undefined || color.b === undefined)
+                return Qt.rgba(0, 0, 0, 0);
+
+            return Qt.rgba(color.r, color.g, color.b, alpha);
+        } catch (error) {
+            return Qt.rgba(0, 0, 0, 0);
+        }
     }
 
     function savedLeagueMenuText(entry) {
@@ -300,7 +358,7 @@ Item {
             stadium: root.selectedMatchValue("stadium", "")
             homeBadge: root.selectedMatchValue("homeBadge", "")
             awayBadge: root.selectedMatchValue("awayBadge", "")
-            loading: root.loading || root.schedulesLoading
+            loading: root.heroLoading()
         }
 
         Rectangle {
@@ -331,7 +389,7 @@ Item {
                 }
 
                 WeatherStyleTab {
-                    label: i18n("Stats")
+                    label: i18n("Recent Results")
                     active: root.activeTab === 2
                     visible: root.tabVisible(2)
                     onClicked: root.activateTab(2)
@@ -370,7 +428,7 @@ Item {
             LiveTab {
                 liveModel: root.liveModel
                 favoriteTeam: root.favoriteTeam
-                loading: root.loading
+                loading: root.liveLoading
                 selectedIndex: root.selectedLiveIndex
                 onMatchSelected: (index) => {
                     root.selectedLiveIndex = index;
@@ -387,8 +445,14 @@ Item {
                 }
             }
 
-            StatsTab {
-                statsModel: root.statsModel
+            RecentResultsTab {
+                resultsModel: root.recentResultsModel
+                favoriteTeam: root.favoriteTeam
+                loading: root.recentResultsLoading
+                selectedIndex: root.selectedRecentResultIndex
+                onMatchSelected: (index) => {
+                    root.selectedRecentResultIndex = index;
+                }
             }
 
             TableTab {
@@ -454,6 +518,18 @@ Item {
             return startTime.length > 0 ? startTime : status;
         }
 
+        function isLiveMatch() {
+            return status === "Live" && !loading;
+        }
+
+        function liveMinuteText() {
+            const value = minute.trim();
+            if (value.length === 0)
+                return "";
+
+            return /^\d+\+?$/.test(value) ? value + "'" : value;
+        }
+
         radius: 0
         color: "transparent"
         clip: false
@@ -482,12 +558,56 @@ Item {
                     font.pixelSize: Kirigami.Units.gridUnit * 1.25
                 }
 
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.maximumWidth: heroScoreColumn.width
+                    spacing: Kirigami.Units.smallSpacing
+                    visible: hero.isLiveMatch()
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: Math.max(7, Math.round(Kirigami.Units.smallSpacing * 1.5))
+                        Layout.preferredHeight: Layout.preferredWidth
+                        radius: width / 2
+                        color: root.liveColor
+
+                        SequentialAnimation on opacity {
+                            loops: Animation.Infinite
+                            running: hero.isLiveMatch()
+
+                            NumberAnimation {
+                                from: 1
+                                to: 0.35
+                                duration: 650
+                                easing.type: Easing.InOutQuad
+                            }
+
+                            NumberAnimation {
+                                from: 0.35
+                                to: 1
+                                duration: 650
+                                easing.type: Easing.InOutQuad
+                            }
+                        }
+                    }
+
+                    PlasmaComponents.Label {
+                        Layout.alignment: Qt.AlignVCenter
+                        text: hero.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", hero.liveMinuteText()) : i18nc("@info:live match status", "Live")
+                        color: root.liveColor
+                        elide: Text.ElideRight
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    }
+                }
+
                 PlasmaComponents.Label {
                     Layout.fillWidth: true
                     text: hero.detailText()
-                    color: hero.status === "Live" ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.highlightColor
+                    color: Kirigami.Theme.highlightColor
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
+                    visible: !hero.isLiveMatch()
                     font.bold: true
                     font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 }
@@ -695,103 +815,6 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-        }
-
-    }
-
-    component StatsRow: Item {
-        id: statsRow
-
-        property string label: ""
-        property string homeValue: ""
-        property string awayValue: ""
-        property real homeRatio: 0
-        property real awayRatio: 0
-        property bool homeHighlight: false
-        property bool awayHighlight: false
-
-        height: Kirigami.Units.gridUnit * 2.6
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Kirigami.Units.smallSpacing
-            anchors.rightMargin: Kirigami.Units.smallSpacing
-            spacing: 3
-
-            Item {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Kirigami.Units.gridUnit
-
-                PlasmaComponents.Label {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: statsRow.homeValue
-                    color: Kirigami.Theme.textColor
-                    font.bold: statsRow.homeHighlight
-                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                }
-
-                PlasmaComponents.Label {
-                    anchors.centerIn: parent
-                    text: statsRow.label
-                    color: Kirigami.Theme.disabledTextColor
-                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
-                    width: Math.max(0, parent.width - Kirigami.Units.gridUnit * 5)
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                PlasmaComponents.Label {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: statsRow.awayValue
-                    color: Kirigami.Theme.textColor
-                    font.bold: statsRow.awayHighlight
-                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                }
-
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 8
-                spacing: Kirigami.Units.smallSpacing
-
-                StatHalfBar {
-                    Layout.fillWidth: true
-                    ratio: statsRow.homeRatio
-                    highlight: statsRow.homeHighlight
-                    mirrored: true
-                }
-
-                StatHalfBar {
-                    Layout.fillWidth: true
-                    ratio: statsRow.awayRatio
-                    highlight: statsRow.awayHighlight
-                    mirrored: false
-                }
-
-            }
-
-        }
-
-    }
-
-    component StatHalfBar: Rectangle {
-        property real ratio: 0
-        property bool highlight: false
-        property bool mirrored: false
-
-        radius: height / 2
-        color: root.withAlpha(Kirigami.Theme.alternateBackgroundColor, 0.5)
-
-        Rectangle {
-            height: parent.height
-            width: Math.max(0, parent.width * Math.min(1, Math.max(0, ratio)))
-            x: mirrored ? parent.width - width : 0
-            radius: parent.radius
-            color: highlight ? root.withAlpha(Kirigami.Theme.highlightColor, 0.5) : root.withAlpha(Kirigami.Theme.disabledTextColor, 0.5)
         }
 
     }

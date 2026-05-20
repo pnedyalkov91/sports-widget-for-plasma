@@ -4,7 +4,6 @@
 */
 
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
@@ -12,7 +11,7 @@ import org.kde.plasma.components as PlasmaComponents
 Item {
     id: root
 
-    property var liveModel
+    property var resultsModel
     property string favoriteTeam: ""
     property bool loading: false
     property int selectedIndex: 0
@@ -28,61 +27,45 @@ Item {
     }
 
     ListView {
-        id: liveList
+        id: resultsList
 
         anchors.fill: parent
         clip: true
         spacing: 0
-        model: root.liveModel
-        boundsBehavior: Flickable.StopAtBounds
-
-        ScrollBar.vertical: ScrollBar {
-            policy: ScrollBar.AsNeeded
-        }
+        model: root.resultsModel
 
         EmptyState {
             anchors.fill: parent
-            visible: liveList.count === 0 && !root.loading
-            text: i18nc("@info:placeholder", "No live matches")
+            visible: resultsList.count === 0 && !root.loading
         }
 
-        delegate: LiveMatchDelegate {
-            width: liveList.width
-            sport: model.sport || ""
-            league: model.league || ""
-            homeTeam: model.homeTeam || ""
-            awayTeam: model.awayTeam || ""
-            homeScore: model.homeScore || ""
-            awayScore: model.awayScore || ""
-            status: model.status || ""
-            minute: model.minute || ""
-            startTime: model.startTime || ""
+        delegate: ScoreDelegate {
+            width: resultsList.width
+            sport: model.sport
+            league: model.league
+            homeTeam: model.homeTeam
+            awayTeam: model.awayTeam
+            homeScore: model.homeScore
+            awayScore: model.awayScore
+            status: model.status
+            minute: model.minute
+            startTime: model.startTime
+            matchday: model.matchday || ""
             stadium: model.stadium || ""
-            homeBadge: model.homeBadge || ""
-            awayBadge: model.awayBadge || ""
-            poster: model.poster || ""
-            popular: Boolean(model.popular)
+            homeBadge: model.homeBadge
+            awayBadge: model.awayBadge
+            poster: model.poster
+            popular: model.popular
             favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
             selected: index === root.selectedIndex
-            expanded: index === liveList.expandedIndex
-            matchPath: model.matchPath || ""
-            liveUrl: model.liveUrl || ""
-            detailsProvider: model.detailsProvider || ""
-            espnLeagueSlug: model.espnLeagueSlug || ""
-            espnEventId: model.espnEventId || ""
-            onClicked: {
-                root.matchSelected(index);
-                liveList.expandedIndex = liveList.expandedIndex === index ? -1 : index;
-            }
+            onClicked: root.matchSelected(index)
         }
-
-        property int expandedIndex: -1
     }
 
     ColumnLayout {
         anchors.centerIn: parent
         width: Math.max(0, parent.width - Kirigami.Units.gridUnit * 2)
-        visible: root.loading && liveList.count === 0
+        visible: root.loading && resultsList.count === 0
         spacing: Kirigami.Units.smallSpacing
 
         PlasmaComponents.BusyIndicator {
@@ -94,7 +77,7 @@ Item {
 
         PlasmaComponents.Label {
             Layout.fillWidth: true
-            text: i18nc("@info:status", "Loading live matches")
+            text: i18nc("@info:status", "Loading recent results")
             color: Kirigami.Theme.disabledTextColor
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
@@ -102,8 +85,6 @@ Item {
     }
 
     component EmptyState: Item {
-        property string text: ""
-
         ColumnLayout {
             anchors.centerIn: parent
             width: Math.max(0, parent.width - Kirigami.Units.gridUnit * 2)
@@ -113,13 +94,13 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Kirigami.Units.iconSizes.large
                 Layout.preferredHeight: Layout.preferredWidth
-                source: "media-playback-start"
+                source: "view-history"
                 color: Kirigami.Theme.disabledTextColor
             }
 
             PlasmaComponents.Label {
                 Layout.fillWidth: true
-                text: parent.parent.text
+                text: i18nc("@info:placeholder", "No recent results")
                 color: Kirigami.Theme.disabledTextColor
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap

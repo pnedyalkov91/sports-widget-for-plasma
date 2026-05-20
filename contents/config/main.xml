@@ -44,6 +44,14 @@
       <min>1</min>
       <max>1440</max>
     </entry>
+    <entry name="liveRefreshEnabled" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="liveRefreshInterval" type="Int">
+      <default>30</default>
+      <min>10</min>
+      <max>300</max>
+    </entry>
     <entry name="panelLayoutMode" type="String">
       <default>singleLine</default>
     </entry>

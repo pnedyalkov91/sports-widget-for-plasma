@@ -23,11 +23,18 @@ PlasmoidItem {
     property int scheduleCount: scoresModel.count
     property int tableCount: tableModel.count
     property int fixtureCount: fixturesModel.count
-    property int statsCount: statsModel.count
-    property bool pendingRefresh: false
+    property int recentResultsCount: recentResultsListModel.count
     property bool tableRequestCompleted: false
     property bool currentManualRefresh: false
+    property bool liveLoading: false
     property bool schedulesLoading: false
+    property bool recentResultsLoading: false
+    property bool liveRefreshInFlight: false
+    property bool scheduleRequestCompleted: false
+    property bool tableScheduleFallbackStarted: false
+    property bool recentResultsTableFallbackStarted: false
+    property int refreshToken: 0
+    property int liveRefreshToken: 0
     property var savedLeagueEntries: savedLeagues()
     property int savedLeagueCount: savedLeagueEntries.length
     property int activeSavedLeagueIndex: normalizedActiveSavedLeagueIndex()
@@ -39,6 +46,9 @@ PlasmoidItem {
     property string sourceText: i18nc("@info:status", "No API key required")
     property string primaryMatchText: liveMatchesModel.count > 0 ? liveMatchesModel.get(0).homeTeam + " vs " + liveMatchesModel.get(0).awayTeam : scoresModel.count > 0 ? scoresModel.get(0).homeTeam + " vs " + scoresModel.get(0).awayTeam : root.hasSportSelection() ? i18nc("@info:status", "No scheduled matches") : i18nc("@action:button", "Add a sport")
     property string secondaryMatchText: liveMatchesModel.count > 0 ? liveMatchesModel.get(0).minute || liveMatchesModel.get(0).status : scoresModel.count > 0 ? scoresModel.get(0).startTime || scoresModel.get(0).status : root.hasSportSelection() ? sourceText : i18nc("@info:status", "Open settings to add a league")
+    property string panelHeroText: liveMatchesModel.count > 0 ? panelTeamsScoreText(liveMatchesModel.get(0)) : scoresModel.count > 0 ? panelScheduleText(scoresModel.get(0)) : root.hasSportSelection() ? i18nc("@info:status", "No scheduled matches") : i18nc("@action:button", "Add a sport")
+    property string panelHeroLiveText: liveMatchesModel.count > 0 ? panelLiveText(liveMatchesModel.get(0)) : ""
+    property bool panelHeroLive: liveMatchesModel.count > 0
     property string selectedSport: String(activeLeagueEntry.sport || "").trim()
     property string selectedLeagueLabel: displayLeagueLabel(activeLeagueEntry)
     property string selectedCountryLabel: displayCountryLabel(activeLeagueEntry)
@@ -94,6 +104,39 @@ PlasmoidItem {
         return String(entry.customFavoriteTeamLabel || entry.favoriteTeam || "").trim();
     }
 
+    function scoreTextForPanel(match) {
+        const home = String(match && match.homeScore !== undefined ? match.homeScore : "").trim();
+        const away = String(match && match.awayScore !== undefined ? match.awayScore : "").trim();
+        return (home.length > 0 ? home : "0") + " - " + (away.length > 0 ? away : "0");
+    }
+
+    function liveMinuteText(value) {
+        value = String(value || "").trim();
+        if (value.length === 0)
+            return "";
+
+        return /^\d+\+?$/.test(value) ? value + "'" : value;
+    }
+
+    function panelTeamsScoreText(match) {
+        match = match || {};
+        const home = String(match.homeTeam || "").trim();
+        const away = String(match.awayTeam || "").trim();
+        const score = scoreTextForPanel(match);
+        return home.length > 0 && away.length > 0 ? home + " " + score + " " + away : home + away;
+    }
+
+    function panelLiveText(match) {
+        const minute = liveMinuteText(match && match.minute);
+        return minute.length > 0 ? i18nc("@info:live match status", "Live %1", minute) : i18nc("@info:live match status", "Live");
+    }
+
+    function panelScheduleText(match) {
+        const teams = panelTeamsScoreText(match);
+        const status = String(match && (match.startTime || match.status) || "").trim();
+        return status.length > 0 ? teams + " · " + status : teams;
+    }
+
     function setActiveSavedLeagueIndex(index) {
         const count = root.savedLeagueEntries.length;
         if (count === 0)
@@ -104,6 +147,14 @@ PlasmoidItem {
             return;
 
         Plasmoid.configuration.activeSavedLeagueIndex = nextIndex;
+    }
+
+    function isCurrentRefresh(token) {
+        return token === root.refreshToken;
+    }
+
+    function isCurrentLiveRefresh(token) {
+        return token === root.liveRefreshToken;
     }
 
     function openSportSettings() {
@@ -131,7 +182,10 @@ PlasmoidItem {
 
     function refreshScores(manual) {
         if (!root.hasSportSelection()) {
+            root.refreshToken += 1;
+            root.liveRefreshToken += 1;
             refreshTimer.stop();
+            liveRefreshTimer.stop();
             configRefreshTimer.stop();
             emptySchedulesTimer.stop();
             tableFallbackTimer.stop();
@@ -139,14 +193,19 @@ PlasmoidItem {
             scoresModel.clear();
             tableModel.clear();
             fixturesModel.clear();
-            statsModel.clear();
+            recentResultsListModel.clear();
             root.tableRows = [];
             root.latestScheduleMatches = [];
             root.loading = false;
+            root.liveLoading = false;
             root.schedulesLoading = false;
-            root.pendingRefresh = false;
+            root.recentResultsLoading = false;
+            root.liveRefreshInFlight = false;
             root.pendingRequests = 0;
             root.tableRequestCompleted = true;
+            root.scheduleRequestCompleted = true;
+            root.tableScheduleFallbackStarted = false;
+            root.recentResultsTableFallbackStarted = false;
             root.errorMessage = i18nc("@info:status", "Add a sport in the widget settings.");
             root.tableErrorMessage = "";
             root.lastUpdatedText = "";
@@ -156,11 +215,13 @@ PlasmoidItem {
         if (!refreshTimer.running)
             refreshTimer.start();
 
-        if (root.loading) {
-            root.pendingRefresh = true;
-            return ;
-        }
+        if (Plasmoid.configuration.liveRefreshEnabled && !liveRefreshTimer.running)
+            liveRefreshTimer.start();
 
+        const token = root.refreshToken + 1;
+        root.refreshToken = token;
+        root.liveRefreshToken += 1;
+        root.liveRefreshInFlight = false;
         const options = {
             "provider": effectiveProvider(),
             "baseUrl": effectiveBaseUrl(),
@@ -168,33 +229,49 @@ PlasmoidItem {
             "sports": root.selectedSport,
             "country": root.selectedCountry,
             "league": root.selectedLeague,
-            "scoreboardDaysBack": 14,
+            "refreshToken": token,
+            "forceLiveRefresh": Boolean(manual),
+            "scoreboardDaysBack": 30,
             "scoreboardDaysForward": 90
         };
-        root.pendingRequests = 3;
+        root.pendingRequests = 4;
         root.refreshErrors = [];
-        root.pendingRefresh = false;
         root.tableRequestCompleted = false;
+        root.scheduleRequestCompleted = false;
+        root.tableScheduleFallbackStarted = false;
+        root.recentResultsTableFallbackStarted = false;
         root.currentManualRefresh = manual;
         root.loading = true;
+        root.liveLoading = true;
         root.schedulesLoading = true;
+        root.recentResultsLoading = true;
         root.pendingScheduleMessage = "";
         emptySchedulesTimer.stop();
         root.errorMessage = "";
         applyTable([]);
         root.tableErrorMessage = "";
         root.latestScheduleMatches = [];
-        statsModel.clear();
+        recentResultsListModel.clear();
         tableFallbackTimer.restart();
         SportsApi.fetchLiveScores(options, (matches) => {
+            if (!root.isCurrentRefresh(token))
+                return;
+
             applyLiveMatches(matches);
-            refreshMatchStats(options);
-            finishRefresh(manual, "");
+            root.liveLoading = false;
+            finishRefresh(manual, "", token);
         }, (message) => {
+            if (!root.isCurrentRefresh(token))
+                return;
+
             applyLiveMatches([]);
-            finishRefresh(manual, message);
+            root.liveLoading = false;
+            finishRefresh(manual, message, token);
         });
         SportsApi.fetchLeagueTable(options, (table) => {
+            if (!root.isCurrentRefresh(token))
+                return;
+
             const alreadyCounted = root.tableRequestCompleted;
             table = Array.isArray(table) ? table : [];
             root.tableRequestCompleted = true;
@@ -203,57 +280,156 @@ PlasmoidItem {
                 applyTable(table);
                 root.tableErrorMessage = "";
                 enrichTableForm(options);
-                refreshSchedulesFromTable(options);
+                refreshRecentResultsFromTable(options);
+                if (root.scheduleRequestCompleted && scoresModel.count === 0)
+                    refreshSchedulesFromTable(options);
             } else {
                 applyTable([]);
                 root.tableErrorMessage = i18nc("@info:status", "No table rows returned for %1.", root.selectedLeagueLabel || root.selectedLeague);
             }
 
             if (!alreadyCounted)
-                finishRefresh(manual, "");
+                finishRefresh(manual, "", token);
         }, (message) => {
+            if (!root.isCurrentRefresh(token))
+                return;
+
             const alreadyCounted = root.tableRequestCompleted;
             root.tableRequestCompleted = true;
             tableFallbackTimer.stop();
             applyTable([]);
             root.tableErrorMessage = message;
             if (!alreadyCounted)
-                finishRefresh(manual, message);
+                finishRefresh(manual, message, token);
         });
         SportsApi.fetchScoresFixtures(options, (fixtures) => {
+            if (!root.isCurrentRefresh(token))
+                return;
+
+            root.scheduleRequestCompleted = true;
             const scheduledCount = applySchedules(fixtures, i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm")));
             if (scheduledCount > 0) {
                 emptySchedulesTimer.stop();
                 root.schedulesLoading = false;
+            } else if (root.tableRows.length > 0) {
+                refreshSchedulesFromTable(options);
             } else if (root.tableRequestCompleted && root.tableRows.length === 0) {
                 deferEmptySchedulesMessage("");
             }
 
             applyFixtures(fixtures);
-            refreshFixtureStats(options);
-            finishRefresh(manual, "");
+            finishRefresh(manual, "", token);
         }, (message) => {
-            applySchedules([], i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm")));
-            if (root.tableRequestCompleted && root.tableRows.length === 0)
-                deferEmptySchedulesMessage(message);
+            if (!root.isCurrentRefresh(token))
+                return;
 
-            finishRefresh(manual, message);
+            root.scheduleRequestCompleted = true;
+            applySchedules([], i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm")));
+            if (root.tableRows.length > 0) {
+                refreshSchedulesFromTable(options);
+            } else if (root.tableRequestCompleted && root.tableRows.length === 0) {
+                deferEmptySchedulesMessage(message);
+            }
+
+            finishRefresh(manual, message, token);
+        });
+        SportsApi.fetchRecentResults(options, (results) => {
+            if (!root.isCurrentRefresh(token))
+                return;
+
+            const hasResults = results.length > 0;
+            if (results.length > 0 || recentResultsListModel.count === 0)
+                applyRecentResults(results);
+            if (hasResults || !root.recentResultsTableFallbackStarted)
+                root.recentResultsLoading = false;
+            finishRefresh(manual, "", token);
+        }, (message) => {
+            if (!root.isCurrentRefresh(token))
+                return;
+
+            if (recentResultsListModel.count === 0)
+                applyRecentResults([]);
+            if (!root.recentResultsTableFallbackStarted)
+                root.recentResultsLoading = false;
+            finishRefresh(manual, message, token);
+        });
+    }
+
+    function refreshLiveMatches(manual) {
+        if (!root.hasSportSelection())
+            return;
+
+        if (!Plasmoid.configuration.liveRefreshEnabled && !manual)
+            return;
+
+        if (root.liveRefreshInFlight && !manual)
+            return;
+
+        const token = root.liveRefreshToken + 1;
+        root.liveRefreshToken = token;
+        const selectedSport = root.selectedSport;
+        const selectedCountry = root.selectedCountry;
+        const selectedLeague = root.selectedLeague;
+        const options = {
+            "provider": effectiveProvider(),
+            "baseUrl": effectiveBaseUrl(),
+            "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
+            "sports": selectedSport,
+            "country": selectedCountry,
+            "league": selectedLeague,
+            "refreshToken": root.refreshToken,
+            "forceLiveRefresh": true,
+            "scoreboardDaysBack": 1,
+            "scoreboardDaysForward": 1
+        };
+
+        root.liveLoading = liveMatchesModel.count === 0;
+        root.liveRefreshInFlight = true;
+        SportsApi.fetchLiveScores(options, (matches) => {
+            if (!root.isCurrentLiveRefresh(token))
+                return;
+
+            if (selectedSport !== root.selectedSport || selectedCountry !== root.selectedCountry || selectedLeague !== root.selectedLeague) {
+                root.liveRefreshInFlight = false;
+                return;
+            }
+
+            applyLiveMatches(matches);
+            root.liveLoading = false;
+            root.liveRefreshInFlight = false;
+            root.lastUpdatedText = i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm"));
+        }, () => {
+            if (!root.isCurrentLiveRefresh(token))
+                return;
+
+            root.liveLoading = false;
+            root.liveRefreshInFlight = false;
         });
     }
 
     function refreshSchedulesFromTable(options) {
+        if (!root.isCurrentRefresh(options.refreshToken))
+            return;
+
+        if (root.tableScheduleFallbackStarted)
+            return;
+
         if (root.tableRows.length === 0) {
             deferEmptySchedulesMessage("");
 
             return;
         }
 
+        root.tableScheduleFallbackStarted = true;
         root.schedulesLoading = true;
         emptySchedulesTimer.stop();
 
         SportsApi.fetchScoresFixtures(Object.assign({}, options, {
             "tableRows": root.tableRows
         }), (fixtures) => {
+            if (!root.isCurrentRefresh(options.refreshToken))
+                return;
+
             const scheduledCount = applySchedules(fixtures, i18nc("@info:status", "Updated %1", Qt.formatTime(new Date(), "hh:mm")));
             if (scheduledCount > 0) {
                 emptySchedulesTimer.stop();
@@ -263,9 +439,42 @@ PlasmoidItem {
             }
 
             applyFixtures(fixtures);
-            refreshFixtureStats(options);
         }, (message) => {
+            if (!root.isCurrentRefresh(options.refreshToken))
+                return;
+
             deferEmptySchedulesMessage(message);
+        });
+    }
+
+    function refreshRecentResultsFromTable(options) {
+        if (!root.isCurrentRefresh(options.refreshToken))
+            return;
+
+        if (root.recentResultsTableFallbackStarted)
+            return;
+
+        if (root.tableRows.length === 0)
+            return;
+
+        root.recentResultsTableFallbackStarted = true;
+        root.recentResultsLoading = recentResultsListModel.count === 0;
+
+        SportsApi.fetchRecentResults(Object.assign({}, options, {
+            "tableRows": root.tableRows,
+            "preferTeamRecentResults": true
+        }), (results) => {
+            if (!root.isCurrentRefresh(options.refreshToken))
+                return;
+
+            if ((results.length > 0 && (recentResultsListModel.count === 0 || results.length > recentResultsListModel.count)) || recentResultsListModel.count === 0)
+                applyRecentResults(results);
+            root.recentResultsLoading = false;
+        }, (message) => {
+            if (!root.isCurrentRefresh(options.refreshToken))
+                return;
+
+            root.recentResultsLoading = false;
         });
     }
 
@@ -277,6 +486,9 @@ PlasmoidItem {
             "baseUrl": "https://sportscore.com/api/widget",
             "tableRows": root.tableRows
         }), (formByTeam) => {
+            if (!root.isCurrentRefresh(options.refreshToken))
+                return;
+
             if (requestSport !== SportVisuals.normalizedSport(root.selectedSport) || requestLeague !== String(root.selectedLeague || "").trim().toUpperCase())
                 return;
 
@@ -297,7 +509,10 @@ PlasmoidItem {
         });
     }
 
-    function finishRefresh(manual, message) {
+    function finishRefresh(manual, message, token) {
+        if (!root.isCurrentRefresh(token))
+            return;
+
         if (message && message.length > 0)
             root.refreshErrors = root.refreshErrors.concat([message]);
 
@@ -307,7 +522,7 @@ PlasmoidItem {
 
         promoteLiveMatches(root.latestScheduleMatches);
         root.loading = false;
-        if (root.refreshErrors.length > 0 && liveMatchesModel.count === 0 && scoresModel.count === 0 && tableModel.count === 0 && fixturesModel.count === 0) {
+        if (root.refreshErrors.length > 0 && liveMatchesModel.count === 0 && scoresModel.count === 0 && recentResultsListModel.count === 0 && tableModel.count === 0 && fixturesModel.count === 0) {
             emptySchedulesTimer.stop();
             root.schedulesLoading = false;
             root.errorMessage = manual ? root.refreshErrors.join(", ") : "";
@@ -320,11 +535,6 @@ PlasmoidItem {
 
             if (manual && root.refreshErrors.length > 0)
                 root.errorMessage = root.refreshErrors.join(", ");
-        }
-
-        if (root.pendingRefresh) {
-            root.pendingRefresh = false;
-            configRefreshTimer.restart();
         }
     }
 
@@ -358,6 +568,15 @@ PlasmoidItem {
         matches = prioritizeFavorite(Array.isArray(matches) ? matches : []);
         matches.forEach((match) => {
             return liveMatchesModel.append(match);
+        });
+        return matches.length;
+    }
+
+    function applyRecentResults(matches) {
+        recentResultsListModel.clear();
+        matches = prioritizeFavorite(Array.isArray(matches) ? matches : []);
+        matches.forEach((match) => {
+            return recentResultsListModel.append(match);
         });
         return matches.length;
     }
@@ -443,71 +662,6 @@ PlasmoidItem {
         matches = prioritizeFavorite(matches);
         matches.forEach((match) => {
             return fixturesModel.append(match);
-        });
-    }
-
-    function refreshMatchStats(options) {
-        statsModel.clear();
-        refreshStatsFromModel(liveMatchesModel, options, true);
-    }
-
-    function refreshFixtureStats(options) {
-        if (statsModel.count > 0)
-            return ;
-
-        refreshStatsFromModel(fixturesModel, options, false);
-    }
-
-    function refreshStatsFromModel(model, options, clearWhenEmpty) {
-        if (!model || model.count === 0)
-            return ;
-
-        const match = statsCandidateMatch(model);
-        const embeddedStats = match && match.statsRows ? match.statsRows : [];
-        if (embeddedStats && embeddedStats.length > 0) {
-            applyStats(embeddedStats);
-            return ;
-        }
-
-        if (!match || match.statsProvider !== "sportscore")
-            return ;
-
-        const matchId = String(match.id || "").trim();
-        if (matchId.length === 0)
-            return ;
-
-        const statsOptions = Object.assign({
-        }, options, {
-            "sports": match.sport || options.sports,
-            "matchId": matchId
-        });
-        SportsApi.fetchMatchStats(statsOptions, (rows) => {
-            if (rows.length > 0 || (clearWhenEmpty && statsModel.count === 0))
-                applyStats(rows);
-        }, () => {
-            if (clearWhenEmpty && statsModel.count === 0)
-                applyStats([]);
-        });
-    }
-
-    function statsCandidateMatch(model) {
-        let fallback = null;
-        for (let index = 0; index < model.count; index += 1) {
-            const match = model.get(index);
-            if (match.statsRows && match.statsRows.length > 0)
-                return match;
-
-            if (!fallback && match.id && match.status !== "Upcoming")
-                fallback = match;
-
-        }
-        return fallback || model.get(0);
-    }
-
-    function applyStats(rows) {
-        statsModel.clear();
-        rows.forEach((row) => {
-            return statsModel.append(row);
         });
     }
 
@@ -600,7 +754,7 @@ PlasmoidItem {
     }
 
     ListModel {
-        id: statsModel
+        id: recentResultsListModel
     }
 
     Timer {
@@ -610,6 +764,15 @@ PlasmoidItem {
         repeat: true
         running: true
         onTriggered: root.refreshScores(false)
+    }
+
+    Timer {
+        id: liveRefreshTimer
+
+        interval: Math.max(10, Number(Plasmoid.configuration.liveRefreshInterval || 30)) * 1000
+        repeat: true
+        running: false
+        onTriggered: root.refreshLiveMatches(false)
     }
 
     Timer {
@@ -624,14 +787,14 @@ PlasmoidItem {
             root.tableRequestCompleted = true;
             applyTable([]);
             root.tableErrorMessage = i18nc("@info:status", "Table request timed out.");
-            finishRefresh(root.currentManualRefresh, i18nc("@info:status", "Table request timed out."));
+            finishRefresh(root.currentManualRefresh, i18nc("@info:status", "Table request timed out."), root.refreshToken);
         }
     }
 
     Timer {
         id: configRefreshTimer
 
-        interval: 250
+        interval: 60
         repeat: false
         onTriggered: root.refreshScores(true)
     }
@@ -686,6 +849,20 @@ PlasmoidItem {
             root.scheduleConfigRefresh();
         }
 
+        function onLiveRefreshEnabledChanged() {
+            if (Plasmoid.configuration.liveRefreshEnabled && root.hasSportSelection()) {
+                liveRefreshTimer.restart();
+                root.refreshLiveMatches(true);
+            } else {
+                liveRefreshTimer.stop();
+            }
+        }
+
+        function onLiveRefreshIntervalChanged() {
+            if (liveRefreshTimer.running)
+                liveRefreshTimer.restart();
+        }
+
         function onSelectedSportsChanged() {
             root.scheduleConfigRefresh();
         }
@@ -706,14 +883,20 @@ PlasmoidItem {
         layoutMode: Plasmoid.configuration.panelLayoutMode
         primaryText: root.primaryMatchText
         secondaryText: root.secondaryMatchText
+        panelText: root.panelHeroText
+        liveText: root.panelHeroLiveText
+        isLive: root.panelHeroLive
         sport: root.primarySport
     }
 
     fullRepresentation: FullRepresentation {
         liveModel: liveMatchesModel
         scoreModel: scoresModel
+        recentResultsModel: recentResultsListModel
         loading: root.loading
+        liveLoading: root.liveLoading
         schedulesLoading: root.schedulesLoading
+        recentResultsLoading: root.recentResultsLoading
         errorMessage: root.errorMessage
         tableErrorMessage: root.tableErrorMessage
         lastUpdatedText: root.lastUpdatedText
@@ -735,8 +918,7 @@ PlasmoidItem {
         league: root.selectedLeague
         tableCount: root.tableCount
         fixtureCount: root.fixtureCount
-        statsModel: statsModel
-        statsCount: root.statsCount
+        recentResultsCount: root.recentResultsCount
         widgetTabs: Plasmoid.configuration.widgetTabs
         favoriteTeam: root.favoriteTeam
         onRefreshRequested: root.refreshScores(true)

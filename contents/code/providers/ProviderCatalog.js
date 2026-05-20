@@ -190,6 +190,7 @@ function normalizeFixtures(provider, payload, sport) {
 function normalizeSportScoreMatch(match, sport) {
     const timestamp = Date.parse(match.time || match.date || "");
     return {
+        id: sportScoreMatchId(match),
         sport: sport || stringValue(match.sport) || "football",
         league: stringValue(match.competition),
         homeTeam: stringValue(match.home),
@@ -200,11 +201,27 @@ function normalizeSportScoreMatch(match, sport) {
         minute: "",
         startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp) : "",
         timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        matchday: sportScoreMatchday(match),
         stadium: stringValue(match.venue || match.stadium || match.ground),
         homeBadge: stringValue(match.home_logo),
         awayBadge: stringValue(match.away_logo),
         popular: false
     };
+}
+
+function sportScoreMatchId(match) {
+    return stringValue(match && (match.id || match.match_id || match.slug || match.url));
+}
+
+function sportScoreMatchday(match) {
+    const raw = stringValue(match && (match.round || match.round_name || match.matchday || match.match_day || match.week || match.stage));
+    if (raw.length === 0)
+        return "";
+
+    if (/^\d+$/.test(raw))
+        return "Round " + raw;
+
+    return raw;
 }
 
 function normalizeSportScoreTable(payload) {

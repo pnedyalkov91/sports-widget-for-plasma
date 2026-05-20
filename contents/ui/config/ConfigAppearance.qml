@@ -60,7 +60,7 @@ KCM.SimpleKCM {
                 "label": i18nc("@item:inlistbox", "All tabs"),
                 "value": "all"
             }, {
-                "label": i18nc("@item:inlistbox", "Live + Schedules + Stats"),
+                "label": i18nc("@item:inlistbox", "Live + Schedules + Recent Results"),
                 "value": "liveStats"
             }, {
                 "label": i18nc("@item:inlistbox", "Live + Schedules + Tables"),

@@ -17,6 +17,7 @@ ItemDelegate {
     property url iconSource: ""
     property string flagSource: ""
     property string infoText: ""
+    property string cardToolTipText: root.title
     property bool selected: false
 
     Layout.fillWidth: true
@@ -24,6 +25,8 @@ ItemDelegate {
     Layout.preferredWidth: Kirigami.Units.gridUnit * 10
     Layout.preferredHeight: Kirigami.Units.gridUnit * 2.8
     hoverEnabled: true
+    ToolTip.visible: root.hovered && !infoButton.hovered && root.cardToolTipText.length > 0
+    ToolTip.text: root.cardToolTipText
 
     background: Rectangle {
         radius: 6
@@ -72,6 +75,8 @@ ItemDelegate {
         }
 
         ToolButton {
+            id: infoButton
+
             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
             Layout.preferredHeight: Layout.preferredWidth
             visible: root.infoText.length > 0

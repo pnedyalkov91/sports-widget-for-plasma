@@ -17,12 +17,29 @@ Control {
     property string layoutMode: "singleLine"
     property string primaryText: ""
     property string secondaryText: ""
+    property string panelText: ""
+    property string liveText: ""
+    property bool isLive: false
     property string sport: "sports"
+    readonly property color liveColor: Qt.rgba(1, 0.32, 0.32, 1)
+
+    function displayText() {
+        const text = compact.panelText.trim();
+        return text.length > 0 ? text : compact.primaryText;
+    }
+
+    function displayLiveText() {
+        const value = compact.liveText.trim();
+        if (value.length === 0)
+            return i18nc("@info:live match status", "Live");
+
+        return value;
+    }
 
     Layout.minimumWidth: layoutMode === "simple" ? Kirigami.Units.iconSizes.medium : Kirigami.Units.gridUnit * 7
     Layout.minimumHeight: Kirigami.Units.iconSizes.medium
     Layout.preferredWidth: layoutMode === "simple" ? Kirigami.Units.iconSizes.large : Kirigami.Units.gridUnit * 11
-    Layout.preferredHeight: layoutMode === "multiline" ? Kirigami.Units.gridUnit * 2 : Kirigami.Units.iconSizes.large
+    Layout.preferredHeight: Kirigami.Units.iconSizes.large
     padding: 0
 
     MouseArea {
@@ -35,34 +52,65 @@ Control {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
-            visible: compact.layoutMode !== "multiline"
+            visible: true
 
             SportGlyph {
-                Layout.preferredWidth: Math.min(parent.height, Kirigami.Units.iconSizes.medium)
+                Layout.preferredWidth: compact.layoutMode === "simple" ? Math.min(parent.height, Kirigami.Units.iconSizes.medium) : 0
                 Layout.preferredHeight: Layout.preferredWidth
                 loading: compact.loading
                 sport: compact.sport
+                visible: compact.layoutMode === "simple"
             }
 
-            ColumnLayout {
+            RowLayout {
                 Layout.fillWidth: true
-                spacing: 0
+                spacing: Kirigami.Units.smallSpacing
                 visible: compact.layoutMode !== "simple"
 
+                Rectangle {
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: 6
+                    Layout.preferredHeight: Layout.preferredWidth
+                    radius: width / 2
+                    color: compact.liveColor
+                    visible: compact.isLive
+
+                    SequentialAnimation on opacity {
+                        loops: Animation.Infinite
+                        running: compact.isLive
+
+                        NumberAnimation {
+                            from: 1
+                            to: 0.35
+                            duration: 650
+                            easing.type: Easing.InOutQuad
+                        }
+
+                        NumberAnimation {
+                            from: 0.35
+                            to: 1
+                            duration: 650
+                            easing.type: Easing.InOutQuad
+                        }
+                    }
+                }
+
                 Label {
-                    Layout.fillWidth: true
-                    text: compact.primaryText
+                    Layout.alignment: Qt.AlignVCenter
+                    text: compact.displayLiveText()
+                    color: compact.liveColor
                     elide: Text.ElideRight
+                    visible: compact.isLive
                     font.bold: true
                     font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 }
 
                 Label {
                     Layout.fillWidth: true
-                    text: compact.secondaryText
+                    text: compact.displayText()
+                    color: Kirigami.Theme.textColor
                     elide: Text.ElideRight
-                    opacity: 0.72
-                    font.pixelSize: Math.max(8, Kirigami.Theme.smallFont.pixelSize - 1)
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 }
 
             }
@@ -78,7 +126,7 @@ Control {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             spacing: 0
-            visible: compact.layoutMode === "multiline"
+            visible: false
 
             RowLayout {
                 Layout.fillWidth: true
@@ -101,11 +149,35 @@ Control {
 
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+                visible: compact.liveCount > 0
+
+                Rectangle {
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: 6
+                    Layout.preferredHeight: Layout.preferredWidth
+                    radius: width / 2
+                    color: compact.liveColor
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: compact.displayLiveText()
+                    color: compact.liveColor
+                    elide: Text.ElideRight
+                    font.bold: true
+                    font.pixelSize: Math.max(8, Kirigami.Theme.smallFont.pixelSize - 1)
+                }
+            }
+
             Label {
                 Layout.fillWidth: true
                 text: compact.secondaryText
                 elide: Text.ElideRight
                 opacity: 0.72
+                visible: compact.liveCount === 0
                 font.pixelSize: Math.max(8, Kirigami.Theme.smallFont.pixelSize - 1)
             }
 

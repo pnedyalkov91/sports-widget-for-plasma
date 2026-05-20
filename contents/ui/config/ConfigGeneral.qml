@@ -17,6 +17,8 @@ KCM.SimpleKCM {
     property alias cfg_apiBaseUrl: apiBaseUrl.text
     property alias cfg_apiKey: apiKey.text
     property alias cfg_refreshInterval: refreshInterval.value
+    property alias cfg_liveRefreshEnabled: liveRefreshEnabled.checked
+    property alias cfg_liveRefreshInterval: liveRefreshInterval.value
     property string cfg_provider: Plasmoid.configuration.provider
 
     function indexFor(model, value) {
@@ -79,13 +81,37 @@ KCM.SimpleKCM {
         SpinBox {
             id: refreshInterval
 
-            Kirigami.FormData.label: i18nc("@label:spinbox", "Refresh:")
+            Kirigami.FormData.label: i18nc("@label:spinbox", "Full refresh:")
             from: 1
             to: 1440
             stepSize: 5
             editable: true
             textFromValue: (value) => {
                 return i18ncp("@item:valuesuffix minutes", "%1 minute", "%1 minutes", value);
+            }
+            valueFromText: (text) => {
+                return parseInt(text, 10);
+            }
+        }
+
+        CheckBox {
+            id: liveRefreshEnabled
+
+            Kirigami.FormData.label: i18nc("@label:checkbox", "Live matches:")
+            text: i18nc("@option:check", "Update separately")
+        }
+
+        SpinBox {
+            id: liveRefreshInterval
+
+            Kirigami.FormData.label: i18nc("@label:spinbox", "Live refresh:")
+            from: 10
+            to: 300
+            stepSize: 5
+            editable: true
+            enabled: liveRefreshEnabled.checked
+            textFromValue: (value) => {
+                return i18ncp("@item:valuesuffix seconds", "%1 second", "%1 seconds", value);
             }
             valueFromText: (text) => {
                 return parseInt(text, 10);

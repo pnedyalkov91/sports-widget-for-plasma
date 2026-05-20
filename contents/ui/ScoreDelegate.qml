@@ -20,6 +20,7 @@ Rectangle {
     property string status: ""
     property string minute: ""
     property string startTime: ""
+    property string matchday: ""
     property string stadium: ""
     property string homeBadge: ""
     property string awayBadge: ""
@@ -27,6 +28,7 @@ Rectangle {
     property bool popular: false
     property bool favorite: false
     property bool selected: false
+    readonly property color liveColor: Qt.rgba(1, 0.32, 0.32, 1)
 
     signal clicked()
 
@@ -41,14 +43,35 @@ Rectangle {
         if (root.minute.length > 0)
             return root.minute;
 
-        if (root.startTime.length > 0)
-            return root.startTime;
+        const timeText = root.startTime.length > 0 ? root.startTime : root.status === "Live" ? root.status : "";
 
-        return root.status === "Live" ? root.status : "";
+        if (root.matchday.length > 0 && timeText.length > 0)
+            return root.matchday + " · " + timeText;
+
+        return root.matchday.length > 0 ? root.matchday : timeText;
+    }
+
+    function isLiveMatch() {
+        return root.status === "Live";
+    }
+
+    function liveMinuteText() {
+        const value = root.minute.trim();
+        if (value.length === 0)
+            return "";
+
+        return /^\d+\+?$/.test(value) ? value + "'" : value;
     }
 
     function withAlpha(color, alpha) {
-        return Qt.rgba(color.r, color.g, color.b, alpha);
+        try {
+            if (!color || color.r === undefined || color.g === undefined || color.b === undefined)
+                return Qt.rgba(0, 0, 0, 0);
+
+            return Qt.rgba(color.r, color.g, color.b, alpha);
+        } catch (error) {
+            return Qt.rgba(0, 0, 0, 0);
+        }
     }
 
     height: Kirigami.Units.gridUnit * 4.2
@@ -109,12 +132,56 @@ Rectangle {
                 font.pixelSize: Kirigami.Units.gridUnit
             }
 
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.maximumWidth: scoreColumn.width
+                spacing: Kirigami.Units.smallSpacing
+                visible: root.isLiveMatch()
+
+                Rectangle {
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: Math.max(6, Math.round(Kirigami.Units.smallSpacing * 1.25))
+                    Layout.preferredHeight: Layout.preferredWidth
+                    radius: width / 2
+                    color: root.liveColor
+
+                    SequentialAnimation on opacity {
+                        loops: Animation.Infinite
+                        running: root.isLiveMatch()
+
+                        NumberAnimation {
+                            from: 1
+                            to: 0.35
+                            duration: 650
+                            easing.type: Easing.InOutQuad
+                        }
+
+                        NumberAnimation {
+                            from: 0.35
+                            to: 1
+                            duration: 650
+                            easing.type: Easing.InOutQuad
+                        }
+                    }
+                }
+
+                PlasmaComponents.Label {
+                    Layout.alignment: Qt.AlignVCenter
+                    text: root.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", root.liveMinuteText()) : i18nc("@info:live match status", "Live")
+                    color: root.liveColor
+                    elide: Text.ElideRight
+                    font.bold: true
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                }
+            }
+
             PlasmaComponents.Label {
                 Layout.fillWidth: true
                 text: centerTimeText()
-                color: root.selected ? Kirigami.Theme.highlightedTextColor : root.status === "Live" ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.textColor
+                color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
+                visible: !root.isLiveMatch()
                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
             }
 
