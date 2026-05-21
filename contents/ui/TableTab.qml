@@ -283,6 +283,7 @@ Item {
             points: rowData.points || 0
             goalDifference: rowData.goalDifference || 0
             form: rowData.form || ""
+            formDetails: rowData.formDetails || []
             crest: rowData.crest || ""
             favorite: root.isFavoriteTeam(rowData.team || "")
         }
@@ -300,6 +301,7 @@ Item {
         property int points: 0
         property int goalDifference: 0
         property string form: ""
+        property var formDetails: []
         property string crest: ""
         property bool favorite: false
 
@@ -392,6 +394,7 @@ Item {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 6.6
                 Layout.preferredHeight: Kirigami.Units.gridUnit * 1.3
                 form: parent.parent.form
+                details: parent.parent.formDetails
             }
         }
     }
@@ -404,6 +407,7 @@ Item {
 
     component FormBadges: Item {
         property string form: ""
+        property var details: []
 
         function results() {
             const text = String(form || "").trim();
@@ -414,6 +418,13 @@ Item {
                 return text.split("").slice(-5);
 
             return text.replace(/[^A-Za-z]+/g, ",").split(",").filter(item => item.length > 0).slice(-5);
+        }
+
+        function tooltipFor(index) {
+            if (!details || index < 0 || index >= details.length)
+                return "";
+
+            return String(details[index] || "");
         }
 
         Row {
@@ -429,6 +440,13 @@ Item {
                     width: Kirigami.Units.gridUnit * 1.1
                     height: width
                     radius: 2
+                    ToolTip.text: parent.parent.tooltipFor(index)
+                    ToolTip.visible: badgeHover.hovered && ToolTip.text.length > 0
+
+                    HoverHandler {
+                        id: badgeHover
+                    }
+
                     color: {
                         const result = String(modelData).toUpperCase();
                         if (result === "W")

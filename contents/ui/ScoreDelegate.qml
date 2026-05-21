@@ -132,46 +132,61 @@ Rectangle {
                 font.pixelSize: Kirigami.Units.gridUnit
             }
 
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                Layout.maximumWidth: scoreColumn.width
-                spacing: Kirigami.Units.smallSpacing
+            Item {
+                id: liveStatusContainer
+
+                readonly property int dotSize: Math.max(6, Math.round(Kirigami.Units.smallSpacing * 1.25))
+
+                Layout.fillWidth: true
+                Layout.preferredHeight: Kirigami.Theme.smallFont.pixelSize + Kirigami.Units.smallSpacing
                 visible: root.isLiveMatch()
 
-                Rectangle {
-                    Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredWidth: Math.max(6, Math.round(Kirigami.Units.smallSpacing * 1.25))
-                    Layout.preferredHeight: Layout.preferredWidth
-                    radius: width / 2
-                    color: root.liveColor
+                Row {
+                    id: liveStatusRow
 
-                    SequentialAnimation on opacity {
-                        loops: Animation.Infinite
-                        running: root.isLiveMatch()
+                    anchors.centerIn: parent
+                    width: Math.min(implicitWidth, liveStatusContainer.width)
+                    height: implicitHeight
+                    spacing: Kirigami.Units.smallSpacing
 
-                        NumberAnimation {
-                            from: 1
-                            to: 0.35
-                            duration: 650
-                            easing.type: Easing.InOutQuad
-                        }
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: liveStatusContainer.dotSize
+                        height: width
+                        radius: width / 2
+                        color: root.liveColor
 
-                        NumberAnimation {
-                            from: 0.35
-                            to: 1
-                            duration: 650
-                            easing.type: Easing.InOutQuad
+                        SequentialAnimation on opacity {
+                            loops: Animation.Infinite
+                            running: root.isLiveMatch()
+
+                            NumberAnimation {
+                                from: 1
+                                to: 0.35
+                                duration: 650
+                                easing.type: Easing.InOutQuad
+                            }
+
+                            NumberAnimation {
+                                from: 0.35
+                                to: 1
+                                duration: 650
+                                easing.type: Easing.InOutQuad
+                            }
                         }
                     }
-                }
 
-                PlasmaComponents.Label {
-                    Layout.alignment: Qt.AlignVCenter
-                    text: root.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", root.liveMinuteText()) : i18nc("@info:live match status", "Live")
-                    color: root.liveColor
-                    elide: Text.ElideRight
-                    font.bold: true
-                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    PlasmaComponents.Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Math.min(implicitWidth, Math.max(0, liveStatusContainer.width - liveStatusContainer.dotSize - liveStatusRow.spacing))
+                        text: root.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", root.liveMinuteText()) : i18nc("@info:live match status", "Live")
+                        color: root.liveColor
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    }
                 }
             }
 

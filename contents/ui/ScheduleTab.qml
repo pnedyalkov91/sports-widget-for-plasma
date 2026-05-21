@@ -4,6 +4,7 @@
 */
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
@@ -35,7 +36,20 @@ Item {
         anchors.fill: parent
         clip: true
         spacing: 0
+        boundsBehavior: Flickable.StopAtBounds
         model: root.scheduleModel
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
+
+        readonly property int contentColumnWidth: Math.max(0, width - Kirigami.Units.gridUnit)
+
+        section.property: "matchday"
+        section.criteria: ViewSection.FullString
+        section.delegate: RoundSectionHeader {
+            width: scheduleList.contentColumnWidth
+            text: section
+        }
 
         EmptyState {
             anchors.fill: parent
@@ -45,7 +59,7 @@ Item {
         }
 
         delegate: ScoreDelegate {
-            width: scheduleList.width
+            width: scheduleList.contentColumnWidth
             sport: model.sport
             league: model.league
             homeTeam: model.homeTeam
@@ -55,6 +69,7 @@ Item {
             status: model.status
             minute: model.minute
             startTime: model.startTime
+            matchday: model.matchday || ""
             stadium: model.stadium || ""
             homeBadge: model.homeBadge
             awayBadge: model.awayBadge

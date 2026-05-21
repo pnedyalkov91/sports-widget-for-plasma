@@ -502,6 +502,7 @@ PlasmoidItem {
 
                 const copy = Object.assign({}, row);
                 copy.form = form;
+                copy.formDetails = SportsApi.formDetailsForTeam(formByTeam, row.team);
                 return copy;
             });
             applyTable(rows);

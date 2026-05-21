@@ -11,6 +11,9 @@ const LIVE_CACHE_TTL_MS = 120000;
 const RECENT_RESULTS_LIMIT = 40;
 const RECENT_RESULTS_TEAM_LIMIT = 30;
 const RECENT_RESULTS_ROUND_LIMIT = 6;
+const FORM_RESULTS_LIMIT = 5;
+const FORM_TEAM_MATCH_LIMIT = 30;
+const FORM_CACHE_TTL_MS = 10 * 60 * 1000;
 const ESPN_SOCCER_API_BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer";
 const SOFASCORE_API_BASE_URL = "https://api.sofascore.com/api/v1";
 const THESPORTSDB_API_BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
@@ -18,6 +21,9 @@ let sportScoreLiveCache = {
     timestamp: 0,
     rows: []
 };
+let sofaScoreLeagueCache = {};
+let sofaScoreTeamFormCache = {};
+let theSportsDBLeagueCache = {};
 
 const ESPN_SOCCER_LEAGUES = {
     "english-premier-league": "eng.1",
@@ -44,6 +50,7 @@ const ESPN_SOCCER_LEAGUES = {
 };
 
 const SOFASCORE_TOURNAMENTS = {
+    "bulgarian-cup": { id: 365, label: "Bulgarian Cup" },
     "bulgarian-first-league": { id: 247, label: "Bulgarian First League" }
 };
 
@@ -261,7 +268,12 @@ function fetchSportScoreCompetitionRecentResultsOrFallback(options, onSuccess, o
     if (canFetchSportScoreCompetitionFixtures(options)) {
         fetchSportScoreCompetitionRecentResults(options, results => {
             if (results.length > 0) {
-                onSuccess(results);
+                fetchRecentResultStageMetadata(options, stageResults => {
+                    const merged = mergeRecentResultSources(results, stageResults);
+                    onSuccess(merged.length > 0 ? merged : results);
+                }, () => {
+                    onSuccess(results);
+                });
                 return;
             }
 
@@ -273,6 +285,46 @@ function fetchSportScoreCompetitionRecentResultsOrFallback(options, onSuccess, o
     }
 
     fetchFallbackRecentResults(options, onSuccess, onError);
+}
+
+function fetchRecentResultStageMetadata(options, onSuccess, onError) {
+    function finish(results) {
+        onSuccess((Array.isArray(results) ? results : []).filter(hasMatchday));
+    }
+
+    function fetchFromTheSportsDB() {
+        if (!canFetchTheSportsDBRecentResults(options)) {
+            onError("");
+            return;
+        }
+
+        fetchTheSportsDBRecentResults(options, results => {
+            if (results.some(hasMatchday)) {
+                finish(results);
+                return;
+            }
+
+            onError("");
+        }, onError);
+    }
+
+    if (canFetchSofaScoreRecentResults(options)) {
+        fetchSofaScoreRecentResults(options, results => {
+            if (results.some(hasMatchday)) {
+                finish(results);
+                return;
+            }
+
+            fetchFromTheSportsDB();
+        }, fetchFromTheSportsDB);
+        return;
+    }
+
+    fetchFromTheSportsDB();
+}
+
+function hasMatchday(match) {
+    return stringValue(match && match.matchday).length > 0;
 }
 
 function fetchFallbackRecentResults(options, onSuccess, onError) {
@@ -337,20 +389,26 @@ function canFetchTheSportsDBRecentResults(options) {
 }
 
 function fetchTheSportsDBRecentResults(options, onSuccess, onError) {
-    const league = fallbackLeague(THESPORTSDB_LEAGUES, options);
-    requestJson(`${THESPORTSDB_API_BASE_URL}/eventspastleague.php?id=${encodeURIComponent(league.id)}`, payload => {
-        const events = arrayValue(payload && payload.events);
-        const seed = events.map(event => normalizeTheSportsDBResult(event, league)).filter(isFinishedMatch);
-        const latestEvent = events[0] || {};
-        const season = stringValue(latestEvent.strSeason);
-        const latestRound = numberValue(latestEvent.intRound);
-
-        if (season.length === 0 || latestRound <= 0) {
-            onSuccess(sortRecentMatches(dedupeMatches(seed)).slice(0, RECENT_RESULTS_LIMIT));
+    resolveTheSportsDBLeague(options, league => {
+        if (stringValue(league && league.id).length === 0) {
+            onSuccess([]);
             return;
         }
 
-        fetchTheSportsDBRecentRounds(league, season, latestRound, seed, onSuccess, onError);
+        requestJson(`${THESPORTSDB_API_BASE_URL}/eventspastleague.php?id=${encodeURIComponent(league.id)}`, payload => {
+            const events = arrayValue(payload && payload.events);
+            const seed = events.map(event => normalizeTheSportsDBResult(event, league)).filter(isFinishedMatch);
+            const latestEvent = events[0] || {};
+            const season = stringValue(latestEvent.strSeason);
+            const latestRound = numberValue(latestEvent.intRound);
+
+            if (season.length === 0 || latestRound <= 0) {
+                onSuccess(sortRecentMatches(dedupeMatches(seed)).slice(0, RECENT_RESULTS_LIMIT));
+                return;
+            }
+
+            fetchTheSportsDBRecentRounds(league, season, latestRound, seed, onSuccess, onError);
+        }, onError);
     }, onError);
 }
 
@@ -440,12 +498,40 @@ function fetchLeagueForm(options, onSuccess, onError) {
 
     function fetchFromFixtures() {
         fetchScoresFixtures(options, matches => {
-            onSuccess(formByTeam(matches));
+            onSuccess(formByTeam(matches, options));
         }, onError);
     }
 
+    function fetchFromSofaScoreTeamRows(primaryForms, fallback) {
+        const primary = primaryForms || {};
+        const rows = rowsNeedingForm(options.tableRows, primary);
+        if (rows.length === 0) {
+            onSuccess(primary);
+            return;
+        }
+
+        fetchSofaScoreTeamForms(options, rows, sofaForms => {
+            const merged = mergeFormMaps(primary, sofaForms);
+            if (Object.keys(merged).length > 0) {
+                onSuccess(merged);
+            } else {
+                fallback();
+            }
+        }, () => {
+            if (Object.keys(primary).length > 0) {
+                onSuccess(primary);
+            } else {
+                fallback();
+            }
+        });
+    }
+
     function fetchFromSportScore() {
-        fetchSportScoreTeamForms(options, onSuccess, fetchFromFixtures);
+        fetchSportScoreTeamForms(options, forms => {
+            fetchFromSofaScoreTeamRows(forms, fetchFromFixtures);
+        }, () => {
+            fetchFromSofaScoreTeamRows({}, fetchFromFixtures);
+        });
     }
 
     if (canUseSportScore()) {
@@ -453,7 +539,27 @@ function fetchLeagueForm(options, onSuccess, onError) {
         return;
     }
 
-    fetchFromFixtures();
+    fetchFromSofaScoreTeamRows({}, fetchFromFixtures);
+}
+
+function rowsNeedingForm(tableRows, forms) {
+    const rows = Array.isArray(tableRows) ? tableRows : [];
+    return rows.filter(row => {
+        const form = formForTeam(forms || {}, row && row.team);
+        return formValues(form).length < FORM_RESULTS_LIMIT;
+    });
+}
+
+function mergeFormMaps(primaryForms, fallbackForms) {
+    const merged = Object.assign({}, primaryForms || {});
+    Object.keys(fallbackForms || {}).forEach(key => {
+        const current = normalizedFormString(merged[key]);
+        const fallback = normalizedFormString(fallbackForms[key]);
+        if (formValues(fallback).length > formValues(current).length)
+            merged[key] = fallbackForms[key];
+    });
+
+    return merged;
 }
 
 function fetchSportScoreTeamForms(options, onSuccess, onError) {
@@ -475,11 +581,11 @@ function fetchSportScoreTeamForms(options, onSuccess, onError) {
     const baseUrl = stripTrailingSlash(ProviderCatalog.defaultBaseUrl("sportscore"));
 
     rows.forEach(row => {
-        const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(row.teamSlug)}&limit=5`;
+        const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(row.teamSlug)}&limit=${FORM_TEAM_MATCH_LIMIT}&src=sports-widget-for-plasma`;
         requestJson(url, payload => {
-            const form = sportScoreTeamForm(payload, row.team);
-            if (form.length > 0)
-                forms[normalizedText(row.team)] = form;
+            const formEntry = sportScoreTeamForm(payload, row.team, options);
+            if (formValues(formEntry).length > 0)
+                forms[normalizedText(row.team)] = formEntry;
 
             pending -= 1;
             if (pending === 0) {
@@ -503,6 +609,173 @@ function fetchSportScoreTeamForms(options, onSuccess, onError) {
             }
         });
     });
+}
+
+function fetchSofaScoreTeamForms(options, tableRows, onSuccess, onError) {
+    if (!isFootballSelection(options)) {
+        onError("SofaScore team form is not available for this selection.");
+        return;
+    }
+
+    let seenTeams = {};
+    const rows = (Array.isArray(tableRows) ? tableRows : [])
+        .filter(row => stringValue(row && row.team).length > 0)
+        .filter(row => {
+            const key = normalizedText(row.team);
+            if (key.length === 0 || seenTeams[key])
+                return false;
+
+            seenTeams[key] = true;
+            return true;
+        });
+    if (rows.length === 0) {
+        onSuccess({});
+        return;
+    }
+
+    let active = 0;
+    let nextIndex = 0;
+    let completed = 0;
+    let forms = {};
+    let errors = [];
+    const concurrency = Math.min(4, rows.length);
+
+    function finish() {
+        if (Object.keys(forms).length > 0) {
+            onSuccess(forms);
+        } else {
+            onError(errors.join(", ") || "SofaScore returned no team form.");
+        }
+    }
+
+    function complete() {
+        active -= 1;
+        completed += 1;
+        if (completed === rows.length) {
+            finish();
+            return;
+        }
+
+        pump();
+    }
+
+    function pump() {
+        while (active < concurrency && nextIndex < rows.length) {
+            const row = rows[nextIndex];
+            nextIndex += 1;
+            active += 1;
+            fetchRow(row);
+        }
+    }
+
+    function fetchRow(row) {
+        fetchSofaScoreTeamForm(options, row, formEntry => {
+            if (formValues(formEntry).length > 0)
+                forms[normalizedText(row.team)] = formEntry;
+
+            complete();
+        }, message => {
+            errors.push(`${row.team}: ${message}`);
+            complete();
+        });
+    }
+
+    pump();
+}
+
+function fetchSofaScoreTeamForm(options, row, onSuccess, onError) {
+    const cacheKey = formCacheKey(options, row && row.team);
+    const cached = sofaScoreTeamFormCache[cacheKey];
+    const now = Date.now();
+    if (cached && now - numberValue(cached.timestamp) < FORM_CACHE_TTL_MS) {
+        onSuccess(cached.entry || "");
+        return;
+    }
+
+    searchSofaScoreTeam(options, row, team => {
+        const teamId = numberValue(team && team.id);
+        if (teamId <= 0) {
+            onError("team not found");
+            return;
+        }
+
+        requestJson(`${SOFASCORE_API_BASE_URL}/team/${teamId}/events/last/0`, payload => {
+            const matches = arrayValue(payload && payload.events)
+                .map(event => normalizeSofaScoreFixture(event, {
+                    label: stringValue(event && event.tournament && event.tournament.name)
+                }))
+                .filter(hasTeams)
+                .filter(match => Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore)))
+                .filter(isFinishedMatch);
+            const entry = teamFormFromMatches(matches, row.team, team.name, options);
+            sofaScoreTeamFormCache[cacheKey] = {
+                timestamp: now,
+                entry
+            };
+            onSuccess(entry);
+        }, onError);
+    }, onError);
+}
+
+function searchSofaScoreTeam(options, row, onSuccess, onError) {
+    const url = `${SOFASCORE_API_BASE_URL}/search/all?q=${encodeURIComponent(row.team)}`;
+    requestJson(url, payload => {
+        const team = selectSofaScoreTeam(payload, row, options);
+        if (numberValue(team && team.id) > 0) {
+            onSuccess(team);
+        } else {
+            onError("team not found");
+        }
+    }, onError);
+}
+
+function selectSofaScoreTeam(payload, row, options) {
+    const wantedTeam = stringValue(row && row.team);
+    const wantedCountry = normalizedText(ProviderCatalog.countryLabel(options && options.country));
+    const results = arrayValue(payload && payload.results);
+    let best = {};
+    let bestScore = 0;
+
+    results.forEach(result => {
+        if (stringValue(result && result.type) !== "team")
+            return;
+
+        const entity = result && result.entity ? result.entity : {};
+        const sport = entity && entity.sport ? entity.sport : {};
+        if (normalizedText(sport.slug || sport.name) !== "football")
+            return;
+
+        const name = stringValue(entity.name);
+        let score = sameTeamName(name, wantedTeam) ? 10 : similarityScore(name, wantedTeam);
+        if (score <= 0)
+            return;
+
+        if (stringValue(entity.gender).toUpperCase() === "M")
+            score += 1;
+
+        const country = entity && entity.country ? entity.country : {};
+        const countryName = normalizedText(country.name || country.slug);
+        if (wantedCountry.length > 0 && wantedCountry !== "international tournaments" && countryName.length > 0) {
+            if (countryName === wantedCountry || wantedCountry.indexOf(countryName) >= 0 || countryName.indexOf(wantedCountry) >= 0) {
+                score += 2;
+            } else {
+                score -= 1;
+            }
+        }
+
+        if (numberValue(result && result.score) > 0)
+            score += 0.5;
+
+        if (score > bestScore) {
+            bestScore = score;
+            best = {
+                id: numberValue(entity.id),
+                name
+            };
+        }
+    });
+
+    return best;
 }
 
 function canFetchSportScoreTeamFixtures(options) {
@@ -1069,10 +1342,54 @@ function espnMatchMinute(status) {
 
 function espnRoundLabel(event, competition) {
     const week = event && event.week ? event.week : competition && competition.week;
+    const label = roundLabelFromText(week && (week.text || week.label || week.displayName || week.name));
+    if (label.length > 0)
+        return label;
+
     if (week && numberValue(week.number) > 0)
         return "Round " + numberValue(week.number);
 
     return "";
+}
+
+function roundLabelFromText(value) {
+    const text = stringValue(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+    if (text.length === 0)
+        return "";
+
+    const normalized = normalizedText(text);
+    if (normalized === "matches" || normalized.indexOf("recent results") >= 0 || normalized.indexOf("upcoming fixtures") >= 0)
+        return "";
+
+    if (/^\d+$/.test(text))
+        return "Round " + text;
+
+    if (normalized === "final")
+        return "Final";
+    if (normalized.indexOf("semi") >= 0)
+        return "Semi-finals";
+    if (normalized.indexOf("quarter") >= 0)
+        return "Quarter-finals";
+    if (normalized.indexOf("round of 16") >= 0 || normalized.indexOf("1/8") >= 0)
+        return "Round of 16";
+    if (normalized.indexOf("round of 32") >= 0 || normalized.indexOf("1/16") >= 0)
+        return "Round of 32";
+
+    return titleCaseRoundLabel(text);
+}
+
+function titleCaseRoundLabel(value) {
+    return stringValue(value)
+        .split(" ")
+        .filter(part => part.length > 0)
+        .map((part, index) => {
+            const lower = part.toLowerCase();
+            if (index > 0 && (lower === "of" || lower === "and" || lower === "the"))
+                return lower;
+
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join(" ");
 }
 
 function espnVenueName(venue) {
@@ -1177,21 +1494,60 @@ function uniqueStringValues(values) {
     return result;
 }
 
+function similarityScore(left, right) {
+    left = normalizedText(left);
+    right = normalizedText(right);
+    if (left.length === 0 || right.length === 0)
+        return 0;
+
+    if (left === right)
+        return 8;
+
+    if (left.indexOf(right) >= 0 || right.indexOf(left) >= 0)
+        return 5;
+
+    const leftTokens = left.split(" ").filter(token => token.length > 1);
+    const rightTokens = right.split(" ").filter(token => token.length > 1);
+    if (leftTokens.length === 0 || rightTokens.length === 0)
+        return 0;
+
+    let shared = 0;
+    rightTokens.forEach(token => {
+        if (leftTokens.indexOf(token) >= 0)
+            shared += 1;
+    });
+
+    const ratio = shared / Math.max(leftTokens.length, rightTokens.length);
+    if (ratio >= 0.75)
+        return 4;
+
+    if (ratio >= 0.5)
+        return 2;
+
+    return 0;
+}
+
 function canFetchSofaScoreFixtures(options) {
-    return fallbackLeague(SOFASCORE_TOURNAMENTS, options).id > 0 && isFootballSelection(options);
+    return isFootballSelection(options) && ProviderCatalog.leagueLabel(options && options.league).length > 0;
 }
 
 function fetchSofaScoreFixtures(options, onSuccess, onError) {
-    const league = fallbackLeague(SOFASCORE_TOURNAMENTS, options);
-    requestJson(`${SOFASCORE_API_BASE_URL}/unique-tournament/${league.id}/seasons`, payload => {
-        const season = arrayValue(payload && payload.seasons)[0];
-        const seasonId = numberValue(season && season.id);
-        if (seasonId <= 0) {
+    resolveSofaScoreLeague(options, league => {
+        if (numberValue(league && league.id) <= 0) {
             onSuccess([]);
             return;
         }
 
-        fetchSofaScoreFixturePage(league, seasonId, 0, [], onSuccess, onError);
+        requestJson(`${SOFASCORE_API_BASE_URL}/unique-tournament/${league.id}/seasons`, payload => {
+            const season = arrayValue(payload && payload.seasons)[0];
+            const seasonId = numberValue(season && season.id);
+            if (seasonId <= 0) {
+                onSuccess([]);
+                return;
+            }
+
+            fetchSofaScoreFixturePage(league, seasonId, 0, [], onSuccess, onError);
+        }, onError);
     }, onError);
 }
 
@@ -1200,17 +1556,142 @@ function canFetchSofaScoreRecentResults(options) {
 }
 
 function fetchSofaScoreRecentResults(options, onSuccess, onError) {
-    const league = fallbackLeague(SOFASCORE_TOURNAMENTS, options);
-    requestJson(`${SOFASCORE_API_BASE_URL}/unique-tournament/${league.id}/seasons`, payload => {
-        const season = arrayValue(payload && payload.seasons)[0];
-        const seasonId = numberValue(season && season.id);
-        if (seasonId <= 0) {
+    resolveSofaScoreLeague(options, league => {
+        if (numberValue(league && league.id) <= 0) {
             onSuccess([]);
             return;
         }
 
-        fetchSofaScoreRecentPage(league, seasonId, 0, [], onSuccess, onError);
+        requestJson(`${SOFASCORE_API_BASE_URL}/unique-tournament/${league.id}/seasons`, payload => {
+            const season = arrayValue(payload && payload.seasons)[0];
+            const seasonId = numberValue(season && season.id);
+            if (seasonId <= 0) {
+                onSuccess([]);
+                return;
+            }
+
+            fetchSofaScoreRecentPage(league, seasonId, 0, [], onSuccess, onError);
+        }, onError);
     }, onError);
+}
+
+function resolveSofaScoreLeague(options, onSuccess, onError) {
+    const mapped = fallbackLeague(SOFASCORE_TOURNAMENTS, options);
+    if (numberValue(mapped && mapped.id) > 0) {
+        onSuccess(mapped);
+        return;
+    }
+
+    const cacheKey = fallbackCacheKey(options);
+    if (sofaScoreLeagueCache[cacheKey] !== undefined) {
+        onSuccess(sofaScoreLeagueCache[cacheKey]);
+        return;
+    }
+
+    searchSofaScoreLeague(options, league => {
+        sofaScoreLeagueCache[cacheKey] = league || {};
+        onSuccess(league);
+    }, onError);
+}
+
+function searchSofaScoreLeague(options, onSuccess, onError) {
+    const label = ProviderCatalog.leagueLabel(options && options.league);
+    if (label.length === 0) {
+        onSuccess({});
+        return;
+    }
+
+    const url = `${SOFASCORE_API_BASE_URL}/search/unique-tournaments?q=${encodeURIComponent(label)}`;
+    requestJson(url, payload => {
+        const league = selectSofaScoreLeague(payload, options);
+        onSuccess(league);
+    }, () => {
+        const fallbackUrl = `${SOFASCORE_API_BASE_URL}/search/all?q=${encodeURIComponent(label)}`;
+        requestJson(fallbackUrl, payload => {
+            const league = selectSofaScoreLeague(payload, options);
+            onSuccess(league);
+        }, onError);
+    });
+}
+
+function selectSofaScoreLeague(payload, options) {
+    const wantedLeague = ProviderCatalog.leagueLabel(options && options.league);
+    const wantedCountry = ProviderCatalog.countryLabel(options && options.country);
+    const candidates = sofaScoreTournamentCandidates(payload);
+    let best = {};
+    let bestScore = 0;
+
+    candidates.forEach(candidate => {
+        const score = sofaScoreCandidateScore(candidate, wantedLeague, wantedCountry);
+        if (score > bestScore) {
+            bestScore = score;
+            best = candidate;
+        }
+    });
+
+    return bestScore > 0 ? best : {};
+}
+
+function sofaScoreTournamentCandidates(payload) {
+    let result = [];
+    let seen = {};
+
+    function add(entity) {
+        const id = numberValue(entity && entity.id);
+        const name = stringValue(entity && entity.name);
+        if (id <= 0 || name.length === 0 || seen[id])
+            return;
+
+        seen[id] = true;
+        const category = entity && entity.category ? entity.category : {};
+        result.push({
+            id,
+            label: name,
+            country: stringValue(category.name || category.country && category.country.name || entity.country && entity.country.name)
+        });
+    }
+
+    function walk(value, depth) {
+        if (!value || depth > 6)
+            return;
+
+        if (Array.isArray(value)) {
+            value.forEach(item => walk(item, depth + 1));
+            return;
+        }
+
+        if (typeof value !== "object")
+            return;
+
+        add(value.entity || value.uniqueTournament || value.tournament || value);
+        Object.keys(value).forEach(key => walk(value[key], depth + 1));
+    }
+
+    walk(payload, 0);
+    return result;
+}
+
+function sofaScoreCandidateScore(candidate, leagueLabel, countryLabel) {
+    const candidateName = normalizedText(candidate && candidate.label);
+    const wantedName = normalizedText(leagueLabel);
+    if (candidateName.length === 0 || wantedName.length === 0)
+        return 0;
+
+    let score = similarityScore(candidateName, wantedName);
+    if (score <= 0)
+        return 0;
+
+    const wantedCountry = normalizedText(countryLabel);
+    const candidateCountry = normalizedText(candidate && candidate.country);
+    if (wantedCountry.length > 0 && wantedCountry !== "international tournaments") {
+        if (candidateCountry.length > 0 && (candidateCountry === wantedCountry || wantedCountry.indexOf(candidateCountry) >= 0 || candidateCountry.indexOf(wantedCountry) >= 0)) {
+            score += 3;
+        } else if (candidateCountry.length > 0) {
+            score -= 2;
+        }
+    }
+
+    return score;
 }
 
 function fetchSofaScoreRecentPage(league, seasonId, page, matches, onSuccess, onError) {
@@ -1261,13 +1742,22 @@ function normalizeSofaScoreFixture(event, league) {
         minute: "",
         startTime: timestamp > 0 ? formatStartTime(timestamp) : "",
         timestamp,
-        matchday: event && event.roundInfo && event.roundInfo.round ? "Round " + event.roundInfo.round : "",
+        matchday: sofaScoreRoundLabel(event && event.roundInfo),
         stadium: sofaScoreStadium(event && event.venue),
         homeBadge: sofaScoreTeamImage(homeTeam.id),
         awayBadge: sofaScoreTeamImage(awayTeam.id),
         poster: "",
         popular: false
     };
+}
+
+function sofaScoreRoundLabel(roundInfo) {
+    const label = roundLabelFromText(roundInfo && (roundInfo.name || roundInfo.slug || roundInfo.roundName || roundInfo.description));
+    if (label.length > 0)
+        return label;
+
+    const round = numberValue(roundInfo && roundInfo.round);
+    return round > 0 ? "Round " + round : "";
 }
 
 function sofaScoreDisplayScore(score) {
@@ -1296,14 +1786,74 @@ function sofaScoreTeamImage(teamId) {
 }
 
 function canFetchTheSportsDBFixtures(options) {
-    return stringValue(fallbackLeague(THESPORTSDB_LEAGUES, options).id).length > 0 && isFootballSelection(options);
+    return isFootballSelection(options) && ProviderCatalog.leagueLabel(options && options.league).length > 0;
 }
 
 function fetchTheSportsDBFixtures(options, onSuccess, onError) {
-    const league = fallbackLeague(THESPORTSDB_LEAGUES, options);
-    requestJson(`${THESPORTSDB_API_BASE_URL}/eventsnextleague.php?id=${encodeURIComponent(league.id)}`, payload => {
-        onSuccess(sortMatches(dedupeMatches(arrayValue(payload && payload.events).map(event => normalizeTheSportsDBFixture(event, league)).filter(hasTeams))));
+    resolveTheSportsDBLeague(options, league => {
+        if (stringValue(league && league.id).length === 0) {
+            onSuccess([]);
+            return;
+        }
+
+        requestJson(`${THESPORTSDB_API_BASE_URL}/eventsnextleague.php?id=${encodeURIComponent(league.id)}`, payload => {
+            onSuccess(sortMatches(dedupeMatches(arrayValue(payload && payload.events).map(event => normalizeTheSportsDBFixture(event, league)).filter(hasTeams))));
+        }, onError);
     }, onError);
+}
+
+function resolveTheSportsDBLeague(options, onSuccess, onError) {
+    const mapped = fallbackLeague(THESPORTSDB_LEAGUES, options);
+    if (stringValue(mapped && mapped.id).length > 0) {
+        onSuccess(mapped);
+        return;
+    }
+
+    const cacheKey = fallbackCacheKey(options);
+    if (theSportsDBLeagueCache[cacheKey] !== undefined) {
+        onSuccess(theSportsDBLeagueCache[cacheKey]);
+        return;
+    }
+
+    searchTheSportsDBLeague(options, league => {
+        theSportsDBLeagueCache[cacheKey] = league || {};
+        onSuccess(league);
+    }, onError);
+}
+
+function searchTheSportsDBLeague(options, onSuccess, onError) {
+    const country = ProviderCatalog.countryLabel(options && options.country);
+    if (country.length === 0 || normalizedText(country) === "international tournaments") {
+        onSuccess({});
+        return;
+    }
+
+    const url = `${THESPORTSDB_API_BASE_URL}/search_all_leagues.php?c=${encodeURIComponent(country)}&s=Soccer`;
+    requestJson(url, payload => {
+        const league = selectTheSportsDBLeague(payload, options);
+        onSuccess(league);
+    }, onError);
+}
+
+function selectTheSportsDBLeague(payload, options) {
+    const wantedLeague = ProviderCatalog.leagueLabel(options && options.league);
+    const leagues = arrayValue(payload && payload.countries);
+    let best = {};
+    let bestScore = 0;
+
+    leagues.forEach(league => {
+        const label = stringValue(league && league.strLeague);
+        const score = similarityScore(normalizedText(label), normalizedText(wantedLeague));
+        if (score > bestScore) {
+            bestScore = score;
+            best = {
+                id: stringValue(league && league.idLeague),
+                label
+            };
+        }
+    });
+
+    return bestScore > 0 ? best : {};
 }
 
 function normalizeTheSportsDBFixture(event, league) {
@@ -1320,7 +1870,7 @@ function normalizeTheSportsDBFixture(event, league) {
         minute: "",
         startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp) : "",
         timestamp: Number.isFinite(timestamp) ? timestamp : 0,
-        matchday: event && event.intRound ? "Round " + event.intRound : "",
+        matchday: theSportsDBRoundLabel(event),
         stadium: stringValue(event && event.strVenue),
         homeBadge: stringValue(event && event.strHomeTeamBadge),
         awayBadge: stringValue(event && event.strAwayTeamBadge),
@@ -1329,9 +1879,24 @@ function normalizeTheSportsDBFixture(event, league) {
     };
 }
 
+function theSportsDBRoundLabel(event) {
+    const label = roundLabelFromText(event && (event.strRound || event.strStage || event.strGroup || event.strRoundName));
+    if (label.length > 0)
+        return label;
+
+    return event && event.intRound ? "Round " + event.intRound : "";
+}
+
 function fallbackLeague(map, options) {
     const slug = ProviderCatalog.sportScoreSlug(options.league);
     return map[slug] || {};
+}
+
+function fallbackCacheKey(options) {
+    return [
+        ProviderCatalog.sportScoreSlug(options && options.league),
+        String(options && options.country || "").trim().toLowerCase()
+    ].join("|");
 }
 
 function isFootballSelection(options) {
@@ -1889,10 +2454,23 @@ function sportScoreLastCompetition(html) {
 
 function sportScoreLastRound(html) {
     const pattern = /class="(?:competition-round|round-header)[^"]*"[^>]*>([\s\S]*?)<\/(?:span|div)>/g;
+    const groupPattern = /<div class="comp-round-group"[^>]*data-round="([^"]+)"/g;
     let result = "";
+    let groupMatch = groupPattern.exec(html);
+    while (groupMatch) {
+        const label = roundLabelFromText(htmlDecode(groupMatch[1]));
+        if (label.length > 0)
+            result = label;
+
+        groupMatch = groupPattern.exec(html);
+    }
+
     let match = pattern.exec(html);
     while (match) {
-        result = htmlText(match[1]);
+        const label = roundLabelFromText(htmlText(match[1]));
+        if (label.length > 0)
+            result = label;
+
         match = pattern.exec(html);
     }
     return result;
@@ -1962,6 +2540,7 @@ function sportScoreCompetitionPath(html, country, league) {
 }
 
 function normalizeSportScoreFixturePage(html, leagueLabel) {
+    const htmlRows = normalizeSportScoreFixtureRows(html, leagueLabel);
     const lists = sportScoreJsonLdLists(html);
     let selected = null;
     for (let index = 0; index < lists.length; index += 1) {
@@ -1973,12 +2552,121 @@ function normalizeSportScoreFixturePage(html, leagueLabel) {
     }
 
     if (!selected)
-        return [];
+        return sortMatches(dedupeMatches(htmlRows));
 
     const listItems = arrayValue(selected.itemListElement);
-    return listItems.map(item => normalizeSchemaFixture(item && item.item, leagueLabel))
+    const schemaRows = listItems.map(item => normalizeSchemaFixture(item && item.item, leagueLabel))
         .filter(hasTeams)
         .sort((left, right) => numberValue(left.timestamp) - numberValue(right.timestamp));
+
+    if (htmlRows.length === 0)
+        return schemaRows;
+
+    return mergeFixtureSources(htmlRows, schemaRows);
+}
+
+function normalizeSportScoreFixtureRows(html, leagueLabel) {
+    const section = sportScoreUpcomingFixturesSection(html);
+    const pattern = /<div class="football-match-table-container w-100 nostyle sc-row-stretched">([\s\S]*?)(?=\n\s*<div class="football-match-table-container w-100 nostyle sc-row-stretched">|\n\s*<div class="comp-round-group"|\n\s*<\/div>\s*<\/div>\s*<section|\n\s*<section|$)/g;
+    let rows = [];
+    let match = pattern.exec(section);
+    while (match) {
+        const context = section.slice(0, match.index);
+        const row = normalizeSportScoreFixtureRow(match[0], context, leagueLabel);
+        if (hasTeams(row))
+            rows.push(row);
+
+        match = pattern.exec(section);
+    }
+
+    return rows;
+}
+
+function sportScoreUpcomingFixturesSection(html) {
+    const value = stringValue(html);
+    const labelMatch = /<span class="match-state-label[^"]*"[^>]*>[^<]*upcoming fixtures[^<]*<\/span>/i.exec(value);
+    if (!labelMatch)
+        return "";
+
+    const headerStart = value.lastIndexOf("<h2", labelMatch.index);
+    const start = headerStart >= 0 ? headerStart : labelMatch.index;
+    const endMarkers = [
+        value.indexOf('<h2 class="match-state-header', labelMatch.index + labelMatch[0].length),
+        value.indexOf('<section class="comp-transfers-section"', labelMatch.index + labelMatch[0].length),
+        value.indexOf('<section class="comp-top-scorers-section"', labelMatch.index + labelMatch[0].length),
+        value.indexOf('<section class="comp-standings-section"', labelMatch.index + labelMatch[0].length),
+        value.indexOf('<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage"', labelMatch.index + labelMatch[0].length)
+    ].filter(index => index > start);
+    const end = endMarkers.length > 0 ? Math.min.apply(Math, endMarkers) : value.length;
+    return value.slice(start, end);
+}
+
+function normalizeSportScoreFixtureRow(block, context, leagueLabel) {
+    const label = sportScoreLiveAriaLabel(block);
+    const labelParts = label.split(" — ");
+    const teamLabel = htmlDecode(labelParts[0] || "");
+    const teamParts = splitSportScoreTeams(teamLabel);
+    const path = sportScoreMatchPath(block);
+    const logos = sportScoreLiveLogos(block);
+    const timestamp = Date.parse(htmlAttribute(block, "data-utc"));
+    const rawStatus = statusLabel(htmlText(sportScoreLiveValue(block, "status")) || "Upcoming");
+    const normalizedStatus = normalizedText(rawStatus);
+    const league = htmlDecode(labelParts.slice(1).join(" — ")) || leagueLabel;
+
+    return {
+        id: "sportscore-fixture-" + stringValue(path || teamLabel),
+        sport: "football",
+        league,
+        homeTeam: teamParts.home,
+        awayTeam: teamParts.away,
+        homeScore: "",
+        awayScore: "",
+        status: normalizedStatus === "live" || normalizedStatus === "finished" || normalizedStatus.indexOf("postpon") >= 0 ? rawStatus : "Upcoming",
+        minute: "",
+        startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp) : "",
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        matchday: sportScoreLastRound(context),
+        stadium: "",
+        homeBadge: logos[0] || "",
+        awayBadge: logos[1] || "",
+        poster: "",
+        popular: false,
+        matchPath: path,
+        detailsProvider: "sportscore",
+        statsProvider: "sportscore"
+    };
+}
+
+function mergeFixtureSources(preferredMatches, fallbackMatches) {
+    let keyed = {};
+    let rows = [];
+
+    function addMatch(match) {
+        if (!match)
+            return;
+
+        const key = recentResultMergeKey(match);
+        if (key.length === 0) {
+            rows.push(Object.assign({}, match));
+            return;
+        }
+
+        const existing = keyed[key] || findMergeableRecentResult(rows, match);
+        if (existing) {
+            mergeMissingMatchFields(existing, match);
+            if (key.length > 0)
+                keyed[key] = existing;
+            return;
+        }
+
+        const copy = Object.assign({}, match);
+        keyed[key] = copy;
+        rows.push(copy);
+    }
+
+    (Array.isArray(preferredMatches) ? preferredMatches : []).forEach(addMatch);
+    (Array.isArray(fallbackMatches) ? fallbackMatches : []).forEach(addMatch);
+    return sortMatches(dedupeMatches(rows));
 }
 
 function normalizeSportScoreRecentResultPage(html, leagueLabel) {
@@ -2144,21 +2832,32 @@ function normalizeSportScoreMatch(match, sport) {
         minute: "",
         startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp) : "",
         timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        matchday: roundLabelFromText(match && (match.round || match.round_name || match.matchday || match.match_day || match.week || match.stage)),
         homeBadge: stringValue(match.home_logo),
         awayBadge: stringValue(match.away_logo),
         popular: false
     };
 }
 
-function sportScoreTeamForm(payload, teamName) {
+function sportScoreTeamForm(payload, teamName, options) {
     const scopedTeamName = stringValue(payload && payload.team && payload.team.name) || teamName;
     const matches = arrayValue(payload && payload.matches)
         .map(match => normalizeSportScoreMatch(match, "football"))
-        .filter(match => match.status === "Finished" && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore)))
-        .slice(0, 5);
-    let form = [];
+        .filter(match => Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore)))
+        .filter(isFinishedMatch);
 
-    matches.forEach(match => {
+    return teamFormFromMatches(matches, teamName, scopedTeamName, options);
+}
+
+function teamFormFromMatches(matches, teamName, scopedTeamName, options) {
+    let form = [];
+    let details = [];
+    const rows = sortRecentMatches(filterMatchesForSelection(arrayValue(matches).slice(), options || {})).slice(0, FORM_TEAM_MATCH_LIMIT);
+
+    rows.forEach(match => {
+        if (form.length >= FORM_RESULTS_LIMIT)
+            return;
+
         const home = sameTeamName(match.homeTeam, scopedTeamName) || sameTeamName(match.homeTeam, teamName);
         const away = sameTeamName(match.awayTeam, scopedTeamName) || sameTeamName(match.awayTeam, teamName);
         if (!home && !away)
@@ -2173,9 +2872,81 @@ function sportScoreTeamForm(payload, teamName) {
         } else {
             form.push("D");
         }
+        details.push(formMatchDetail(match));
     });
 
-    return form.join(",");
+    return formEntry(form.reverse(), details.reverse());
+}
+
+function formEntry(values, details) {
+    return {
+        form: arrayValue(values).slice(0, FORM_RESULTS_LIMIT).join(","),
+        details: arrayValue(details).slice(0, FORM_RESULTS_LIMIT)
+    };
+}
+
+function formMatchDetail(match) {
+    const parts = [];
+    const date = formMatchDate(match);
+    const league = stringValue(match && match.league);
+    if (date.length > 0)
+        parts.push(date);
+    if (league.length > 0)
+        parts.push(league);
+
+    const title = parts.join(" - ");
+    const result = `${stringValue(match && match.homeTeam)} ${stringValue(match && match.homeScore)} - ${stringValue(match && match.awayScore)} ${stringValue(match && match.awayTeam)}`.replace(/\s+/g, " ").trim();
+    if (title.length > 0 && result.length > 0)
+        return `${title}\n${result}`;
+
+    return result || title;
+}
+
+function formMatchDate(match) {
+    const timestamp = numberValue(match && match.timestamp);
+    if (timestamp > 0) {
+        const date = new Date(timestamp);
+        return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}`;
+    }
+
+    return stringValue(match && match.startTime);
+}
+
+function formCacheKey(options, teamName) {
+    return [
+        normalizedText(teamName),
+        ProviderCatalog.sportScoreSlug(options && options.league),
+        normalizedText(ProviderCatalog.countryLabel(options && options.country))
+    ].join("|");
+}
+
+function formValues(form) {
+    if (form && typeof form === "object" && !Array.isArray(form))
+        return formValues(form.form);
+
+    const text = stringValue(form).trim();
+    if (text.length === 0)
+        return [];
+
+    if (/^[WDL]+$/i.test(text))
+        return text.split("").map(value => value.toUpperCase()).slice(-FORM_RESULTS_LIMIT);
+
+    return text.replace(/[^A-Za-z]+/g, ",")
+        .split(",")
+        .map(value => value.trim().toUpperCase())
+        .filter(value => value === "W" || value === "D" || value === "L")
+        .slice(-FORM_RESULTS_LIMIT);
+}
+
+function normalizedFormString(form) {
+    return formValues(form).join(",");
+}
+
+function formDetails(form) {
+    if (form && typeof form === "object" && !Array.isArray(form))
+        return arrayValue(form.details).slice(0, FORM_RESULTS_LIMIT);
+
+    return [];
 }
 
 function sportScoreTeamSlug(row) {
@@ -2222,9 +2993,10 @@ function mergeRecentResultSources(preferredMatches, fallbackMatches) {
             return;
         }
 
-        const existing = keyed[key];
+        const existing = keyed[key] || findMergeableRecentResult(rows, match);
         if (existing) {
             mergeMissingMatchFields(existing, match);
+            keyed[key] = existing;
             return;
         }
 
@@ -2235,7 +3007,76 @@ function mergeRecentResultSources(preferredMatches, fallbackMatches) {
 
     (Array.isArray(preferredMatches) ? preferredMatches : []).forEach(addMatch);
     (Array.isArray(fallbackMatches) ? fallbackMatches : []).forEach(addMatch);
-    return sortRecentMatches(dedupeMatches(rows.filter(isFinishedMatch))).slice(0, RECENT_RESULTS_LIMIT);
+    return sortRecentMatches(dedupeRecentMatches(rows.filter(isFinishedMatch))).slice(0, RECENT_RESULTS_LIMIT);
+}
+
+function dedupeRecentMatches(matches) {
+    let keyed = {};
+    let rows = [];
+
+    (Array.isArray(matches) ? matches : []).forEach(match => {
+        const key = recentResultMergeKey(match);
+        const existing = (key.length > 0 ? keyed[key] : null) || findMergeableRecentResult(rows, match);
+        if (existing) {
+            mergeMissingMatchFields(existing, match);
+            if (key.length > 0)
+                keyed[key] = existing;
+            return;
+        }
+
+        const copy = Object.assign({}, match);
+        rows.push(copy);
+        if (key.length > 0)
+            keyed[key] = copy;
+    });
+
+    return rows;
+}
+
+function findMergeableRecentResult(rows, match) {
+    for (let index = 0; index < rows.length; index += 1) {
+        if (canMergeRecentResult(rows[index], match))
+            return rows[index];
+    }
+
+    return null;
+}
+
+function canMergeRecentResult(left, right) {
+    if (!left || !right)
+        return false;
+
+    if (!sameTeamName(left.homeTeam, right.homeTeam) || !sameTeamName(left.awayTeam, right.awayTeam))
+        return false;
+
+    const leftTime = numberValue(left.timestamp);
+    const rightTime = numberValue(right.timestamp);
+    if (leftTime > 0 && rightTime > 0) {
+        const timeDifference = Math.abs(leftTime - rightTime);
+        if (timeDifference <= 5 * 60 * 1000)
+            return true;
+
+        const closeEnough = timeDifference <= 48 * 60 * 60 * 1000;
+        if (!closeEnough)
+            return false;
+
+        return scoresCompatible(left, right);
+    }
+
+    const leftStart = normalizedText(left.startTime);
+    const rightStart = normalizedText(right.startTime);
+    return leftStart.length > 0 && leftStart === rightStart && scoresCompatible(left, right);
+}
+
+function scoresCompatible(left, right) {
+    const leftHome = stringValue(left && left.homeScore);
+    const leftAway = stringValue(left && left.awayScore);
+    const rightHome = stringValue(right && right.homeScore);
+    const rightAway = stringValue(right && right.awayScore);
+    if (leftHome.length === 0 || leftAway.length === 0 || rightHome.length === 0 || rightAway.length === 0)
+        return true;
+
+    return leftHome === rightHome && leftAway === rightAway;
 }
 
 function recentResultMergeKey(match) {
@@ -2364,12 +3205,12 @@ function filterMatchesForSelection(matches, options) {
     });
 }
 
-function formByTeam(matches) {
+function formByTeam(matches, options) {
     let result = {};
-    const finished = (matches || []).filter(match => match.status === "Finished" && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore)))
-        .sort((left, right) => numberValue(left.timestamp) - numberValue(right.timestamp));
+    const finished = filterMatchesForSelection(matches || [], options || {}).filter(match => isFinishedMatch(match) && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore)))
+        .sort((left, right) => numberValue(right.timestamp) - numberValue(left.timestamp));
 
-    function append(teamName, value) {
+    function append(teamName, value, detail) {
         const key = normalizedText(teamName);
         if (key.length === 0)
             return;
@@ -2377,10 +3218,13 @@ function formByTeam(matches) {
         if (!result[key])
             result[key] = [];
 
-        result[key].push(value);
+        result[key].push({
+            value,
+            detail
+        });
     }
 
-    function appendAll(teamName, aliases, value) {
+    function appendAll(teamName, aliases, value, detail) {
         let seen = {};
         const names = [teamName].concat(Array.isArray(aliases) ? aliases : []);
         names.forEach(name => {
@@ -2389,32 +3233,46 @@ function formByTeam(matches) {
                 return;
 
             seen[key] = true;
-            append(name, value);
+            append(name, value, detail);
         });
     }
 
     finished.forEach(match => {
         const homeGoals = numberValue(match.homeScore);
         const awayGoals = numberValue(match.awayScore);
+        const detail = formMatchDetail(match);
         if (homeGoals > awayGoals) {
-            appendAll(match.homeTeam, match.homeTeamAliases, "W");
-            appendAll(match.awayTeam, match.awayTeamAliases, "L");
+            appendAll(match.homeTeam, match.homeTeamAliases, "W", detail);
+            appendAll(match.awayTeam, match.awayTeamAliases, "L", detail);
         } else if (homeGoals < awayGoals) {
-            appendAll(match.homeTeam, match.homeTeamAliases, "L");
-            appendAll(match.awayTeam, match.awayTeamAliases, "W");
+            appendAll(match.homeTeam, match.homeTeamAliases, "L", detail);
+            appendAll(match.awayTeam, match.awayTeamAliases, "W", detail);
         } else {
-            appendAll(match.homeTeam, match.homeTeamAliases, "D");
-            appendAll(match.awayTeam, match.awayTeamAliases, "D");
+            appendAll(match.homeTeam, match.homeTeamAliases, "D", detail);
+            appendAll(match.awayTeam, match.awayTeamAliases, "D", detail);
         }
     });
 
     Object.keys(result).forEach(key => {
-        result[key] = result[key].slice(-5).join(",");
+        const rows = result[key].slice(0, FORM_RESULTS_LIMIT).reverse();
+        result[key] = formEntry(rows.map(row => row.value), rows.map(row => row.detail));
     });
     return result;
 }
 
 function formForTeam(formMap, teamName) {
+    const entry = formEntryForTeam(formMap, teamName);
+    if (entry !== undefined)
+        return normalizedFormString(entry);
+
+    return "";
+}
+
+function formDetailsForTeam(formMap, teamName) {
+    return formDetails(formEntryForTeam(formMap, teamName));
+}
+
+function formEntryForTeam(formMap, teamName) {
     const key = normalizedText(teamName);
     if (formMap[key])
         return formMap[key];
@@ -2434,7 +3292,7 @@ function formForTeam(formMap, teamName) {
         if (compact.length > 0 && compact.indexOf(itemCompact) >= 0)
             return formMap[keys[index]];
     }
-    return "";
+    return undefined;
 }
 
 function compactTeamName(value) {
@@ -2449,7 +3307,10 @@ function teamAliasKey(value) {
         "athletic": "athleticbilbao",
         "athleticbilbao": "athleticbilbao",
         "athleticclub": "athleticbilbao",
+        "atl": "atleticomadrid",
         "atleti": "atleticomadrid",
+        "atlmadrid": "atleticomadrid",
+        "atmadrid": "atleticomadrid",
         "atleticomadrid": "atleticomadrid",
         "atletico": "atleticomadrid",
         "atleticodemadrid": "atleticomadrid",

@@ -75,6 +75,10 @@ function leagueLabel(leagueCode) {
     return labels[String(leagueCode || "").trim().toUpperCase()] || "";
 }
 
+function countryLabel(countryCode) {
+    return SportScoreLeagues.countryLabel(countryCode);
+}
+
 function favoriteTeamOptions(leagueCode) {
     const teams = {
         "english-premier-league": ["Arsenal", "Manchester City", "Manchester United", "Liverpool", "Chelsea", "Tottenham", "Newcastle", "Aston Villa", "Brighton Hove", "Everton", "West Ham", "Crystal Palace", "Fulham", "Brentford", "Bournemouth", "Nottingham", "Leeds United", "Sunderland", "Burnley", "Wolverhampton"],
@@ -218,10 +222,47 @@ function sportScoreMatchday(match) {
     if (raw.length === 0)
         return "";
 
-    if (/^\d+$/.test(raw))
-        return "Round " + raw;
+    return roundLabelFromText(raw);
+}
 
-    return raw;
+function roundLabelFromText(value) {
+    const text = stringValue(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+    if (text.length === 0)
+        return "";
+
+    const normalized = text.toLowerCase();
+    if (normalized === "matches" || normalized.indexOf("recent results") >= 0 || normalized.indexOf("upcoming fixtures") >= 0)
+        return "";
+
+    if (/^\d+$/.test(text))
+        return "Round " + text;
+
+    if (normalized === "final")
+        return "Final";
+    if (normalized.indexOf("semi") >= 0)
+        return "Semi-finals";
+    if (normalized.indexOf("quarter") >= 0)
+        return "Quarter-finals";
+    if (normalized.indexOf("round of 16") >= 0 || normalized.indexOf("1/8") >= 0)
+        return "Round of 16";
+    if (normalized.indexOf("round of 32") >= 0 || normalized.indexOf("1/16") >= 0)
+        return "Round of 32";
+
+    return titleCaseRoundLabel(text);
+}
+
+function titleCaseRoundLabel(value) {
+    return stringValue(value)
+        .split(" ")
+        .filter(part => part.length > 0)
+        .map((part, index) => {
+            const lower = part.toLowerCase();
+            if (index > 0 && (lower === "of" || lower === "and" || lower === "the"))
+                return lower;
+
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+        })
+        .join(" ");
 }
 
 function normalizeSportScoreTable(payload) {

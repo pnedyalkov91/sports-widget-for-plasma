@@ -558,46 +558,61 @@ Item {
                     font.pixelSize: Kirigami.Units.gridUnit * 1.25
                 }
 
-                RowLayout {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.maximumWidth: heroScoreColumn.width
-                    spacing: Kirigami.Units.smallSpacing
+                Item {
+                    id: heroLiveStatusContainer
+
+                    readonly property int dotSize: Math.max(7, Math.round(Kirigami.Units.smallSpacing * 1.5))
+
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Kirigami.Theme.smallFont.pixelSize + Kirigami.Units.smallSpacing
                     visible: hero.isLiveMatch()
 
-                    Rectangle {
-                        Layout.alignment: Qt.AlignVCenter
-                        Layout.preferredWidth: Math.max(7, Math.round(Kirigami.Units.smallSpacing * 1.5))
-                        Layout.preferredHeight: Layout.preferredWidth
-                        radius: width / 2
-                        color: root.liveColor
+                    Row {
+                        id: heroLiveStatusRow
 
-                        SequentialAnimation on opacity {
-                            loops: Animation.Infinite
-                            running: hero.isLiveMatch()
+                        anchors.centerIn: parent
+                        width: Math.min(implicitWidth, heroLiveStatusContainer.width)
+                        height: implicitHeight
+                        spacing: Kirigami.Units.smallSpacing
 
-                            NumberAnimation {
-                                from: 1
-                                to: 0.35
-                                duration: 650
-                                easing.type: Easing.InOutQuad
-                            }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: heroLiveStatusContainer.dotSize
+                            height: width
+                            radius: width / 2
+                            color: root.liveColor
 
-                            NumberAnimation {
-                                from: 0.35
-                                to: 1
-                                duration: 650
-                                easing.type: Easing.InOutQuad
+                            SequentialAnimation on opacity {
+                                loops: Animation.Infinite
+                                running: hero.isLiveMatch()
+
+                                NumberAnimation {
+                                    from: 1
+                                    to: 0.35
+                                    duration: 650
+                                    easing.type: Easing.InOutQuad
+                                }
+
+                                NumberAnimation {
+                                    from: 0.35
+                                    to: 1
+                                    duration: 650
+                                    easing.type: Easing.InOutQuad
+                                }
                             }
                         }
-                    }
 
-                    PlasmaComponents.Label {
-                        Layout.alignment: Qt.AlignVCenter
-                        text: hero.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", hero.liveMinuteText()) : i18nc("@info:live match status", "Live")
-                        color: root.liveColor
-                        elide: Text.ElideRight
-                        font.bold: true
-                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        PlasmaComponents.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.min(implicitWidth, Math.max(0, heroLiveStatusContainer.width - heroLiveStatusContainer.dotSize - heroLiveStatusRow.spacing))
+                            text: hero.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", hero.liveMinuteText()) : i18nc("@info:live match status", "Live")
+                            color: root.liveColor
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            font.bold: true
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        }
                     }
                 }
 
@@ -940,6 +955,7 @@ Item {
         property int points: 0
         property int goalDifference: 0
         property string form: ""
+        property var formDetails: []
         property string crest: ""
         property bool favorite: false
 
@@ -1032,6 +1048,7 @@ Item {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 6.6
                 Layout.preferredHeight: Kirigami.Units.gridUnit * 1.3
                 form: parent.parent.form
+                details: parent.parent.formDetails
             }
         }
 
@@ -1136,9 +1153,24 @@ Item {
 
     component FormBadges: Item {
         property string form: ""
+        property var details: []
 
         function results() {
-            return String(form || "").replace(/[^A-Za-z]+/g, ",").split(",").filter(item => item.length > 0).slice(-6);
+            const text = String(form || "").trim();
+            if (text.length === 0)
+                return [];
+
+            if (/^[WDL]+$/i.test(text))
+                return text.split("").slice(-5);
+
+            return text.replace(/[^A-Za-z]+/g, ",").split(",").filter(item => item.length > 0).slice(-5);
+        }
+
+        function tooltipFor(index) {
+            if (!details || index < 0 || index >= details.length)
+                return "";
+
+            return String(details[index] || "");
         }
 
         Row {
@@ -1154,6 +1186,13 @@ Item {
                     width: Kirigami.Units.gridUnit * 1.1
                     height: width
                     radius: 2
+                    ToolTip.text: parent.parent.tooltipFor(index)
+                    ToolTip.visible: badgeHover.hovered && ToolTip.text.length > 0
+
+                    HoverHandler {
+                        id: badgeHover
+                    }
+
                     color: {
                         const result = String(modelData).toUpperCase();
                         if (result === "W")

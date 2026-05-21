@@ -9830,6 +9830,14 @@ function leagueLabel(leagueCode) {
     return "";
 }
 
+function countryLabel(countryCode) {
+    const country = countryByCode(countryCode);
+    if (!country)
+        return "";
+
+    return country.value === "world" ? "International Tournaments" : country.label;
+}
+
 function countryByCode(countryCode) {
     const value = String(countryCode || "world").trim().toLowerCase();
     for (let index = 0; index < FOOTBALL_COUNTRIES.length; index += 1) {
