@@ -80,29 +80,12 @@ function countryLabel(countryCode) {
 }
 
 function favoriteTeamOptions(leagueCode) {
-    const teams = {
-        "english-premier-league": ["Arsenal", "Manchester City", "Manchester United", "Liverpool", "Chelsea", "Tottenham", "Newcastle", "Aston Villa", "Brighton Hove", "Everton", "West Ham", "Crystal Palace", "Fulham", "Brentford", "Bournemouth", "Nottingham", "Leeds United", "Sunderland", "Burnley", "Wolverhampton"],
-        "spanish-la-liga": ["Barcelona", "Real Madrid", "Atletico Madrid", "Girona", "Villarreal", "Real Betis", "Sevilla", "Athletic Bilbao", "Real Sociedad", "Valencia"],
-        "italian-serie-a": ["Inter Milan", "AC Milan", "Juventus", "Napoli", "AS Roma", "Lazio", "Atalanta", "Bologna", "Fiorentina", "Torino"],
-        "bundesliga": ["Bayern Munich", "Borussia Dortmund", "Bayer Leverkusen", "RB Leipzig", "Eintracht Frankfurt", "Stuttgart", "Wolfsburg", "Freiburg"],
-        "french-ligue-1": ["Paris Saint-Germain", "Marseille", "Lyon", "Monaco", "Lille", "Lens", "Nice", "Rennes"],
-        "netherlands-eredivisie": ["Ajax", "PSV", "Feyenoord", "AZ", "Twente", "Utrecht"],
-        "portuguese-primera-liga": ["Benfica", "Porto", "Sporting CP", "Braga", "Vitoria SC"],
-        "brazilian-serie-a": ["Flamengo", "Palmeiras", "Sao Paulo", "Corinthians", "Santos", "Botafogo"],
-        "bulgarian-first-league": ["Levski Sofia", "Ludogorets Razgrad", "CSKA Sofia", "CSKA 1948", "Lokomotiv Plovdiv", "Botev Plovdiv", "Cherno More Varna", "Slavia Sofia", "Arda Kardzhali", "Beroe", "Lokomotiv Sofia", "Septemvri Sofia", "Spartak Varna"],
-        "bulgarian-cup": ["Levski Sofia", "Ludogorets Razgrad", "CSKA Sofia", "CSKA 1948", "Lokomotiv Plovdiv", "Botev Plovdiv", "Cherno More Varna", "Slavia Sofia", "Arda Kardzhali", "Beroe"],
-        "uefa-champions-league": ["Arsenal", "Manchester City", "Real Madrid", "Barcelona", "Bayern Munich", "Paris Saint-Germain", "Inter Milan", "Borussia Dortmund"],
-        "NBA": ["Boston Celtics", "Los Angeles Lakers", "Golden State Warriors", "New York Knicks", "Chicago Bulls", "Dallas Mavericks", "Denver Nuggets", "Miami Heat"],
-        "NFL": ["Kansas City Chiefs", "Buffalo Bills", "Philadelphia Eagles", "San Francisco 49ers", "Dallas Cowboys", "Baltimore Ravens"],
-        "MLB": ["New York Yankees", "Los Angeles Dodgers", "Boston Red Sox", "Chicago Cubs", "Atlanta Braves", "Houston Astros"],
-        "NHL": ["New York Rangers", "Boston Bruins", "Toronto Maple Leafs", "Colorado Avalanche", "Edmonton Oilers", "Vegas Golden Knights"]
-    };
-    const values = teams[sportScoreSlug(leagueCode)] || teams[String(leagueCode || "").trim().toUpperCase()] || [];
     const model = [{ label: "No favorite team", value: "" }];
-    values.forEach(team => {
-        model.push({ label: team, value: team });
-    });
     return model;
+}
+
+function countryTeamOptions(provider, sport, countryCode) {
+    return [];
 }
 
 function requiresApiKey(provider) {
@@ -136,7 +119,7 @@ function requestList(provider, options, type) {
     const baseUrl = stripTrailingSlash(options.baseUrl || defaultBaseUrl(provider));
     const sport = firstSport(options.sports);
     const sportScoreSportValue = sportScoreSport(sport);
-    const league = String(options.league || "PL").trim().toUpperCase();
+    const league = String(options && options.league || "").trim();
 
     if (provider === "sportscore") {
         const slug = sportScoreSlug(league);

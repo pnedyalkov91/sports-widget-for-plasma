@@ -12,20 +12,22 @@ SportStepPage {
 
     property var configRoot
     property string leagueFilter: ""
+    readonly property bool pageActive: root.configRoot && root.configRoot.pageIndex === 2 && root.configRoot.cfg_type !== "team"
+    readonly property var displayedOptions: root.pageActive && root.configRoot ? root.configRoot.filtered(root.configRoot.leagueOptions(), root.leagueFilter) : []
 
     title: i18nc("@title:group", "League")
-    subtitle: root.configRoot ? i18nc("@info", "Pick the league or cup to follow for %1.", root.configRoot.countryLabel()) : ""
+    subtitle: root.configRoot ? root.configRoot.multiSelectEnabled ? i18nc("@info", "Pick one or more leagues/cups to follow for %1.", root.configRoot.countryLabel()) : i18nc("@info", "Pick the league or cup to follow for %1.", root.configRoot.countryLabel()) : ""
     filterText: root.leagueFilter
     filterPlaceholder: i18nc("@info:placeholder", "Search leagues")
     onFilterEdited: text => root.leagueFilter = text
 
     Repeater {
-        model: root.configRoot ? root.configRoot.filtered(root.configRoot.leagueOptions(), root.leagueFilter) : []
+        model: root.displayedOptions
 
         delegate: SportChoiceCard {
             title: modelData.label
             iconName: "view-calendar-list"
-            selected: root.configRoot && root.configRoot.cfg_league === modelData.value
+            selected: root.configRoot && root.configRoot.isLeagueSelected(modelData.value)
             onClicked: root.configRoot.selectLeague(modelData.value)
         }
     }

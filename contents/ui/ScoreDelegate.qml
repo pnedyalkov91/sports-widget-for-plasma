@@ -44,15 +44,28 @@ Rectangle {
     }
 
     function centerTimeText() {
-        if (root.minute.length > 0)
+        if (root.minute.length > 0 && !root.isLiveMatch())
             return root.minute;
 
         const timeText = root.startTime.length > 0 ? root.startTime : root.status === "Live" ? root.status : "";
+        const competitionText = root.league.trim();
+
+        if (root.matchday.length > 0 && competitionText.length > 0 && timeText.length > 0)
+            return root.matchday + " · " + competitionText + " · " + timeText;
 
         if (root.matchday.length > 0 && timeText.length > 0)
             return root.matchday + " · " + timeText;
 
-        return root.matchday.length > 0 ? root.matchday : timeText;
+        if (competitionText.length > 0 && timeText.length > 0)
+            return competitionText + " · " + timeText;
+
+        if (root.matchday.length > 0 && competitionText.length > 0)
+            return root.matchday + " · " + competitionText;
+
+        if (root.matchday.length > 0)
+            return root.matchday;
+
+        return competitionText.length > 0 ? competitionText : timeText;
     }
 
     function isLiveMatch() {
@@ -200,7 +213,7 @@ Rectangle {
                 color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
-                visible: !root.isLiveMatch()
+                visible: !root.isLiveMatch() || root.league.length > 0
                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
             }
 

@@ -18,7 +18,7 @@ Item {
     property int tableCount: 0
     property string tableErrorMessage: ""
     property bool tableLoading: false
-    property string league: "PL"
+    property string league: ""
     property string leagueLabel: ""
     property string sport: "football"
     property string favoriteTeam: ""

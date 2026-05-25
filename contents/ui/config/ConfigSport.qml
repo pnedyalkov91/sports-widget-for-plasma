@@ -16,8 +16,30 @@ KCM.SimpleKCM {
     id: root
 
     implicitHeight: Kirigami.Units.gridUnit * 22
+    readonly property bool wizardFirstStepActive: root.pageIndex === 1 && wizardLoader.item && wizardLoader.item.pageIndex === 0
+    verticalScrollBarPolicy: root.wizardFirstStepActive ? Qt.ScrollBarAlwaysOff : Qt.ScrollBarAsNeeded
+    horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
+    flickable.interactive: !root.wizardFirstStepActive
+    flickable.flickableDirection: root.wizardFirstStepActive ? Flickable.HorizontalFlick : Flickable.VerticalFlick
+
+    onWizardFirstStepActiveChanged: {
+        if (root.wizardFirstStepActive && flickable.contentY !== 0)
+            flickable.contentY = 0;
+    }
+
+    Connections {
+        target: root.flickable
+
+        function onContentYChanged() {
+            if (root.wizardFirstStepActive && root.flickable.contentY !== 0)
+                root.flickable.contentY = 0;
+        }
+    }
 
     property bool cfg_prioritizePopular: Plasmoid.configuration.prioritizePopular
+    property string cfg_provider: Plasmoid.configuration.provider
+    property string cfg_apiBaseUrl: Plasmoid.configuration.apiBaseUrl
+    property string cfg_apiKey: Plasmoid.configuration.apiKey
     property string cfg_selectedSports: Plasmoid.configuration.selectedSports
     property string cfg_country: Plasmoid.configuration.country
     property string cfg_league: Plasmoid.configuration.league
@@ -26,9 +48,51 @@ KCM.SimpleKCM {
     property bool cfg_defaultSelectionMigrated: Plasmoid.configuration.defaultSelectionMigrated
     property int cfg_selectionRevision: Plasmoid.configuration.selectionRevision
     property int cfg_activeSavedLeagueIndex: Plasmoid.configuration.activeSavedLeagueIndex
+    property int cfg_refreshInterval: Plasmoid.configuration.refreshInterval
+    property bool cfg_liveRefreshEnabled: Plasmoid.configuration.liveRefreshEnabled
+    property int cfg_liveRefreshInterval: Plasmoid.configuration.liveRefreshInterval
+    property string cfg_panelLayoutMode: Plasmoid.configuration.panelLayoutMode
+    property string cfg_panelAreaMode: Plasmoid.configuration.panelAreaMode
+    property int cfg_panelAreaSize: Plasmoid.configuration.panelAreaSize
+    property bool cfg_panelUseSystemFont: Plasmoid.configuration.panelUseSystemFont
+    property string cfg_panelFontFamily: Plasmoid.configuration.panelFontFamily
+    property int cfg_panelFontSize: Plasmoid.configuration.panelFontSize
+    property bool cfg_panelFontBold: Plasmoid.configuration.panelFontBold
+    property int cfg_panelEmblemSize: Plasmoid.configuration.panelEmblemSize
+    property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
+    property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
+    property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+
+    property string cfg_providerDefault: "sportscore"
+    property string cfg_apiBaseUrlDefault: "https://sportscore.com/api/widget"
+    property string cfg_apiKeyDefault: ""
+    property string cfg_selectedSportsDefault: ""
+    property string cfg_countryDefault: ""
+    property string cfg_leagueDefault: ""
+    property string cfg_favoriteTeamDefault: ""
+    property string cfg_savedLeaguesDefault: "[]"
+    property bool cfg_defaultSelectionMigratedDefault: false
+    property int cfg_selectionRevisionDefault: 0
+    property int cfg_activeSavedLeagueIndexDefault: 0
+    property int cfg_refreshIntervalDefault: 15
+    property bool cfg_liveRefreshEnabledDefault: true
+    property int cfg_liveRefreshIntervalDefault: 30
+    property string cfg_panelLayoutModeDefault: "teamsAndBadges"
+    property string cfg_panelAreaModeDefault: "auto"
+    property int cfg_panelAreaSizeDefault: 240
+    property bool cfg_panelUseSystemFontDefault: true
+    property string cfg_panelFontFamilyDefault: ""
+    property int cfg_panelFontSizeDefault: 0
+    property bool cfg_panelFontBoldDefault: false
+    property int cfg_panelEmblemSizeDefault: 0
+    property string cfg_matchDateFormatDefault: "dd.MM"
+    property string cfg_matchTimeFormatDefault: "HH:mm"
+    property string cfg_widgetTabsDefault: "all"
+    property bool cfg_prioritizePopularDefault: false
 
     readonly property string currentProvider: "sportscore"
     property string currentFollowMode: "league"
+    property string currentEntryType: "competition"
     property int pageIndex: 0
     property var wizardInitialEntry: ({})
     property int wizardEditingIndex: -1
@@ -123,13 +187,62 @@ KCM.SimpleKCM {
         return String(value || "").trim() === "team" && favorite.length > 0 ? "team" : "league";
     }
 
+    function optionValues(options) {
+        return (Array.isArray(options) ? options : []).map(option => String(option && option.value || "").trim().toLowerCase()).filter(value => value.length > 0);
+    }
+
+    function knownLeagueValues(sport, country) {
+        return root.optionValues(ProviderCatalog.leagueOptions(root.currentProvider, String(sport || "football").trim(), String(country || "").trim()));
+    }
+
+    function knownCountryTeamValues(sport, country) {
+        return root.optionValues(ProviderCatalog.countryTeamOptions(root.currentProvider, String(sport || "football").trim(), String(country || "").trim()));
+    }
+
+    function isLikelyLegacyTeamEntry(entry) {
+        entry = entry || {};
+        const league = String(entry.league || "").trim().toLowerCase();
+        const favoriteTeam = String(entry.favoriteTeam || "").trim();
+        const followMode = String(entry.followMode || "").trim();
+        if (league.length === 0 || favoriteTeam.length > 0 || followMode === "team")
+            return false;
+
+        const leagues = root.knownLeagueValues(entry.sport, entry.country);
+        if (leagues.indexOf(league) >= 0)
+            return false;
+
+        const teams = root.knownCountryTeamValues(entry.sport, entry.country);
+        return teams.indexOf(league) >= 0;
+    }
+
+    function entryType(entry) {
+        entry = entry || {};
+        const explicit = String(entry.type || "").trim();
+        const followMode = String(entry.followMode || "").trim();
+        const favoriteTeam = String(entry.favoriteTeam || "").trim();
+        const league = String(entry.league || "").trim();
+        const legacyLabel = String(entry.customLeagueLabel || entry.leagueLabel || "").trim();
+        const legacyStarredLabel = /^[★*]\s*/.test(legacyLabel);
+        const looksLikeTeam = followMode === "team" || legacyStarredLabel || (favoriteTeam.length > 0 && league.length === 0) || root.isLikelyLegacyTeamEntry(entry);
+        if (explicit === "team")
+            return "team";
+        if (explicit === "competition")
+            return looksLikeTeam ? "team" : "competition";
+
+        return looksLikeTeam ? "team" : "competition";
+    }
+
     function followModeLabel(entry) {
-        return root.normalizedFollowMode(entry && entry.followMode, entry && entry.favoriteTeam) === "team" ? i18nc("@label", "Team · All competitions") : i18nc("@label", "League");
+        return root.entryType(entry) === "team" ? i18nc("@label", "Team · All competitions") : i18nc("@label", "Competition");
     }
 
     function displayLeagueLabel(entry) {
         entry = entry || {};
         return String(entry.customLeagueLabel || entry.leagueLabel || ProviderCatalog.leagueLabel(entry.league) || entry.league || "").trim();
+    }
+
+    function stripLegacyTeamPrefix(value) {
+        return String(value || "").replace(/^[★*]\s*/, "").trim();
     }
 
     function displayCountryLabel(entry) {
@@ -139,14 +252,14 @@ KCM.SimpleKCM {
 
     function displayFavoriteTeam(entry) {
         entry = entry || {};
-        return String(entry.customFavoriteTeamLabel || entry.favoriteTeam || "").trim();
+        return root.stripLegacyTeamPrefix(entry.customFavoriteTeamLabel || entry.favoriteTeam || "");
     }
 
     function displaySavedTitle(entry) {
         entry = entry || {};
-        if (root.normalizedFollowMode(entry.followMode, entry.favoriteTeam) === "team") {
+        if (root.entryType(entry) === "team") {
             const favorite = root.displayFavoriteTeam(entry);
-            return favorite.length > 0 ? favorite : root.displayLeagueLabel(entry);
+            return favorite.length > 0 ? favorite : root.stripLegacyTeamPrefix(root.displayLeagueLabel(entry));
         }
 
         return root.displayLeagueLabel(entry);
@@ -169,6 +282,7 @@ KCM.SimpleKCM {
         root.cfg_league = leagues.length > 0 ? leagues[0].value : "";
         root.cfg_favoriteTeam = "";
         root.currentFollowMode = "league";
+        root.currentEntryType = "competition";
     }
 
     function selectCountry(value) {
@@ -177,25 +291,43 @@ KCM.SimpleKCM {
         root.cfg_league = leagues.length > 0 ? leagues[0].value : "";
         root.cfg_favoriteTeam = "";
         root.currentFollowMode = "league";
+        root.currentEntryType = "competition";
     }
 
     function selectLeague(value) {
         root.cfg_league = value;
         root.cfg_favoriteTeam = "";
         root.currentFollowMode = "league";
+        root.currentEntryType = "competition";
     }
 
     function savedLeagues() {
         try {
             const parsed = JSON.parse(root.cfg_savedLeagues || "[]");
-            return Array.isArray(parsed) ? parsed : [];
+            return Array.isArray(parsed) ? parsed.map(entry => root.normalizedSavedEntry(entry)) : [];
         } catch (error) {
             return [];
         }
     }
 
+    function normalizedSavedEntry(entry) {
+        const copy = Object.assign({}, entry || {});
+        copy.type = root.entryType(copy);
+        copy.followMode = copy.type === "team" ? "team" : "league";
+        if (copy.type === "team") {
+            copy.favoriteTeam = root.stripLegacyTeamPrefix(copy.customFavoriteTeamLabel || copy.favoriteTeam || copy.customLeagueLabel || copy.leagueLabel || copy.league || "");
+            copy.league = "";
+            copy.leagueLabel = i18nc("@label", "All competitions");
+        } else {
+            copy.favoriteTeam = String(copy.favoriteTeam || "").trim();
+        }
+        delete copy.starred;
+        return copy;
+    }
+
     function saveLeagues(items) {
-        root.cfg_savedLeagues = JSON.stringify(items);
+        const normalizedItems = Array.isArray(items) ? items.map(entry => root.normalizedSavedEntry(entry)) : [];
+        root.cfg_savedLeagues = JSON.stringify(normalizedItems);
     }
 
     function currentEntry() {
@@ -204,27 +336,41 @@ KCM.SimpleKCM {
             country: root.cfg_country || ProviderCatalog.defaultCountry(root.currentProvider, root.normalizedSport()),
             countryLabel: root.countryLabel(),
             countryIcon: root.countryIcon(root.cfg_country),
-            league: root.cfg_league || "",
-            leagueLabel: root.leagueLabel(),
-            favoriteTeam: root.cfg_favoriteTeam || "",
-            followMode: root.normalizedFollowMode(root.currentFollowMode, root.cfg_favoriteTeam)
+            league: root.currentEntryType === "team" ? "" : root.cfg_league || "",
+            leagueLabel: root.currentEntryType === "team" ? i18nc("@label", "All competitions") : root.leagueLabel(),
+            favoriteTeam: root.currentEntryType === "team" ? root.cfg_favoriteTeam || "" : "",
+            followMode: root.currentEntryType === "team" ? "team" : "league",
+            type: root.currentEntryType === "team" ? "team" : "competition"
         };
     }
 
     function sameEntry(left, right) {
+        const leftType = root.entryType(left);
+        const rightType = root.entryType(right);
         return String(left.sport || "") === String(right.sport || "")
             && String(left.country || "") === String(right.country || "")
-            && String(left.league || "") === String(right.league || "")
+            && ((leftType === "team" && rightType === "team") || String(left.league || "") === String(right.league || ""))
             && String(left.favoriteTeam || "") === String(right.favoriteTeam || "")
-            && root.normalizedFollowMode(left.followMode, left.favoriteTeam) === root.normalizedFollowMode(right.followMode, right.favoriteTeam);
+            && leftType === rightType;
     }
 
     function saveOrReplaceLeague(entry, replaceIndex) {
-        if (entry.league.length === 0)
+        if (root.entryType(entry) === "competition" && String(entry.league || "").length === 0)
+            return -1;
+        if (root.entryType(entry) === "team" && String(entry.favoriteTeam || "").trim().length === 0)
             return -1;
 
         const saved = root.savedLeagues();
-        const copy = Object.assign({}, entry);
+        const copy = root.normalizedSavedEntry(entry);
+        copy.type = root.entryType(copy);
+        copy.followMode = copy.type === "team" ? "team" : "league";
+        if (copy.type === "team") {
+            copy.league = "";
+            copy.leagueLabel = i18nc("@label", "All competitions");
+        } else {
+            copy.favoriteTeam = "";
+        }
+        delete copy.starred;
 
         let targetIndex = replaceIndex;
         if (targetIndex < 0 || targetIndex >= saved.length) {
@@ -255,7 +401,8 @@ KCM.SimpleKCM {
         root.cfg_country = entry.country || ProviderCatalog.defaultCountry(root.currentProvider, root.cfg_selectedSports);
         root.cfg_league = entry.league || "";
         root.cfg_favoriteTeam = entry.favoriteTeam || "";
-        root.currentFollowMode = root.normalizedFollowMode(entry.followMode, entry.favoriteTeam);
+        root.currentEntryType = root.entryType(entry);
+        root.currentFollowMode = root.currentEntryType === "team" ? "team" : "league";
         if (index !== undefined && index >= 0)
             root.cfg_activeSavedLeagueIndex = index;
     }
@@ -274,6 +421,7 @@ KCM.SimpleKCM {
             root.cfg_league = "";
             root.cfg_favoriteTeam = "";
             root.currentFollowMode = "league";
+            root.currentEntryType = "competition";
             return;
         }
 
@@ -282,27 +430,46 @@ KCM.SimpleKCM {
         root.applySavedLeague(saved[nextIndex], nextIndex);
     }
 
-    function finishWizard(entry) {
+    function finishWizard(entryList) {
+        const entries = Array.isArray(entryList) ? entryList : [entryList];
+        if (entries.length === 0)
+            return;
+
         if (root.wizardEditingIndex >= 0) {
             const saved = root.savedLeagues();
             const previous = saved[root.wizardEditingIndex] || {};
-            entry = Object.assign({}, previous, entry);
+            const merged = Object.assign({}, previous, entries[0] || {});
+            root.saveOrReplaceLeague(merged, root.wizardEditingIndex);
+        } else {
+            entries.forEach(entry => {
+                root.saveOrReplaceLeague(entry, -1);
+            });
         }
-        root.saveOrReplaceLeague(entry, root.wizardEditingIndex);
+
         root.cfg_selectionRevision += 1;
         root.pageIndex = 0;
     }
 
-    function openAddSportWizard() {
+    function openAddSportWizard(type) {
+        const normalizedType = String(type || "competition").trim() === "team" ? "team" : "competition";
         root.wizardInitialEntry = {
+            type: normalizedType,
             sport: "",
             country: "",
             league: "",
             favoriteTeam: "",
-            followMode: "league"
+            followMode: normalizedType === "team" ? "team" : "league"
         };
         root.wizardEditingIndex = -1;
         root.pageIndex = 1;
+    }
+
+    function openAddCompetitionWizard() {
+        root.openAddSportWizard("competition");
+    }
+
+    function openAddTeamWizard() {
+        root.openAddSportWizard("team");
     }
 
     function openEditSavedLeague(entry, index) {
@@ -344,7 +511,8 @@ KCM.SimpleKCM {
         if (saved.length > 0) {
             const index = Math.max(0, Math.min(root.cfg_activeSavedLeagueIndex, saved.length - 1));
             const active = saved[index] || {};
-            root.currentFollowMode = root.normalizedFollowMode(active.followMode, active.favoriteTeam);
+            root.currentEntryType = root.entryType(active);
+            root.currentFollowMode = root.currentEntryType === "team" ? "team" : "league";
         }
     }
 
@@ -370,7 +538,8 @@ KCM.SimpleKCM {
             SavedLeaguesList {
                 Layout.fillWidth: true
                 configRoot: root
-                onAddSportRequested: root.openAddSportWizard()
+                onAddCompetitionRequested: root.openAddCompetitionWizard()
+                onAddTeamRequested: root.openAddTeamWizard()
             }
 
             Item {
@@ -379,6 +548,8 @@ KCM.SimpleKCM {
         }
 
         Loader {
+            id: wizardLoader
+
             Layout.fillWidth: true
             Layout.fillHeight: true
             active: root.pageIndex === 1

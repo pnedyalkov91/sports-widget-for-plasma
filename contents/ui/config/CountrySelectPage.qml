@@ -12,6 +12,8 @@ SportStepPage {
 
     property var configRoot
     property string countryFilter: ""
+    readonly property bool pageActive: root.configRoot && root.configRoot.pageIndex === 1
+    readonly property var displayedOptions: root.pageActive && root.configRoot ? root.configRoot.filtered(root.configRoot.countryOptions(), root.countryFilter) : []
 
     title: i18nc("@title:group", "Country")
     subtitle: i18nc("@info", "Only one country can be active for the selected sport.")
@@ -20,7 +22,7 @@ SportStepPage {
     onFilterEdited: text => root.countryFilter = text
 
     Repeater {
-        model: root.configRoot ? root.configRoot.filtered(root.configRoot.countryOptions(), root.countryFilter) : []
+        model: root.displayedOptions
 
         delegate: SportChoiceCard {
             title: modelData.label

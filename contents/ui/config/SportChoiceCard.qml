@@ -19,6 +19,13 @@ ItemDelegate {
     property string infoText: ""
     property string cardToolTipText: root.title
     property bool selected: false
+    readonly property bool remoteIconSource: {
+        const source = root.iconSource.toString();
+        return source.indexOf("http://") === 0 || source.indexOf("https://") === 0;
+    }
+    readonly property color safeHighlightColor: root.themeColorOr(Kirigami.Theme.highlightColor, Qt.rgba(0.25, 0.5, 0.95, 1))
+    readonly property color safeAlternateColor: root.themeColorOr(Kirigami.Theme.alternateBackgroundColor, Qt.rgba(0.16, 0.16, 0.16, 1))
+    readonly property color safeSeparatorColor: root.themeColorOr(Kirigami.Theme.separatorColor, Qt.rgba(0.5, 0.5, 0.5, 0.35))
 
     Layout.fillWidth: true
     Layout.minimumWidth: 0
@@ -30,8 +37,8 @@ ItemDelegate {
 
     background: Rectangle {
         radius: 6
-        color: root.selected ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.22) : root.hovered ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.10) : Kirigami.Theme.alternateBackgroundColor
-        border.color: root.selected ? Kirigami.Theme.highlightColor : Kirigami.Theme.separatorColor
+        color: root.selected ? Qt.rgba(root.safeHighlightColor.r, root.safeHighlightColor.g, root.safeHighlightColor.b, 0.22) : root.hovered ? Qt.rgba(root.safeHighlightColor.r, root.safeHighlightColor.g, root.safeHighlightColor.b, 0.10) : root.safeAlternateColor
+        border.color: root.selected ? root.safeHighlightColor : root.safeSeparatorColor
         border.width: 1
     }
 
@@ -43,12 +50,23 @@ ItemDelegate {
             sourceUrl: root.flagSource
         }
 
+        Image {
+            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+            Layout.preferredHeight: Layout.preferredWidth
+            visible: root.flagSource.length === 0 && root.remoteIconSource
+            source: root.iconSource
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            sourceSize.width: width
+            sourceSize.height: height
+        }
+
         Kirigami.Icon {
             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
             Layout.preferredHeight: Layout.preferredWidth
-            visible: root.flagSource.length === 0
+            visible: root.flagSource.length === 0 && !root.remoteIconSource
             source: root.iconSource.toString().length > 0 ? root.iconSource : root.iconName
-            isMask: root.iconSource.toString().length > 0
+            isMask: root.iconSource.toString().length > 0 && !root.remoteIconSource
             color: root.selected ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
         }
 
@@ -110,5 +128,11 @@ ItemDelegate {
             text: root.infoText
             wrapMode: Text.WordWrap
         }
+    }
+
+    function themeColorOr(color, fallback) {
+        if (!color || color.r === undefined || color.g === undefined || color.b === undefined)
+            return fallback;
+        return color;
     }
 }

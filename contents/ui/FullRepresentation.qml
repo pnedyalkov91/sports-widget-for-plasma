@@ -29,7 +29,7 @@ Item {
     property string sourceText: ""
     property string primaryText: ""
     property string secondaryText: ""
-    property string league: "PL"
+    property string league: ""
     property string favoriteTeam: ""
     property string sport: "football"
     property bool hasSavedLeagues: true
@@ -189,13 +189,54 @@ Item {
         }
     }
 
+    function stripLegacyTeamPrefix(value) {
+        return String(value || "").replace(/^[★*]\s*/, "").trim();
+    }
+
     function savedLeagueMenuText(entry) {
         entry = entry || {};
-        const league = String(entry.customLeagueLabel || entry.leagueLabel || entry.league || "").trim();
+        const league = root.savedEntryType(entry) === "team"
+            ? root.stripLegacyTeamPrefix(entry.customFavoriteTeamLabel || entry.favoriteTeam || entry.customLeagueLabel || entry.leagueLabel || entry.league || "")
+            : String(entry.customLeagueLabel || entry.leagueLabel || entry.league || "").trim();
         const country = String(entry.customCountryLabel || entry.countryLabel || entry.country || "").trim();
         const sport = SportVisuals.label(entry.sport);
         const meta = [sport, country].filter(part => String(part || "").length > 0).join(" · ");
         return meta.length > 0 ? league + " - " + meta : league;
+    }
+
+    function savedEntryType(entry) {
+        entry = entry || {};
+        const explicit = String(entry.type || "").trim();
+        const followMode = String(entry.followMode || "").trim();
+        const favoriteTeam = String(entry.favoriteTeam || "").trim();
+        const league = String(entry.league || "").trim();
+        const legacyLabel = String(entry.customLeagueLabel || entry.leagueLabel || "").trim();
+        const legacyStarredLabel = /^[★*]\s*/.test(legacyLabel);
+        const looksLikeTeam = followMode === "team" || legacyStarredLabel || (favoriteTeam.length > 0 && league.length === 0);
+        if (explicit === "team")
+            return "team";
+        if (explicit === "competition")
+            return looksLikeTeam ? "team" : "competition";
+
+        return looksLikeTeam ? "team" : "competition";
+    }
+
+    function savedEntriesOfType(type) {
+        let entries = [];
+        const saved = Array.isArray(root.savedLeagues) ? root.savedLeagues : [];
+        saved.forEach((entry, index) => {
+            if (root.savedEntryType(entry) === type) {
+                entries.push({
+                    entry,
+                    sourceIndex: index
+                });
+            }
+        });
+        return entries;
+    }
+
+    function savedEntryTypeCount(type) {
+        return root.savedEntriesOfType(type).length;
     }
 
     function selectedTableLabel() {
@@ -310,35 +351,8 @@ Item {
                     font.bold: true
                 }
 
-                Button {
-                    id: headerTableChooser
-
-                    Layout.maximumWidth: Kirigami.Units.gridUnit * 12
-                    visible: root.followTeamMode && Array.isArray(root.teamTableOptions) && root.teamTableOptions.length > 1
-                    text: root.selectedTableLabel()
-                    icon.name: "go-down"
-                    onClicked: headerTableMenu.open()
-
-                    Menu {
-                        id: headerTableMenu
-
-                        y: headerTableChooser.height
-
-                        Repeater {
-                            model: root.teamTableOptions
-
-                            delegate: MenuItem {
-                                required property var modelData
-
-                                readonly property string optionSlug: String(modelData && modelData.slug || "").trim()
-
-                                text: String(modelData && modelData.label || "")
-                                checkable: true
-                                checked: optionSlug === String(root.selectedTableSlug || "").trim()
-                                onTriggered: root.teamTableSelected(optionSlug)
-                            }
-                        }
-                    }
+                Item {
+                    visible: false
                 }
 
                 ToolButton {
@@ -346,10 +360,10 @@ Item {
 
                     icon.name: "go-down"
                     display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Switch saved league")
+                    text: i18nc("@action:button", "Switch saved sport")
                     visible: root.savedLeagueCount > 1
                     ToolTip.visible: hovered
-                    ToolTip.text: i18nc("@info:tooltip", "Switch saved league")
+                    ToolTip.text: i18nc("@info:tooltip", "Switch saved sport")
                     onClicked: savedLeagueMenu.open()
 
                     Menu {
@@ -357,17 +371,45 @@ Item {
 
                         y: savedLeagueSwitcher.height
 
+                        MenuItem {
+                            text: i18nc("@title:menu", "Saved Competitions")
+                            enabled: false
+                            visible: root.savedEntryTypeCount("competition") > 0
+                        }
+
                         Repeater {
-                            model: root.savedLeagues
+                            model: root.savedEntriesOfType("competition")
 
                             delegate: MenuItem {
                                 required property var modelData
-                                required property int index
 
-                                text: root.savedLeagueMenuText(modelData)
+                                text: root.savedLeagueMenuText(modelData.entry)
                                 checkable: true
-                                checked: index === root.activeSavedLeagueIndex
-                                onTriggered: root.leagueSelected(index)
+                                checked: modelData.sourceIndex === root.activeSavedLeagueIndex
+                                onTriggered: root.leagueSelected(modelData.sourceIndex)
+                            }
+                        }
+
+                        MenuSeparator {
+                            visible: root.savedEntryTypeCount("competition") > 0 && root.savedEntryTypeCount("team") > 0
+                        }
+
+                        MenuItem {
+                            text: i18nc("@title:menu", "Saved Teams")
+                            enabled: false
+                            visible: root.savedEntryTypeCount("team") > 0
+                        }
+
+                        Repeater {
+                            model: root.savedEntriesOfType("team")
+
+                            delegate: MenuItem {
+                                required property var modelData
+
+                                text: root.savedLeagueMenuText(modelData.entry)
+                                checkable: true
+                                checked: modelData.sourceIndex === root.activeSavedLeagueIndex
+                                onTriggered: root.leagueSelected(modelData.sourceIndex)
                             }
                         }
                     }

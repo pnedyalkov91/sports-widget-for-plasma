@@ -20,6 +20,55 @@ KCM.SimpleKCM {
     property alias cfg_liveRefreshEnabled: liveRefreshEnabled.checked
     property alias cfg_liveRefreshInterval: liveRefreshInterval.value
     property string cfg_provider: Plasmoid.configuration.provider
+    // Keep all cfg_* keys available on every KCM page to avoid
+    // "Setting initial properties failed" warnings from KConfigDialogManager.
+    property string cfg_selectedSports: Plasmoid.configuration.selectedSports
+    property string cfg_country: Plasmoid.configuration.country
+    property string cfg_league: Plasmoid.configuration.league
+    property string cfg_favoriteTeam: Plasmoid.configuration.favoriteTeam
+    property string cfg_savedLeagues: Plasmoid.configuration.savedLeagues
+    property bool cfg_defaultSelectionMigrated: Plasmoid.configuration.defaultSelectionMigrated
+    property int cfg_selectionRevision: Plasmoid.configuration.selectionRevision
+    property int cfg_activeSavedLeagueIndex: Plasmoid.configuration.activeSavedLeagueIndex
+    property string cfg_panelLayoutMode: Plasmoid.configuration.panelLayoutMode
+    property string cfg_panelAreaMode: Plasmoid.configuration.panelAreaMode
+    property int cfg_panelAreaSize: Plasmoid.configuration.panelAreaSize
+    property bool cfg_panelUseSystemFont: Plasmoid.configuration.panelUseSystemFont
+    property string cfg_panelFontFamily: Plasmoid.configuration.panelFontFamily
+    property int cfg_panelFontSize: Plasmoid.configuration.panelFontSize
+    property bool cfg_panelFontBold: Plasmoid.configuration.panelFontBold
+    property int cfg_panelEmblemSize: Plasmoid.configuration.panelEmblemSize
+    property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
+    property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
+    property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+    property bool cfg_prioritizePopular: Plasmoid.configuration.prioritizePopular
+
+    property string cfg_providerDefault: "sportscore"
+    property string cfg_apiBaseUrlDefault: "https://sportscore.com/api/widget"
+    property string cfg_apiKeyDefault: ""
+    property string cfg_selectedSportsDefault: ""
+    property string cfg_countryDefault: ""
+    property string cfg_leagueDefault: ""
+    property string cfg_favoriteTeamDefault: ""
+    property string cfg_savedLeaguesDefault: "[]"
+    property bool cfg_defaultSelectionMigratedDefault: false
+    property int cfg_selectionRevisionDefault: 0
+    property int cfg_activeSavedLeagueIndexDefault: 0
+    property int cfg_refreshIntervalDefault: 15
+    property bool cfg_liveRefreshEnabledDefault: true
+    property int cfg_liveRefreshIntervalDefault: 30
+    property string cfg_panelLayoutModeDefault: "teamsAndBadges"
+    property string cfg_panelAreaModeDefault: "auto"
+    property int cfg_panelAreaSizeDefault: 240
+    property bool cfg_panelUseSystemFontDefault: true
+    property string cfg_panelFontFamilyDefault: ""
+    property int cfg_panelFontSizeDefault: 0
+    property bool cfg_panelFontBoldDefault: false
+    property int cfg_panelEmblemSizeDefault: 0
+    property string cfg_matchDateFormatDefault: "dd.MM"
+    property string cfg_matchTimeFormatDefault: "HH:mm"
+    property string cfg_widgetTabsDefault: "all"
+    property bool cfg_prioritizePopularDefault: false
 
     function indexFor(model, value) {
         for (let index = 0; index < model.length; index += 1) {

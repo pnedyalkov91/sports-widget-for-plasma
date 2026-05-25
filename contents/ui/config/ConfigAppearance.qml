@@ -24,6 +24,8 @@ KCM.SimpleKCM {
     property int cfg_panelFontSize: Plasmoid.configuration.panelFontSize
     property bool cfg_panelFontBold: Plasmoid.configuration.panelFontBold
     property int cfg_panelEmblemSize: Plasmoid.configuration.panelEmblemSize
+    property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
+    property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
     readonly property bool isVerticalPanel: Plasmoid.formFactor === PlasmaCore.Types.Vertical
 
@@ -73,6 +75,7 @@ KCM.SimpleKCM {
         }
 
         AppearanceTabs.AppearanceMiscTab {
+            configRoot: root
             Layout.fillWidth: true
             Layout.fillHeight: true
         }

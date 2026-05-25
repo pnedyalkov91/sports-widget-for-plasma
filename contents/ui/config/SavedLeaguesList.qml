@@ -4,6 +4,7 @@
 */
 
 import "../../code/SportVisuals.js" as SportVisuals
+import "../../code/SportsApi.js" as SportsApi
 import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
 import QtQuick
 import QtQuick.Controls
@@ -16,10 +17,11 @@ ColumnLayout {
     property var configRoot
     property int renameIndex: -1
     property int deleteIndex: -1
+    property string renameType: "competition"
+    signal addCompetitionRequested()
+    signal addTeamRequested()
 
-    signal addSportRequested()
-
-    spacing: Kirigami.Units.smallSpacing
+    spacing: Kirigami.Units.largeSpacing
 
     function parseEntry(entryJson) {
         try {
@@ -30,23 +32,155 @@ ColumnLayout {
         }
     }
 
-    function rebuildModel() {
-        savedLeagueModel.clear();
-        const saved = root.configRoot ? root.configRoot.savedLeagues() : [];
-        saved.forEach(entry => {
-            const safeEntry = Object.assign({}, entry || {});
-            const parts = [SportVisuals.label(safeEntry.sport), root.configRoot.displayCountryLabel(safeEntry), root.configRoot.followModeLabel(safeEntry)];
-            const favorite = root.configRoot.displayFavoriteTeam(safeEntry);
-            if (favorite.length > 0 && root.configRoot.normalizedFollowMode(safeEntry.followMode, safeEntry.favoriteTeam) !== "team")
-                parts.push(i18nc("@label", "Favorite: %1", favorite));
+    function entryType(entry) {
+        return root.configRoot ? root.configRoot.entryType(entry) : "competition";
+    }
 
-            savedLeagueModel.append({
-                entryJson: JSON.stringify(safeEntry),
-                leagueLabel: root.configRoot.displaySavedTitle(safeEntry),
-                metaLabel: parts.filter(part => String(part || "").length > 0).join(" · "),
-                countryIcon: safeEntry.countryIcon || root.configRoot.countryIconForEntry(safeEntry)
-            });
+    function appendEntry(model, entry, sourceIndex) {
+        const safeEntry = Object.assign({}, entry || {});
+        const type = root.entryType(safeEntry);
+        const teamBadge = String(safeEntry.teamBadge || safeEntry.crest || "").trim();
+        const parts = [SportVisuals.label(safeEntry.sport), root.configRoot.displayCountryLabel(safeEntry)];
+        if (type === "team") {
+            parts.push(i18nc("@label", "Team"));
+            parts.push(i18nc("@label", "All competitions"));
+        } else {
+            parts.push(i18nc("@label", "Competition"));
+            const favorite = root.configRoot.displayFavoriteTeam(safeEntry);
+            if (favorite.length > 0)
+                parts.push(i18nc("@label", "Highlight: %1", favorite));
+        }
+
+        model.append({
+            entryJson: JSON.stringify(safeEntry),
+            sourceIndex,
+            entryType: type,
+            titleLabel: root.configRoot.displaySavedTitle(safeEntry),
+            metaLabel: parts.filter(part => String(part || "").length > 0).join(" · "),
+            countryIcon: safeEntry.countryIcon || root.configRoot.countryIconForEntry(safeEntry),
+            teamBadge
         });
+
+        if (type === "team" && teamBadge.length === 0)
+            root.fetchTeamBadge(model, safeEntry, sourceIndex);
+    }
+
+    function setModelTeamBadge(model, sourceIndex, badge) {
+        badge = String(badge || "").trim();
+        if (badge.length === 0)
+            return;
+
+        for (let index = 0; index < model.count; index += 1) {
+            if (model.get(index).sourceIndex === sourceIndex) {
+                model.setProperty(index, "teamBadge", badge);
+                if (root.configRoot) {
+                    const saved = root.configRoot.savedLeagues();
+                    if (sourceIndex >= 0 && sourceIndex < saved.length) {
+                        if (String(saved[sourceIndex].teamBadge || "").trim() !== badge) {
+                            saved[sourceIndex].teamBadge = badge;
+                            root.configRoot.saveLeagues(saved);
+                        }
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    function fetchTeamBadgeFromCountryLeagues(model, entry, sourceIndex) {
+        if (!root.configRoot)
+            return;
+
+        const favoriteTeam = String(entry.favoriteTeam || "").trim();
+        if (favoriteTeam.length === 0)
+            return;
+
+        const leagues = ProviderCatalog.leagueOptions(root.configRoot.currentProvider, entry.sport || "football", entry.country || "");
+        if (!Array.isArray(leagues) || leagues.length === 0)
+            return;
+
+        const maxLookups = Math.min(6, leagues.length);
+        let leagueIndex = 0;
+
+        function lookupNextLeague() {
+            if (leagueIndex >= maxLookups)
+                return;
+
+            const leagueValue = String(leagues[leagueIndex] && leagues[leagueIndex].value || "").trim();
+            leagueIndex += 1;
+            if (leagueValue.length === 0) {
+                lookupNextLeague();
+                return;
+            }
+
+            SportsApi.fetchLeagueTable({
+                "sports": entry.sport || "football",
+                "country": entry.country || "",
+                "league": leagueValue,
+                "favoriteTeam": favoriteTeam,
+                "followMode": "league"
+            }, rows => {
+                const tableRows = Array.isArray(rows) ? rows : [];
+                for (let rowIndex = 0; rowIndex < tableRows.length; rowIndex += 1) {
+                    const row = tableRows[rowIndex] || {};
+                    if (SportsApi.sameTeamName(row.team, favoriteTeam)) {
+                        const crest = String(row.crest || row.team_logo || "").trim();
+                        if (crest.length > 0) {
+                            root.setModelTeamBadge(model, sourceIndex, crest);
+                            return;
+                        }
+                    }
+                }
+
+                lookupNextLeague();
+            }, () => {
+                lookupNextLeague();
+            });
+        }
+
+        lookupNextLeague();
+    }
+
+    function fetchTeamBadge(model, entry, sourceIndex) {
+        SportsApi.fetchTeamBadge({
+            "sports": entry.sport || "football",
+            "country": entry.country || "",
+            "favoriteTeam": entry.favoriteTeam || "",
+            "teamSlug": entry.teamSlug || ""
+        }, badge => {
+            badge = String(badge || "").trim();
+            if (badge.length > 0) {
+                root.setModelTeamBadge(model, sourceIndex, badge);
+                return;
+            }
+
+            root.fetchTeamBadgeFromCountryLeagues(model, entry, sourceIndex);
+        }, () => {
+            root.fetchTeamBadgeFromCountryLeagues(model, entry, sourceIndex);
+        });
+    }
+
+    function rebuildModel() {
+        competitionModel.clear();
+        teamModel.clear();
+        if (!root.configRoot)
+            return;
+
+        const saved = root.configRoot.savedLeagues();
+        saved.forEach((entry, index) => {
+            if (root.entryType(entry) === "team") {
+                root.appendEntry(teamModel, entry, index);
+            } else {
+                root.appendEntry(competitionModel, entry, index);
+            }
+        });
+    }
+
+    function modelEntries(model) {
+        let entries = [];
+        for (let index = 0; index < model.count; index += 1)
+            entries.push(root.parseEntry(model.get(index).entryJson));
+        return entries;
     }
 
     function applyModelOrder() {
@@ -55,11 +189,9 @@ ColumnLayout {
 
         const previousSaved = root.configRoot.savedLeagues();
         const previousActive = previousSaved[root.configRoot.cfg_activeSavedLeagueIndex] || null;
-        let reordered = [];
-        for (let index = 0; index < savedLeagueModel.count; index += 1)
-            reordered.push(root.parseEntry(savedLeagueModel.get(index).entryJson));
-
+        const reordered = root.modelEntries(competitionModel).concat(root.modelEntries(teamModel));
         root.configRoot.saveLeagues(reordered);
+
         if (!previousActive)
             return;
 
@@ -73,6 +205,7 @@ ColumnLayout {
 
     function openRenameDialog(index, entry) {
         root.renameIndex = index;
+        root.renameType = root.entryType(entry);
         leagueNameField.text = root.configRoot.displayLeagueLabel(entry);
         countryNameField.text = root.configRoot.displayCountryLabel(entry);
         favoriteNameField.text = root.configRoot.displayFavoriteTeam(entry);
@@ -105,180 +238,36 @@ ColumnLayout {
     }
 
     ListModel {
-        id: savedLeagueModel
+        id: competitionModel
     }
 
-    RowLayout {
-        Layout.fillWidth: true
-        spacing: Kirigami.Units.smallSpacing
-
-        Kirigami.Heading {
-            text: i18nc("@title:group", "Saved Sports")
-            level: 4
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: Kirigami.Theme.separatorColor
-            opacity: 0.6
-        }
-
-        Button {
-            icon.name: "list-add"
-            text: i18nc("@action:button", "Add Sport")
-            onClicked: root.addSportRequested()
-        }
+    ListModel {
+        id: teamModel
     }
 
-    Label {
+    SavedSection {
         Layout.fillWidth: true
-        visible: root.configRoot && root.configRoot.savedLeagues().length === 0
-        text: i18nc("@info", "Save leagues or teams here to switch quickly between sports views.")
-        color: Kirigami.Theme.disabledTextColor
-        wrapMode: Text.WordWrap
+        title: i18nc("@title:group", "Saved Competitions")
+        addText: i18nc("@action:button", "Add Competition")
+        emptyText: i18nc("@info", "Save tournaments, leagues or cups here.")
+        listModel: competitionModel
+        onAddRequested: root.addCompetitionRequested()
     }
 
-    ListView {
-        id: savedLeagueList
-
+    SavedSection {
         Layout.fillWidth: true
-        Layout.preferredHeight: contentHeight
-        interactive: false
-        reuseItems: false
-        clip: false
-        spacing: Kirigami.Units.smallSpacing
-        model: savedLeagueModel
-
-        moveDisplaced: Transition {
-            NumberAnimation {
-                properties: "y"
-                duration: 120
-                easing.type: Easing.OutQuad
-            }
-        }
-        displaced: Transition {
-            NumberAnimation {
-                properties: "y"
-                duration: 120
-                easing.type: Easing.OutQuad
-            }
-        }
-
-        delegate: Item {
-            id: savedDelegateRoot
-
-            required property int index
-            required property string entryJson
-            required property string leagueLabel
-            required property string metaLabel
-            required property string countryIcon
-
-            width: savedLeagueList.width
-            implicitHeight: savedDelegate.implicitHeight
-
-            readonly property var entryData: root.parseEntry(entryJson)
-            readonly property bool active: root.configRoot && root.configRoot.sameEntry(entryData, root.configRoot.currentEntry())
-
-            ItemDelegate {
-                id: savedDelegate
-
-                width: parent.width
-                implicitHeight: Math.max(Kirigami.Units.gridUnit * 2.6, savedContent.implicitHeight + Kirigami.Units.smallSpacing * 2)
-                topPadding: Kirigami.Units.smallSpacing
-                bottomPadding: Kirigami.Units.smallSpacing
-                leftPadding: Kirigami.Units.smallSpacing
-                rightPadding: Kirigami.Units.smallSpacing
-                hoverEnabled: true
-                down: false
-                onClicked: root.configRoot.applySavedLeague(savedDelegateRoot.entryData, savedDelegateRoot.index)
-
-                background: Rectangle {
-                    radius: 4
-                    color: savedDelegateRoot.active ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.24) : savedDelegate.hovered ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.10) : "transparent"
-                    border.color: savedDelegateRoot.active ? Kirigami.Theme.highlightColor : Kirigami.Theme.separatorColor
-                    border.width: savedDelegateRoot.active ? 1 : 0
-                }
-
-                contentItem: RowLayout {
-                    id: savedContent
-
-                    spacing: Kirigami.Units.smallSpacing
-
-                    Kirigami.ListItemDragHandle {
-                        Layout.alignment: Qt.AlignVCenter
-                        listItem: savedDelegate
-                        listView: savedLeagueList
-                        onMoveRequested: function(oldIndex, newIndex) {
-                            if (oldIndex !== newIndex)
-                                savedLeagueModel.move(oldIndex, newIndex, 1);
-                        }
-                        onDropped: root.applyModelOrder()
-                    }
-
-                    CountryFlag {
-                        Layout.alignment: Qt.AlignVCenter
-                        sourceUrl: savedDelegateRoot.countryIcon
-                    }
-
-                    ColumnLayout {
-                        Layout.alignment: Qt.AlignVCenter
-                        Layout.fillWidth: true
-                        spacing: 0
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: savedDelegateRoot.leagueLabel
-                            color: Kirigami.Theme.textColor
-                            font.bold: savedDelegateRoot.active
-                            elide: Text.ElideRight
-                        }
-
-                        Label {
-                            Layout.fillWidth: true
-                            text: savedDelegateRoot.metaLabel
-                            color: Kirigami.Theme.disabledTextColor
-                            elide: Text.ElideRight
-                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                        }
-                    }
-
-                    ToolButton {
-                        icon.name: "edit-rename"
-                        display: AbstractButton.IconOnly
-                        text: i18nc("@action:button", "Rename")
-                        ToolTip.visible: hovered
-                        ToolTip.text: i18nc("@info:tooltip", "Rename saved league labels")
-                        onClicked: root.openRenameDialog(savedDelegateRoot.index, savedDelegateRoot.entryData)
-                    }
-
-                    ToolButton {
-                        icon.name: "configure"
-                        display: AbstractButton.IconOnly
-                        text: i18nc("@action:button", "Edit")
-                        ToolTip.visible: hovered
-                        ToolTip.text: i18nc("@info:tooltip", "Change sport, country, league or favorite team")
-                        onClicked: root.configRoot.openEditSavedLeague(savedDelegateRoot.entryData, savedDelegateRoot.index)
-                    }
-
-                    ToolButton {
-                        icon.name: "edit-delete"
-                        display: AbstractButton.IconOnly
-                        text: i18nc("@action:button", "Delete")
-                        ToolTip.visible: hovered
-                        ToolTip.text: i18nc("@info:tooltip", "Remove saved league")
-                        onClicked: root.requestRemoveSavedLeague(savedDelegateRoot.index)
-                    }
-                }
-            }
-        }
+        title: i18nc("@title:group", "Saved Teams")
+        addText: i18nc("@action:button", "Add Team")
+        emptyText: i18nc("@info", "Save teams here to follow them across competitions.")
+        listModel: teamModel
+        onAddRequested: root.addTeamRequested()
     }
 
     Dialog {
         id: renameDialog
 
         modal: true
-        title: i18nc("@title:window", "Rename Saved League")
+        title: root.renameType === "team" ? i18nc("@title:window", "Rename Saved Team") : i18nc("@title:window", "Rename Saved Competition")
         standardButtons: Dialog.Ok | Dialog.Cancel
 
         GridLayout {
@@ -287,7 +276,7 @@ ColumnLayout {
             columnSpacing: Kirigami.Units.largeSpacing
 
             Label {
-                text: i18nc("@label:textbox", "League:")
+                text: i18nc("@label:textbox", "Competition:")
             }
 
             TextField {
@@ -309,7 +298,7 @@ ColumnLayout {
             }
 
             Label {
-                text: i18nc("@label:textbox", "Team:")
+                text: root.renameType === "team" ? i18nc("@label:textbox", "Team:") : i18nc("@label:textbox", "Highlighted team:")
             }
 
             TextField {
@@ -317,7 +306,7 @@ ColumnLayout {
 
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 18
                 selectByMouse: true
-                placeholderText: i18nc("@info:placeholder", "No favorite team")
+                placeholderText: root.renameType === "team" ? i18nc("@info:placeholder", "Team name") : i18nc("@info:placeholder", "No highlighted team")
             }
         }
 
@@ -327,7 +316,7 @@ ColumnLayout {
     Kirigami.Dialog {
         id: deleteLastLeagueDialog
 
-        title: i18nc("@title:window", "Remove last league?")
+        title: i18nc("@title:window", "Remove last saved sport?")
         standardButtons: Kirigami.Dialog.NoButton
         leftPadding: Kirigami.Units.gridUnit * 2
         rightPadding: Kirigami.Units.gridUnit * 2
@@ -356,7 +345,7 @@ ColumnLayout {
 
                 Label {
                     Layout.fillWidth: true
-                    text: i18nc("@info", "Are you sure? This is your last saved league. If you remove it, the widget will no longer show sports information.")
+                    text: i18nc("@info", "Are you sure? This is your last saved sport. If you remove it, the widget will no longer show sports information.")
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                 }
@@ -396,5 +385,213 @@ ColumnLayout {
         }
 
         onClosed: root.deleteIndex = -1
+    }
+
+    component SavedSection: ColumnLayout {
+        id: sectionRoot
+
+        property string title: ""
+        property string addText: ""
+        property string emptyText: ""
+        property var listModel
+
+        signal addRequested()
+
+        spacing: Kirigami.Units.smallSpacing
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            Kirigami.Heading {
+                text: sectionRoot.title
+                level: 4
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: Kirigami.Theme.disabledTextColor
+                opacity: 0.6
+            }
+
+            Button {
+                icon.name: "list-add"
+                text: sectionRoot.addText
+                onClicked: sectionRoot.addRequested()
+            }
+        }
+
+        Label {
+            Layout.fillWidth: true
+            visible: sectionRoot.listModel && sectionRoot.listModel.count === 0
+            text: sectionRoot.emptyText
+            color: Kirigami.Theme.disabledTextColor
+            wrapMode: Text.WordWrap
+        }
+
+        ListView {
+            id: savedLeagueList
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: contentHeight
+            interactive: false
+            reuseItems: false
+            clip: false
+            spacing: Kirigami.Units.smallSpacing
+            model: sectionRoot.listModel
+
+            moveDisplaced: Transition {
+                NumberAnimation {
+                    properties: "y"
+                    duration: 120
+                    easing.type: Easing.OutQuad
+                }
+            }
+            displaced: Transition {
+                NumberAnimation {
+                    properties: "y"
+                    duration: 120
+                    easing.type: Easing.OutQuad
+                }
+            }
+
+            delegate: Item {
+                id: savedDelegateRoot
+
+                required property int index
+                required property int sourceIndex
+                required property string entryJson
+                required property string titleLabel
+                required property string metaLabel
+                required property string countryIcon
+                required property string entryType
+                required property string teamBadge
+
+                width: savedLeagueList.width
+                implicitHeight: savedDelegate.implicitHeight
+
+                readonly property var entryData: root.parseEntry(entryJson)
+                readonly property bool active: root.configRoot && root.configRoot.sameEntry(entryData, root.configRoot.currentEntry())
+
+                ItemDelegate {
+                    id: savedDelegate
+
+                    width: parent.width
+                    implicitHeight: Math.max(Kirigami.Units.gridUnit * 2.6, savedContent.implicitHeight + Kirigami.Units.smallSpacing * 2)
+                    topPadding: Kirigami.Units.smallSpacing
+                    bottomPadding: Kirigami.Units.smallSpacing
+                    leftPadding: Kirigami.Units.smallSpacing
+                    rightPadding: Kirigami.Units.smallSpacing
+                    hoverEnabled: true
+                    down: false
+                    onClicked: root.configRoot.applySavedLeague(savedDelegateRoot.entryData, savedDelegateRoot.sourceIndex)
+
+                    background: Rectangle {
+                        radius: 4
+                        color: savedDelegateRoot.active ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.24) : savedDelegate.hovered ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.10) : "transparent"
+                        border.color: savedDelegateRoot.active ? Kirigami.Theme.highlightColor : "transparent"
+                        border.width: savedDelegateRoot.active ? 1 : 0
+                    }
+
+                    contentItem: RowLayout {
+                        id: savedContent
+
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.ListItemDragHandle {
+                            Layout.alignment: Qt.AlignVCenter
+                            listItem: savedDelegate
+                            listView: savedLeagueList
+                            onMoveRequested: function(oldIndex, newIndex) {
+                                if (oldIndex !== newIndex)
+                                    sectionRoot.listModel.move(oldIndex, newIndex, 1);
+                            }
+                            onDropped: root.applyModelOrder()
+                        }
+
+                        Item {
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 1.4
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                            Layout.minimumWidth: Layout.preferredWidth
+                            Layout.maximumWidth: Layout.preferredWidth
+
+                            Image {
+                                anchors.fill: parent
+                                source: savedDelegateRoot.entryType === "team" ? savedDelegateRoot.teamBadge : ""
+                                visible: source.toString().length > 0
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                sourceSize.width: width
+                                sourceSize.height: height
+                            }
+
+                            CountryFlag {
+                                anchors.fill: parent
+                                sourceUrl: savedDelegateRoot.countryIcon
+                                visible: savedDelegateRoot.entryType !== "team"
+                            }
+
+                            Kirigami.Icon {
+                                anchors.fill: parent
+                                source: "im-user"
+                                visible: savedDelegateRoot.entryType === "team" && savedDelegateRoot.teamBadge.length === 0
+                                color: Kirigami.Theme.disabledTextColor
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.fillWidth: true
+                            spacing: 0
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: savedDelegateRoot.titleLabel
+                                color: Kirigami.Theme.textColor
+                                font.bold: savedDelegateRoot.active
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: savedDelegateRoot.metaLabel
+                                color: Kirigami.Theme.disabledTextColor
+                                elide: Text.ElideRight
+                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            }
+                        }
+
+                        ToolButton {
+                            icon.name: "edit-rename"
+                            display: AbstractButton.IconOnly
+                            text: i18nc("@action:button", "Rename")
+                            ToolTip.visible: hovered
+                            ToolTip.text: i18nc("@info:tooltip", "Rename saved labels")
+                            onClicked: root.openRenameDialog(savedDelegateRoot.sourceIndex, savedDelegateRoot.entryData)
+                        }
+
+                        ToolButton {
+                            icon.name: "configure"
+                            display: AbstractButton.IconOnly
+                            text: i18nc("@action:button", "Edit")
+                            ToolTip.visible: hovered
+                            ToolTip.text: i18nc("@info:tooltip", "Change this saved sport")
+                            onClicked: root.configRoot.openEditSavedLeague(savedDelegateRoot.entryData, savedDelegateRoot.sourceIndex)
+                        }
+
+                        ToolButton {
+                            icon.name: "edit-delete"
+                            display: AbstractButton.IconOnly
+                            text: i18nc("@action:button", "Delete")
+                            ToolTip.visible: hovered
+                            ToolTip.text: i18nc("@info:tooltip", "Remove saved sport")
+                            onClicked: root.requestRemoveSavedLeague(savedDelegateRoot.sourceIndex)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

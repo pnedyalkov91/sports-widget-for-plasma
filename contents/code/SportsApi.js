@@ -243,8 +243,161 @@ function fetchTeamCompetitions(options, onSuccess, onError) {
     }
 }
 
+function fetchTeamBadge(options, onSuccess, onError) {
+    const favoriteTeam = stringValue(options && options.favoriteTeam);
+    const teamSlug = sportScoreTeamSlug({
+        team: favoriteTeam,
+        teamSlug: options && options.teamSlug
+    });
+    if (!isFootballSelection(options) || favoriteTeam.length === 0) {
+        onSuccess("");
+        return;
+    }
+
+    if (teamSlug.length === 0) {
+        onSuccess("");
+        return;
+    }
+
+    const baseUrl = stripTrailingSlash(ProviderCatalog.defaultBaseUrl("sportscore"));
+    const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(teamSlug)}&limit=1&src=sports-widget-for-plasma`;
+    requestJson(url, payload => {
+        const team = payload && payload.team || {};
+        const matchesRequestedTeam = sportScoreTeamMatchesRequest(team, favoriteTeam, teamSlug);
+        const badge = stringValue(team.logo || team.badge || team.crest || team.image);
+        if (matchesRequestedTeam && badge.length > 0) {
+            onSuccess(badge);
+            return;
+        }
+
+        onSuccess("");
+    }, () => {
+        onSuccess("");
+    });
+}
+
+function fetchTeamProfile(options, onSuccess, onError) {
+    const favoriteTeam = stringValue(options && options.favoriteTeam);
+    const teamSlug = sportScoreTeamSlug({
+        team: favoriteTeam,
+        teamSlug: options && options.teamSlug
+    });
+    if (!isFootballSelection(options) || favoriteTeam.length === 0 || teamSlug.length === 0) {
+        onSuccess({});
+        return;
+    }
+
+    const baseUrl = stripTrailingSlash(ProviderCatalog.defaultBaseUrl("sportscore"));
+    const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(teamSlug)}&limit=1&src=sports-widget-for-plasma`;
+    requestJson(url, payload => {
+        const team = payload && payload.team || {};
+        const matchesRequestedTeam = sportScoreTeamMatchesRequest(team, favoriteTeam, teamSlug);
+        if (!matchesRequestedTeam) {
+            onSuccess({});
+            return;
+        }
+
+        onSuccess({
+            name: stringValue(team.name || team.team || team.shortName || team.displayName),
+            badge: stringValue(team.logo || team.badge || team.crest || team.image),
+            teamSlug: stringValue(team.slug || team.teamSlug || team.team_slug)
+        });
+    }, () => {
+        if (typeof onError === "function")
+            onError("");
+        else
+            onSuccess({});
+    });
+}
+
+function sportScoreTeamMatchesRequest(team, favoriteTeam, expectedSlug) {
+    team = team || {};
+    const requestedName = stringValue(favoriteTeam).trim();
+    const requestedSlug = stringValue(expectedSlug).trim().toLowerCase();
+    if (requestedName.length === 0 && requestedSlug.length === 0)
+        return false;
+
+    const candidateNames = [
+        team.name,
+        team.team,
+        team.shortName,
+        team.short_name,
+        team.displayName,
+        team.title
+    ];
+    let hasCandidateName = false;
+    for (let index = 0; index < candidateNames.length; index += 1) {
+        const candidate = stringValue(candidateNames[index]).trim();
+        if (candidate.length === 0)
+            continue;
+
+        hasCandidateName = true;
+        if (requestedName.length > 0 && sameTeamName(candidate, requestedName))
+            return true;
+    }
+
+    // When we know the requested team name, never trust slug-only matches.
+    // Some providers can echo the requested slug while returning another team payload.
+    if (requestedName.length > 0)
+        return false;
+
+    const candidateSlugs = [
+        team.slug,
+        team.teamSlug,
+        team.team_slug
+    ];
+    for (let index = 0; index < candidateSlugs.length; index += 1) {
+        const candidateSlug = stringValue(candidateSlugs[index]).trim().toLowerCase();
+        if (candidateSlug.length === 0)
+            continue;
+
+        if (requestedSlug.length > 0 && candidateSlug === requestedSlug && !hasCandidateName)
+            return true;
+    }
+
+    return false;
+}
+
 function fetchScoresFixtures(options, onSuccess, onError) {
     const provider = "sportscore";
+    const favoriteTeam = stringValue(options && options.favoriteTeam).trim();
+    const teamFollowMode = stringValue(options && options.followMode).trim().toLowerCase() === "team";
+
+    function fetchTeamFallbacks(next) {
+        if (!teamFollowMode || favoriteTeam.length === 0) {
+            next();
+            return;
+        }
+
+        fetchSofaScoreTeamFixtures(options, teamFixtures => {
+            if (teamFixtures.length > 0 && hasSchedulableFixture(teamFixtures)) {
+                onSuccess(teamFixtures);
+                return;
+            }
+
+            fetchTeamCompetitionFixturesFallback(options, fallbackFixtures => {
+                if (fallbackFixtures.length > 0 && hasSchedulableFixture(fallbackFixtures)) {
+                    onSuccess(fallbackFixtures);
+                    return;
+                }
+
+                next();
+            }, () => {
+                next();
+            });
+        }, () => {
+            fetchTeamCompetitionFixturesFallback(options, fallbackFixtures => {
+                if (fallbackFixtures.length > 0 && hasSchedulableFixture(fallbackFixtures)) {
+                    onSuccess(fallbackFixtures);
+                    return;
+                }
+
+                next();
+            }, () => {
+                next();
+            });
+        });
+    }
 
     function finish(fixtures) {
         if (fixtures.length > 0) {
@@ -268,14 +421,163 @@ function fetchScoresFixtures(options, onSuccess, onError) {
                 return;
             }
 
-            fetchSportScoreCompetitionFixturesOrProvider(options, provider, finish, fail);
+            fetchTeamFallbacks(() => {
+                fetchSportScoreCompetitionFixturesOrProvider(options, provider, finish, fail);
+            });
         }, () => {
-            fetchSportScoreCompetitionFixturesOrProvider(options, provider, finish, fail);
+            fetchTeamFallbacks(() => {
+                fetchSportScoreCompetitionFixturesOrProvider(options, provider, finish, fail);
+            });
         });
         return;
     }
 
-    fetchSportScoreCompetitionFixturesOrProvider(options, provider, finish, fail);
+    fetchTeamFallbacks(() => {
+        fetchSportScoreCompetitionFixturesOrProvider(options, provider, finish, fail);
+    });
+}
+
+function teamMatchIncludesFavorite(match, favoriteTeam) {
+    const team = stringValue(favoriteTeam).trim();
+    if (team.length === 0)
+        return false;
+
+    return sameTeamName(match && match.homeTeam, team) || sameTeamName(match && match.awayTeam, team);
+}
+
+function teamLeagueFallbackPriority(league) {
+    const label = normalizedText(league && league.label);
+    if (label.length === 0)
+        return -200;
+
+    let score = 0;
+    if (label.indexOf("first") >= 0 || label.indexOf("premier") >= 0 || label.indexOf("super league") >= 0 || label.indexOf("championship") >= 0 || label.indexOf("liga") >= 0 || label.indexOf("league") >= 0)
+        score += 40;
+
+    if (label.indexOf("cup") >= 0 || label.indexOf("playoff") >= 0 || label.indexOf("play-off") >= 0)
+        score += 15;
+
+    if (label.indexOf("women") >= 0 || label.indexOf("u21") >= 0 || label.indexOf("u20") >= 0 || label.indexOf("u19") >= 0 || label.indexOf("youth") >= 0 || label.indexOf("reserve") >= 0 || label.indexOf("friendly") >= 0)
+        score -= 35;
+
+    return score;
+}
+
+function fetchCountryLeagueFixturesFallback(options, onSuccess, onError) {
+    const favoriteTeam = stringValue(options && options.favoriteTeam).trim();
+    const country = stringValue(options && options.country).trim();
+    if (favoriteTeam.length === 0 || country.length === 0 || normalizedText(country) === "world" || normalizedText(country) === "all") {
+        onSuccess([]);
+        return;
+    }
+
+    let leagues = arrayValue(ProviderCatalog.leagueOptions("sportscore", "football", country))
+        .filter(league => stringValue(league && league.value).trim().length > 0);
+    leagues.sort((left, right) => teamLeagueFallbackPriority(right) - teamLeagueFallbackPriority(left));
+    leagues = leagues.slice(0, 10);
+
+    if (leagues.length === 0) {
+        onSuccess([]);
+        return;
+    }
+
+    let pending = leagues.length;
+    let matches = [];
+    let errors = [];
+
+    function finish() {
+        if (pending > 0)
+            return;
+
+        const filtered = dedupeMatches(matches).filter(match => teamMatchIncludesFavorite(match, favoriteTeam));
+        if (filtered.length > 0 || errors.length === 0) {
+            onSuccess(sortMatches(filtered));
+        } else {
+            onError(errors.join(", "));
+        }
+    }
+
+    leagues.forEach(league => {
+        const slug = stringValue(league && league.value).trim();
+        if (slug.length === 0) {
+            pending -= 1;
+            finish();
+            return;
+        }
+
+        fetchSportScoreCompetitionFixturesOrProvider(Object.assign({}, options, {
+            "league": slug,
+            "followMode": "league"
+        }), "sportscore", fixtures => {
+            matches = matches.concat(arrayValue(fixtures));
+            pending -= 1;
+            finish();
+        }, message => {
+            if (!isHttpNotFound(message))
+                errors.push(message);
+
+            pending -= 1;
+            finish();
+        });
+    });
+}
+
+function fetchTeamCompetitionFixturesFallback(options, onSuccess, onError) {
+    const favoriteTeam = stringValue(options && options.favoriteTeam).trim();
+    if (favoriteTeam.length === 0) {
+        onSuccess([]);
+        return;
+    }
+
+    fetchTeamCompetitions(options, competitions => {
+        const rows = mergeCompetitionOptions(competitions).slice(0, 8);
+        if (rows.length === 0) {
+            fetchCountryLeagueFixturesFallback(options, onSuccess, onError);
+            return;
+        }
+
+        let pending = rows.length;
+        let matches = [];
+        let errors = [];
+
+        function finish() {
+            const filtered = dedupeMatches(matches).filter(match => teamMatchIncludesFavorite(match, favoriteTeam));
+            if (pending > 0)
+                return;
+
+            if (filtered.length > 0) {
+                onSuccess(sortMatches(filtered));
+            } else if (errors.length > 0) {
+                onError(errors.join(", "));
+            } else {
+                fetchCountryLeagueFixturesFallback(options, onSuccess, onError);
+            }
+        }
+
+        rows.forEach(competition => {
+            const slug = stringValue(competition && competition.slug).trim();
+            if (slug.length === 0) {
+                pending -= 1;
+                finish();
+                return;
+            }
+
+            fetchSportScoreCompetitionFixturesOrProvider(Object.assign({}, options, {
+                "league": slug,
+                "followMode": "league"
+            }), "sportscore", fixtures => {
+                matches = matches.concat(arrayValue(fixtures));
+                pending -= 1;
+                finish();
+            }, message => {
+                if (!isHttpNotFound(message))
+                    errors.push(message);
+
+                pending -= 1;
+                finish();
+            });
+        });
+    }, onError);
 }
 
 function fetchRecentResults(options, onSuccess, onError) {
@@ -828,19 +1130,131 @@ function selectSofaScoreTeam(payload, row, options) {
     return best;
 }
 
+function uniqueTextValues(values) {
+    let seen = {};
+    let rows = [];
+    arrayValue(values).forEach(value => {
+        const normalized = stringValue(value).trim().toLowerCase();
+        if (normalized.length === 0 || seen[normalized])
+            return;
+
+        seen[normalized] = true;
+        rows.push(normalized);
+    });
+    return rows;
+}
+
+function sportScoreTeamSlugCandidates(teamName, explicitSlug) {
+    const rawName = stringValue(teamName).trim();
+    const rawSlug = stringValue(explicitSlug).trim();
+    let names = [];
+    if (rawName.length > 0)
+        names.push(rawName);
+
+    const strippedPrefix = rawName.replace(/^(pfc|fc|fk|sk|nk|ac|sc|cf)\s+/i, "").trim();
+    if (strippedPrefix.length > 0 && strippedPrefix.toLowerCase() !== rawName.toLowerCase())
+        names.push(strippedPrefix);
+
+    const parts = strippedPrefix.split(/\s+/).filter(part => part.length > 0);
+    if (parts.length >= 2)
+        names.push(parts.slice(0, parts.length - 1).join(" "));
+
+    let slugs = [];
+    if (rawSlug.length > 0)
+        slugs.push(rawSlug);
+
+    uniqueTextValues(names).forEach(name => {
+        const slug = sportScoreTeamSlug({ "team": name });
+        if (slug.length === 0)
+            return;
+
+        slugs.push(slug);
+        slugs.push("pfc-" + slug);
+        slugs.push("fc-" + slug);
+        slugs.push("fk-" + slug);
+        slugs.push("sk-" + slug);
+    });
+
+    return uniqueTextValues(slugs).slice(0, 8);
+}
+
+function buildSportScoreTeamRows(options, limit) {
+    let rows = [];
+    const sourceRows = Array.isArray(options && options.tableRows) ? options.tableRows : [];
+    sourceRows.forEach(row => {
+        const team = stringValue(row && row.team).trim();
+        const slugs = sportScoreTeamSlugCandidates(team, row && row.teamSlug);
+        if (team.length === 0 || slugs.length === 0)
+            return;
+
+        rows.push({
+            team,
+            teamSlugs: slugs
+        });
+    });
+
+    if (rows.length === 0) {
+        const favoriteTeam = stringValue(options && options.favoriteTeam).trim();
+        const slugs = sportScoreTeamSlugCandidates(favoriteTeam, "");
+        if (favoriteTeam.length > 0 && slugs.length > 0) {
+            rows.push({
+                team: favoriteTeam,
+                teamSlugs: slugs
+            });
+        }
+    }
+
+    return rows.slice(0, Math.max(1, numberValue(limit) || 24));
+}
+
+function requestSportScoreTeamPayload(baseUrl, teamSlug, limit, onSuccess, onError) {
+    const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(teamSlug)}&limit=${encodeURIComponent(limit)}&src=sports-widget-for-plasma`;
+    requestJson(url, onSuccess, onError);
+}
+
+function fetchSportScoreTeamPayloadForRow(baseUrl, row, limit, onSuccess, onError) {
+    const slugs = arrayValue(row && row.teamSlugs).map(value => stringValue(value).trim()).filter(value => value.length > 0);
+    if (slugs.length === 0) {
+        onSuccess({});
+        return;
+    }
+
+    let index = 0;
+
+    function tryNext(lastError) {
+        if (index >= slugs.length) {
+            if (stringValue(lastError).length > 0)
+                onError(lastError);
+            else
+                onSuccess({});
+            return;
+        }
+
+        const slug = slugs[index];
+        index += 1;
+        requestSportScoreTeamPayload(baseUrl, slug, limit, payload => {
+            onSuccess(payload || {});
+        }, message => {
+            if (isHttpNotFound(message)) {
+                tryNext(lastError);
+                return;
+            }
+
+            onError(message);
+        });
+    }
+
+    tryNext("");
+}
+
 function canFetchSportScoreTeamFixtures(options) {
     const sport = normalizeSports(options.sports)[0] || "football";
-    const league = ProviderCatalog.sportScoreSlug(options.league);
-    const rows = Array.isArray(options.tableRows) ? options.tableRows : [];
-    return (sport === "football" || sport === "soccer") && league.length > 0 && rows.some(row => sportScoreTeamSlug(row).length > 0);
+    const rows = buildSportScoreTeamRows(options, 1);
+    return (sport === "football" || sport === "soccer") && rows.length > 0;
 }
 
 function fetchSportScoreTeamFixtures(options, onSuccess, onError) {
-    const rows = (Array.isArray(options.tableRows) ? options.tableRows : []).map(row => {
-        const copy = Object.assign({}, row);
-        copy.teamSlug = sportScoreTeamSlug(row);
-        return copy;
-    }).filter(row => stringValue(row.teamSlug).length > 0 && stringValue(row.team).length > 0).slice(0, 24);
+    const rows = buildSportScoreTeamRows(options, 24);
 
     if (rows.length === 0) {
         onSuccess([]);
@@ -853,8 +1267,7 @@ function fetchSportScoreTeamFixtures(options, onSuccess, onError) {
     const baseUrl = stripTrailingSlash(ProviderCatalog.defaultBaseUrl("sportscore"));
 
     rows.forEach(row => {
-        const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(row.teamSlug)}&limit=20&src=sports-widget-for-plasma`;
-        requestJson(url, payload => {
+        fetchSportScoreTeamPayloadForRow(baseUrl, row, 20, payload => {
             matches = matches.concat(ProviderCatalog.normalizeFixtures("sportscore", payload, "football"));
             pending -= 1;
             if (pending === 0)
@@ -871,11 +1284,7 @@ function fetchSportScoreTeamFixtures(options, onSuccess, onError) {
 }
 
 function fetchSportScoreTeamRecentResults(options, onSuccess, onError) {
-    const rows = (Array.isArray(options.tableRows) ? options.tableRows : []).map(row => {
-        const copy = Object.assign({}, row);
-        copy.teamSlug = sportScoreTeamSlug(row);
-        return copy;
-    }).filter(row => stringValue(row.teamSlug).length > 0 && stringValue(row.team).length > 0).slice(0, 16);
+    const rows = buildSportScoreTeamRows(options, 16);
 
     if (rows.length === 0) {
         onSuccess([]);
@@ -923,8 +1332,7 @@ function fetchSportScoreTeamRecentResults(options, onSuccess, onError) {
     }
 
     function requestRow(row) {
-        const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(row.teamSlug)}&limit=${encodeURIComponent(teamLimit)}&src=sports-widget-for-plasma`;
-        requestJson(url, payload => {
+        fetchSportScoreTeamPayloadForRow(baseUrl, row, teamLimit, payload => {
             active -= 1;
             completed += 1;
             matches = matches.concat(ProviderCatalog.normalizeFixtures("sportscore", payload, "football"));
@@ -956,11 +1364,7 @@ function fetchSportScoreTeamRecentResults(options, onSuccess, onError) {
 }
 
 function fetchSportScoreTeamCompetitions(options, onSuccess, onError) {
-    const rows = (Array.isArray(options.tableRows) ? options.tableRows : []).map(row => {
-        const copy = Object.assign({}, row);
-        copy.teamSlug = sportScoreTeamSlug(row);
-        return copy;
-    }).filter(row => stringValue(row.teamSlug).length > 0 && stringValue(row.team).length > 0).slice(0, 4);
+    const rows = buildSportScoreTeamRows(options, 16);
 
     if (rows.length === 0) {
         onSuccess([]);
@@ -973,8 +1377,7 @@ function fetchSportScoreTeamCompetitions(options, onSuccess, onError) {
     const baseUrl = stripTrailingSlash(ProviderCatalog.defaultBaseUrl("sportscore"));
 
     rows.forEach(row => {
-        const url = `${baseUrl}/team/?sport=football&slug=${encodeURIComponent(row.teamSlug)}&limit=50&src=sports-widget-for-plasma`;
-        requestJson(url, payload => {
+        fetchSportScoreTeamPayloadForRow(baseUrl, row, 50, payload => {
             competitions = competitions.concat(teamCompetitionOptionsFromMatches(arrayValue(payload && payload.matches), stringValue(payload && payload.team && payload.team.logo)));
             pending -= 1;
             if (pending === 0)
@@ -1047,7 +1450,7 @@ function selectTheSportsDBTeam(payload, options) {
         }
     });
 
-    return bestScore > 0 ? best : {};
+    return bestScore >= 4 ? best : {};
 }
 
 function teamCompetitionOptionsFromTheSportsDBTeam(team) {
@@ -1728,6 +2131,61 @@ function similarityScore(left, right) {
 
 function canFetchSofaScoreFixtures(options) {
     return isFootballSelection(options) && ProviderCatalog.leagueLabel(options && options.league).length > 0;
+}
+
+function canFetchSofaScoreTeamFixtures(options) {
+    return isFootballSelection(options) && stringValue(options && options.favoriteTeam).trim().length > 0;
+}
+
+function fetchSofaScoreTeamFixtures(options, onSuccess, onError) {
+    if (!canFetchSofaScoreTeamFixtures(options)) {
+        onSuccess([]);
+        return;
+    }
+
+    const row = {
+        team: stringValue(options && options.favoriteTeam).trim()
+    };
+    if (row.team.length === 0) {
+        onSuccess([]);
+        return;
+    }
+
+    searchSofaScoreTeam(options, row, team => {
+        const teamId = numberValue(team && team.id);
+        if (teamId <= 0) {
+            onSuccess([]);
+            return;
+        }
+
+        fetchSofaScoreTeamFixturePage(options, row, team, 0, [], onSuccess, onError);
+    }, onError);
+}
+
+function fetchSofaScoreTeamFixturePage(options, row, team, page, matches, onSuccess, onError) {
+    const teamId = numberValue(team && team.id);
+    if (teamId <= 0) {
+        onSuccess(sortMatches(dedupeMatches(arrayValue(matches).filter(hasTeams))));
+        return;
+    }
+
+    const url = `${SOFASCORE_API_BASE_URL}/team/${teamId}/events/next/${page}`;
+    requestJson(url, payload => {
+        const sourceTeam = stringValue(team && team.name).trim() || stringValue(row && row.team).trim();
+        const rows = arrayValue(payload && payload.events)
+            .map(event => normalizeSofaScoreFixture(event, {
+                label: stringValue(event && event.tournament && event.tournament.uniqueTournament && event.tournament.uniqueTournament.name) || stringValue(event && event.tournament && event.tournament.name)
+            }))
+            .filter(hasTeams)
+            .filter(match => teamMatchIncludesFavorite(match, sourceTeam) || teamMatchIncludesFavorite(match, row && row.team));
+        const combined = dedupeMatches(arrayValue(matches).concat(rows));
+        if (payload && payload.hasNextPage && page < 2 && combined.length < 40) {
+            fetchSofaScoreTeamFixturePage(options, row, team, page + 1, combined, onSuccess, onError);
+            return;
+        }
+
+        onSuccess(sortMatches(combined));
+    }, onError);
 }
 
 function fetchSofaScoreFixtures(options, onSuccess, onError) {
