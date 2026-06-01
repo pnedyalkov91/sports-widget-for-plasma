@@ -15,8 +15,10 @@ const FORM_RESULTS_LIMIT = 5;
 const FORM_TEAM_MATCH_LIMIT = 30;
 const FORM_CACHE_TTL_MS = 10 * 60 * 1000;
 const ESPN_SOCCER_API_BASE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer";
+const ESPN_SOCCER_COMPETITIONS_URL = "https://www.espn.com/soccer/competitions";
 const SOFASCORE_API_BASE_URL = "https://api.sofascore.com/api/v1";
 const THESPORTSDB_API_BASE_URL = "https://www.thesportsdb.com/api/v1/json/3";
+const ESPN_LEAGUE_CATALOG_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 let sportScoreLiveCache = {
     timestamp: 0,
     rows: []
@@ -24,6 +26,11 @@ let sportScoreLiveCache = {
 let sofaScoreLeagueCache = {};
 let sofaScoreTeamFormCache = {};
 let theSportsDBLeagueCache = {};
+let espnLeagueCatalogCache = {
+    timestamp: 0,
+    rows: []
+};
+let espnLeagueSlugCache = {};
 
 const ESPN_SOCCER_LEAGUES = {
     "english-premier-league": "eng.1",
@@ -1097,16 +1104,15 @@ function fetchLeagueForm(options, onSuccess, onError) {
 
     function fetchFromLeagueRecentResults(primaryForms) {
         const primary = primaryForms || {};
-        const seasonScoped = isSeasonScopedRequest(options);
         const requestOptions = Object.assign({}, options, {
             preferTeamRecentResults: false,
             skipLeagueFilter: false,
-            recentResultsLimit: seasonScoped ? 320 : 160
+            recentResultsLimit: seasonScopedRequest ? 320 : 160
         });
         delete requestOptions.tableRows;
         function finishWithMatches(matches) {
             const seasonalForms = formByTeam(matches, requestOptions);
-            const merged = mergeFormMapsWithPreference(primary, seasonalForms, isSeasonScopedRequest(options));
+            const merged = mergeFormMapsWithPreference(primary, seasonalForms, seasonScopedRequest);
             onSuccess(merged);
         }
 
@@ -2224,7 +2230,7 @@ function fetchFallbackFixtures(options, onSuccess, onError) {
 }
 
 function canFetchEspnFootball(options) {
-    return espnSoccerSlug(options).length > 0 && isFootballSelection(options);
+    return isFootballSelection(options) && ProviderCatalog.leagueLabel(options && options.league).length > 0;
 }
 
 function canFetchEspnFixtures(options) {
@@ -2241,13 +2247,20 @@ function fetchEspnLiveScores(options, onSuccess, onError) {
         return;
     }
 
-    fetchEspnScoreboards(options, espnLiveDates(), payloads => {
-        try {
-            const matches = normalizeEspnScoreboards(payloads, options).filter(isLiveMatch);
-            onSuccess(filterSportScoreLiveRows(matches, options));
-        } catch (error) {
-            onError(String(error));
+    resolveEspnSoccerSlug(options, leagueSlug => {
+        if (leagueSlug.length === 0) {
+            onSuccess([]);
+            return;
         }
+
+        fetchEspnScoreboards(leagueSlug, options, espnLiveDates(), payloads => {
+            try {
+                const matches = normalizeEspnScoreboards(payloads, options, leagueSlug).filter(isLiveMatch);
+                onSuccess(filterSportScoreLiveRows(matches, options));
+            } catch (error) {
+                onError(String(error));
+            }
+        }, onError);
     }, onError);
 }
 
@@ -2257,22 +2270,29 @@ function fetchEspnFixtures(options, onSuccess, onError) {
         return;
     }
 
-    fetchEspnScoreboards(options, espnFixtureDates(options), payloads => {
-        try {
-            const now = Date.now();
-            const matches = normalizeEspnScoreboards(payloads, options).filter(match => {
-                if (isLiveMatch(match))
-                    return true;
-
-                if (match.status === "Finished")
-                    return false;
-
-                return numberValue(match.timestamp) === 0 || numberValue(match.timestamp) >= now - 3 * 60 * 60 * 1000;
-            });
-            onSuccess(sortMatches(dedupeMatches(filterMatchesForSelection(matches, options))));
-        } catch (error) {
-            onError(String(error));
+    resolveEspnSoccerSlug(options, leagueSlug => {
+        if (leagueSlug.length === 0) {
+            onSuccess([]);
+            return;
         }
+
+        fetchEspnScoreboards(leagueSlug, options, espnFixtureDates(options), payloads => {
+            try {
+                const now = Date.now();
+                const matches = normalizeEspnScoreboards(payloads, options, leagueSlug).filter(match => {
+                    if (isLiveMatch(match))
+                        return true;
+
+                    if (match.status === "Finished")
+                        return false;
+
+                    return numberValue(match.timestamp) === 0 || numberValue(match.timestamp) >= now - 3 * 60 * 60 * 1000;
+                });
+                onSuccess(sortMatches(dedupeMatches(filterMatchesForSelection(matches, options))));
+            } catch (error) {
+                onError(String(error));
+            }
+        }, onError);
     }, onError);
 }
 
@@ -2282,13 +2302,20 @@ function fetchEspnRecentResults(options, onSuccess, onError) {
         return;
     }
 
-    fetchEspnScoreboards(options, espnRecentDates(options), payloads => {
-        try {
-            const matches = normalizeEspnScoreboards(payloads, options).filter(isFinishedMatch);
-            onSuccess(sortRecentMatches(dedupeMatches(filterMatchesForSelection(matches, options))));
-        } catch (error) {
-            onError(String(error));
+    resolveEspnSoccerSlug(options, leagueSlug => {
+        if (leagueSlug.length === 0) {
+            onSuccess([]);
+            return;
         }
+
+        fetchEspnScoreboards(leagueSlug, options, espnRecentDates(options), payloads => {
+            try {
+                const matches = normalizeEspnScoreboards(payloads, options, leagueSlug).filter(isFinishedMatch);
+                onSuccess(sortRecentMatches(dedupeMatches(filterMatchesForSelection(matches, options))));
+            } catch (error) {
+                onError(String(error));
+            }
+        }, onError);
     }, onError);
 }
 
@@ -2310,8 +2337,7 @@ function fetchEspnMatchDetails(options, onSuccess, onError) {
     }, onError);
 }
 
-function fetchEspnScoreboards(options, dates, onSuccess, onError) {
-    const leagueSlug = espnSoccerSlug(options);
+function fetchEspnScoreboards(leagueSlug, options, dates, onSuccess, onError) {
     const uniqueDates = uniqueStringValues(dates);
     let urls = uniqueDates.map(date => {
         return `${ESPN_SOCCER_API_BASE_URL}/${encodeURIComponent(leagueSlug)}/scoreboard?dates=${encodeURIComponent(date)}`;
@@ -2354,8 +2380,7 @@ function finishEspnScoreboards(payloads, errors, onSuccess, onError) {
     }
 }
 
-function normalizeEspnScoreboards(payloads, options) {
-    const leagueSlug = espnSoccerSlug(options);
+function normalizeEspnScoreboards(payloads, options, leagueSlug) {
     let matches = [];
     arrayValue(payloads).forEach(payload => {
         const leagueLabel = espnLeagueLabel(payload, options);
@@ -2470,6 +2495,199 @@ function espnDateString(date) {
 function espnSoccerSlug(options) {
     const league = ProviderCatalog.sportScoreSlug(options && options.league);
     return stringValue(ESPN_SOCCER_LEAGUES[league]);
+}
+
+function resolveEspnSoccerSlug(options, onSuccess, onError) {
+    const mappedSlug = espnSoccerSlug(options);
+    if (mappedSlug.length > 0) {
+        onSuccess(mappedSlug);
+        return;
+    }
+
+    const cacheKey = fallbackCacheKey(options);
+    if (espnLeagueSlugCache[cacheKey] !== undefined) {
+        onSuccess(stringValue(espnLeagueSlugCache[cacheKey]));
+        return;
+    }
+
+    fetchEspnLeagueCatalog(rows => {
+        const resolved = selectEspnCatalogLeagueSlug(rows, options);
+        espnLeagueSlugCache[cacheKey] = resolved;
+        onSuccess(resolved);
+    }, onError);
+}
+
+function fetchEspnLeagueCatalog(onSuccess, onError) {
+    const now = Date.now();
+    if (espnLeagueCatalogCache.timestamp > 0
+        && (now - espnLeagueCatalogCache.timestamp) < ESPN_LEAGUE_CATALOG_CACHE_TTL_MS
+        && arrayValue(espnLeagueCatalogCache.rows).length > 0) {
+        onSuccess(espnLeagueCatalogCache.rows);
+        return;
+    }
+
+    requestText(cacheBustedUrl(ESPN_SOCCER_COMPETITIONS_URL), html => {
+        try {
+            const rows = parseEspnLeagueCatalog(html);
+            espnLeagueCatalogCache = {
+                timestamp: now,
+                rows
+            };
+            onSuccess(rows);
+        } catch (error) {
+            onError(String(error));
+        }
+    }, onError);
+}
+
+function parseEspnLeagueCatalog(html) {
+    const payload = parseEspnFittPayload(html);
+    if (!payload)
+        return [];
+
+    let rows = [];
+    collectEspnLeagueCatalogRows(payload, rows);
+
+    let deduped = [];
+    let seen = {};
+    rows.forEach(row => {
+        const slug = stringValue(row && row.slug);
+        const label = stringValue(row && row.label);
+        if (slug.length === 0 || label.length === 0 || seen[slug])
+            return;
+
+        seen[slug] = true;
+        deduped.push({
+            slug,
+            label
+        });
+    });
+
+    return deduped;
+}
+
+function parseEspnFittPayload(html) {
+    const value = stringValue(html);
+    const markers = [
+        "window['__espnfitt__']",
+        "window[\"__espnfitt__\"]"
+    ];
+    let markerIndex = -1;
+    let markerLength = 0;
+    markers.forEach(marker => {
+        if (markerIndex >= 0)
+            return;
+
+        const index = value.indexOf(marker);
+        if (index >= 0) {
+            markerIndex = index;
+            markerLength = marker.length;
+        }
+    });
+    if (markerIndex < 0)
+        return null;
+
+    const equalsIndex = value.indexOf("=", markerIndex + markerLength);
+    if (equalsIndex < 0)
+        return null;
+
+    const start = value.indexOf("{", equalsIndex + 1);
+    if (start < 0)
+        return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = start; index < value.length; index += 1) {
+        const char = value.charAt(index);
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+
+            if (char === "\\") {
+                escaped = true;
+                continue;
+            }
+
+            if (char === "\"")
+                inString = false;
+            continue;
+        }
+
+        if (char === "\"") {
+            inString = true;
+            continue;
+        }
+
+        if (char === "{")
+            depth += 1;
+        else if (char === "}")
+            depth -= 1;
+
+        if (depth === 0) {
+            const jsonText = value.slice(start, index + 1);
+            return JSON.parse(jsonText);
+        }
+    }
+
+    return null;
+}
+
+function collectEspnLeagueCatalogRows(node, rows) {
+    if (!node || typeof node !== "object")
+        return;
+
+    if (Array.isArray(node)) {
+        node.forEach(item => collectEspnLeagueCatalogRows(item, rows));
+        return;
+    }
+
+    const links = arrayValue(node.lk);
+    links.forEach(link => {
+        const url = stringValue(link && link.u);
+        const slug = espnLeagueSlugFromUrl(url);
+        if (slug.length === 0)
+            return;
+
+        const label = stringValue(node.n || node.name || node.t || link && (link.t || link.n || link.name));
+        if (label.length === 0)
+            return;
+
+        rows.push({
+            slug,
+            label
+        });
+    });
+
+    Object.keys(node).forEach(key => {
+        collectEspnLeagueCatalogRows(node[key], rows);
+    });
+}
+
+function espnLeagueSlugFromUrl(url) {
+    const value = stringValue(url);
+    const match = /\/soccer\/league\/_\/name\/([^/?#]+)/.exec(value);
+    return match ? stringValue(match[1]) : "";
+}
+
+function selectEspnCatalogLeagueSlug(rows, options) {
+    const wantedLabel = ProviderCatalog.leagueLabel(options && options.league);
+    const wantedSlug = ProviderCatalog.sportScoreSlug(options && options.league).replace(/-/g, " ");
+    let bestSlug = "";
+    let bestScore = 0;
+
+    rows.forEach(row => {
+        const label = stringValue(row && row.label);
+        const score = Math.max(similarityScore(label, wantedLabel), similarityScore(label, wantedSlug));
+        if (score > bestScore) {
+            bestScore = score;
+            bestSlug = stringValue(row && row.slug);
+        }
+    });
+
+    return bestScore > 0 ? bestSlug : "";
 }
 
 function espnLeagueLabel(payload, options) {
@@ -3104,18 +3322,7 @@ function searchSofaScoreLeague(options, onSuccess, onError) {
 }
 
 function sofaScoreLeagueSearchLabel(options) {
-    const catalogLabel = ProviderCatalog.leagueLabel(options && options.league);
-    if (catalogLabel.length > 0)
-        return catalogLabel;
-
-    const slug = ProviderCatalog.sportScoreSlug(options && options.league);
-    if (slug.length === 0)
-        return "";
-
-    return slug.split("-")
-        .map(part => part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : "")
-        .join(" ")
-        .trim();
+    return ProviderCatalog.leagueLabel(options && options.league);
 }
 
 function selectSofaScoreLeague(payload, options) {
@@ -3481,27 +3688,43 @@ function resolveTheSportsDBLeague(options, onSuccess, onError) {
 
 function searchTheSportsDBLeague(options, onSuccess, onError) {
     const country = ProviderCatalog.countryLabel(options && options.country);
+    function searchAcrossSoccer() {
+        requestJson(`${THESPORTSDB_API_BASE_URL}/search_all_leagues.php?s=Soccer`, payload => {
+            const league = selectTheSportsDBLeague(payload, options);
+            onSuccess(league);
+        }, onError);
+    }
+
     if (country.length === 0 || normalizedText(country) === "international tournaments") {
-        onSuccess({});
+        searchAcrossSoccer();
         return;
     }
 
     const url = `${THESPORTSDB_API_BASE_URL}/search_all_leagues.php?c=${encodeURIComponent(country)}&s=Soccer`;
     requestJson(url, payload => {
         const league = selectTheSportsDBLeague(payload, options);
-        onSuccess(league);
-    }, onError);
+        if (stringValue(league && league.id).length > 0) {
+            onSuccess(league);
+            return;
+        }
+
+        searchAcrossSoccer();
+    }, searchAcrossSoccer);
 }
 
 function selectTheSportsDBLeague(payload, options) {
     const wantedLeague = ProviderCatalog.leagueLabel(options && options.league);
-    const leagues = arrayValue(payload && payload.countries);
+    const leagues = arrayValue(payload && payload.countries).concat(arrayValue(payload && payload.leagues));
     let best = {};
     let bestScore = 0;
 
     leagues.forEach(league => {
         const label = stringValue(league && league.strLeague);
-        const score = similarityScore(normalizedText(label), normalizedText(wantedLeague));
+        const alternate = stringValue(league && league.strLeagueAlternate);
+        const score = Math.max(
+            similarityScore(normalizedText(label), normalizedText(wantedLeague)),
+            similarityScore(normalizedText(alternate), normalizedText(wantedLeague))
+        );
         if (score > bestScore) {
             bestScore = score;
             best = {

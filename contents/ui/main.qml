@@ -1346,7 +1346,7 @@ PlasmoidItem {
 
     function addTeamTableOption(options, seen, label, slug, country) {
         const resolvedCountry = String(country || "").trim();
-        const resolvedLeague = ProviderCatalog.resolveFootballLeagueCode(resolvedCountry, String(slug || label).trim() || String(label || "").trim());
+        const resolvedLeague = ProviderCatalog.resolveFootballLeagueCode(resolvedCountry, String(slug || label).trim());
         const normalizedSlug = ProviderCatalog.sportScoreSlug(resolvedLeague);
         if (normalizedSlug.length === 0 || seen[normalizedSlug])
             return;
