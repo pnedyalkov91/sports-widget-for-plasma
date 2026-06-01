@@ -58,7 +58,11 @@ ColumnLayout {
             titleLabel: root.configRoot.displaySavedTitle(safeEntry),
             metaLabel: parts.filter(part => String(part || "").length > 0).join(" · "),
             countryIcon: safeEntry.countryIcon || root.configRoot.countryIconForEntry(safeEntry),
-            teamBadge
+            teamBadge,
+            includeLive: safeEntry.includeLive !== false,
+            includeSchedules: safeEntry.includeSchedules !== false,
+            includeRecent: safeEntry.includeRecent !== false,
+            includeTables: safeEntry.includeTables !== false
         });
 
         if (type === "team" && teamBadge.length === 0)
@@ -223,6 +227,19 @@ ColumnLayout {
         }
 
         root.configRoot.removeSavedLeague(index);
+    }
+
+    function setDelegateInclude(listModel, rowIndex, sourceIndex, key, enabled) {
+        if (!root.configRoot)
+            return;
+
+        root.configRoot.setEntryIncludes(sourceIndex, key, enabled);
+        if (listModel && rowIndex >= 0 && rowIndex < listModel.count) {
+            listModel.setProperty(rowIndex, key, Boolean(enabled));
+            const entry = root.parseEntry(listModel.get(rowIndex).entryJson);
+            entry[key] = Boolean(enabled);
+            listModel.setProperty(rowIndex, "entryJson", JSON.stringify(entry));
+        }
     }
 
     onConfigRootChanged: rebuildModel()
@@ -467,12 +484,15 @@ ColumnLayout {
                 required property string countryIcon
                 required property string entryType
                 required property string teamBadge
+                required property bool includeLive
+                required property bool includeSchedules
+                required property bool includeRecent
+                required property bool includeTables
 
                 width: savedLeagueList.width
                 implicitHeight: savedDelegate.implicitHeight
 
                 readonly property var entryData: root.parseEntry(entryJson)
-                readonly property bool active: root.configRoot && root.configRoot.sameEntry(entryData, root.configRoot.currentEntry())
 
                 ItemDelegate {
                     id: savedDelegate
@@ -485,13 +505,12 @@ ColumnLayout {
                     rightPadding: Kirigami.Units.smallSpacing
                     hoverEnabled: true
                     down: false
-                    onClicked: root.configRoot.applySavedLeague(savedDelegateRoot.entryData, savedDelegateRoot.sourceIndex)
 
                     background: Rectangle {
                         radius: 4
-                        color: savedDelegateRoot.active ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.24) : savedDelegate.hovered ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.10) : "transparent"
-                        border.color: savedDelegateRoot.active ? Kirigami.Theme.highlightColor : "transparent"
-                        border.width: savedDelegateRoot.active ? 1 : 0
+                        color: savedDelegate.hovered ? Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.10) : "transparent"
+                        border.color: "transparent"
+                        border.width: 0
                     }
 
                     contentItem: RowLayout {
@@ -544,13 +563,13 @@ ColumnLayout {
                         ColumnLayout {
                             Layout.alignment: Qt.AlignVCenter
                             Layout.fillWidth: true
-                            spacing: 0
+                            spacing: 2
 
                             Label {
                                 Layout.fillWidth: true
                                 text: savedDelegateRoot.titleLabel
                                 color: Kirigami.Theme.textColor
-                                font.bold: savedDelegateRoot.active
+                                font.bold: true
                                 elide: Text.ElideRight
                             }
 
@@ -560,6 +579,35 @@ ColumnLayout {
                                 color: Kirigami.Theme.disabledTextColor
                                 elide: Text.ElideRight
                                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                Switch {
+                                    text: i18nc("@label:switch", "Live")
+                                    checked: savedDelegateRoot.includeLive
+                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeLive", checked)
+                                }
+
+                                Switch {
+                                    text: i18nc("@label:switch", "Schedules")
+                                    checked: savedDelegateRoot.includeSchedules
+                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeSchedules", checked)
+                                }
+
+                                Switch {
+                                    text: i18nc("@label:switch", "Recent")
+                                    checked: savedDelegateRoot.includeRecent
+                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeRecent", checked)
+                                }
+
+                                Switch {
+                                    text: i18nc("@label:switch", "Tables")
+                                    checked: savedDelegateRoot.includeTables
+                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeTables", checked)
+                                }
                             }
                         }
 

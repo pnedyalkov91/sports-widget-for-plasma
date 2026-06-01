@@ -61,6 +61,44 @@ function leagueOptions(provider, sport, country) {
     return SportScoreLeagues.leagueOptions(country || defaultCountry(provider, sport));
 }
 
+function resolveFootballLeagueCode(countryCode, labelOrCode) {
+    const direct = sportScoreSlug(labelOrCode);
+    if (SportScoreLeagues.leagueLabel(direct).length > 0)
+        return direct;
+
+    const wanted = normalizeLeagueText(labelOrCode);
+    if (wanted.length === 0)
+        return direct;
+
+    const country = String(countryCode || "").trim().toLowerCase();
+    const countryCandidates = country.length > 0 ? [country] : [];
+    if (countryCandidates.indexOf("world") < 0)
+        countryCandidates.push("world");
+
+    let best = "";
+    let bestScore = 0;
+    countryCandidates.forEach(code => {
+        const options = SportScoreLeagues.leagueOptions(code);
+        options.forEach(option => {
+            const normalized = normalizeLeagueText(option.label);
+            let score = leagueLabelMatchScore(wanted, normalized);
+            if (score <= 0)
+                return;
+
+            // Prefer the explicitly selected country over world/other buckets.
+            if (code === country)
+                score += 3;
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = String(option.value || "").trim();
+            }
+        });
+    });
+
+    return best.length > 0 ? best : direct;
+}
+
 function leagueLabel(leagueCode) {
     const mapped = sportScoreSlug(leagueCode);
     const generated = SportScoreLeagues.leagueLabel(mapped);
@@ -72,11 +110,69 @@ function leagueLabel(leagueCode) {
         "CRICKET": "All cricket",
         "TENNIS": "All tennis"
     };
-    return labels[String(leagueCode || "").trim().toUpperCase()] || "";
+    const explicit = labels[String(leagueCode || "").trim().toUpperCase()];
+    if (explicit)
+        return explicit;
+
+    if (mapped.length === 0)
+        return "";
+
+    return mapped.split("-")
+        .map(part => part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : "")
+        .join(" ")
+        .trim();
 }
 
 function countryLabel(countryCode) {
     return SportScoreLeagues.countryLabel(countryCode);
+}
+
+function countryCodeForLeague(leagueCode) {
+    return SportScoreLeagues.leagueCountryCode(sportScoreSlug(leagueCode));
+}
+
+function hasKnownFootballLeague(leagueCode) {
+    return SportScoreLeagues.leagueLabel(sportScoreSlug(leagueCode)).length > 0;
+}
+
+function normalizeLeagueText(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function leagueLabelMatchScore(left, right) {
+    if (left.length === 0 || right.length === 0)
+        return 0;
+
+    if (left === right)
+        return 10;
+
+    if (left.indexOf(right) >= 0 || right.indexOf(left) >= 0)
+        return 8;
+
+    const leftTokens = left.split(" ").filter(Boolean);
+    const rightTokens = right.split(" ").filter(Boolean);
+    if (leftTokens.length === 0 || rightTokens.length === 0)
+        return 0;
+
+    let shared = 0;
+    leftTokens.forEach(token => {
+        if (rightTokens.indexOf(token) >= 0)
+            shared += 1;
+    });
+    if (shared === 0)
+        return 0;
+
+    const ratio = shared / Math.max(leftTokens.length, rightTokens.length);
+    if (ratio >= 0.8)
+        return 6;
+    if (ratio >= 0.6)
+        return 4;
+    if (ratio >= 0.5)
+        return 2;
+    return 0;
 }
 
 function favoriteTeamOptions(leagueCode) {
@@ -317,6 +413,12 @@ function sportScoreSlug(code) {
         "ENGLISH LEAGUE CUP": "english-football-league-cup",
         "FL1": "french-ligue-1",
         "FRENCH LIGUE 1": "french-ligue-1",
+        "PARVA LIGA": "bulgarian-first-league",
+        "EFBET LIGA": "bulgarian-first-league",
+        "BULGARIAN FIRST LEAGUE": "bulgarian-first-league",
+        "BULGARIAN FIRST PROFESSIONAL LEAGUE": "bulgarian-first-league",
+        "FIRST PROFESSIONAL FOOTBALL LEAGUE": "bulgarian-first-league",
+        "FIRST PROFESSIONAL LEAGUE": "bulgarian-first-league",
         "ITALIAN SERIE A": "italian-serie-a",
         "LA LIGA": "spanish-la-liga",
         "PD": "spanish-la-liga",

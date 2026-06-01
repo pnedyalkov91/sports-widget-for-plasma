@@ -38,8 +38,9 @@ PlasmoidItem {
     property int savedLeagueCount: savedLeagueEntries.length
     property int activeSavedLeagueIndex: normalizedActiveSavedLeagueIndex()
     property var activeLeagueEntry: activeSavedLeague()
-    property string selectedCountry: String(activeLeagueEntry.country || "").trim()
-    property string selectedLeague: String(activeLeagueEntry.league || "").trim()
+    property var primaryLeagueEntry: firstCompetitionEntry()
+    property string selectedCountry: String(primaryLeagueEntry.country || String(activeLeagueEntry.country || "")).trim()
+    property string selectedLeague: String(primaryLeagueEntry.league || String(activeLeagueEntry.league || "")).trim()
     property string favoriteTeam: String(activeLeagueEntry.favoriteTeam || "").trim()
     property string followMode: normalizedFollowMode(activeLeagueEntry)
     property bool followTeamMode: followMode === "team"
@@ -60,7 +61,7 @@ PlasmoidItem {
     property string panelHeroHomeBadge: matchField(panelHeroMatch, "homeBadge")
     property string panelHeroAwayBadge: matchField(panelHeroMatch, "awayBadge")
     property string panelHeroStadium: matchField(panelHeroMatch, "stadium")
-    property string selectedSport: String(activeLeagueEntry.sport || "").trim()
+    property string selectedSport: String(primaryLeagueEntry.sport || String(activeLeagueEntry.sport || "")).trim()
     property string selectedLeagueLabel: displayLeagueLabel(activeLeagueEntry)
     property string selectedCountryLabel: displayCountryLabel(activeLeagueEntry)
     property string activeDisplayLabel: activeTitleLabel()
@@ -77,8 +78,16 @@ PlasmoidItem {
     property var discoveredTeamCompetitions: []
     property var teamTableOptions: []
     property string selectedTeamTableSlug: ""
+    property var teamTableSeasonOptions: []
+    property string selectedTeamTableSeasonKey: ""
     property bool teamTableLoading: false
+    property bool teamTableSeasonLoading: false
+    property bool teamTableFormLoading: false
+    property bool pendingSeasonTableRefresh: false
     property int teamTableRequestToken: 0
+    property int teamTableSeasonRequestToken: 0
+    property int teamTableFormRequestToken: 0
+    property string teamTableSeasonScopeKey: ""
     property string pendingScheduleMessage: ""
     readonly property string panelAreaMode: normalizedPanelAreaMode()
     readonly property int panelAreaSize: Math.max(20, Number(Plasmoid.configuration.panelAreaSize || 240))
@@ -94,9 +103,13 @@ PlasmoidItem {
     }
 
     function hasSportSelection() {
-        return root.savedLeagueCount > 0
-            && root.selectedSport.length > 0
-            && (root.selectedLeague.length > 0 || (root.teamWatchMode() && root.watchedTeamNames().length > 0));
+        if (root.savedLeagueCount === 0)
+            return false;
+
+        return root.liveScopeEntries().length > 0
+            || root.scheduleScopeEntries().length > 0
+            || root.recentScopeEntries().length > 0
+            || root.tableScopeEntries().length > 0;
     }
 
     function matchField(match, field) {
@@ -130,6 +143,10 @@ PlasmoidItem {
         const copy = Object.assign({}, entry || {});
         copy.type = root.entryType(copy);
         copy.followMode = copy.type === "team" ? "team" : "league";
+        copy.includeLive = copy.includeLive !== false;
+        copy.includeSchedules = copy.includeSchedules !== false;
+        copy.includeRecent = copy.includeRecent !== false;
+        copy.includeTables = copy.includeTables !== false;
         if (copy.type === "team") {
             copy.favoriteTeam = root.stripLegacyTeamPrefix(copy.customFavoriteTeamLabel || copy.favoriteTeam || copy.customLeagueLabel || copy.leagueLabel || copy.league || "");
             copy.league = "";
@@ -140,6 +157,49 @@ PlasmoidItem {
 
         delete copy.starred;
         return copy;
+    }
+
+    function firstCompetitionEntry() {
+        const entries = root.savedLeagueEntries;
+        for (let index = 0; index < entries.length; index += 1) {
+            const entry = entries[index] || {};
+            if (root.entryType(entry) === "competition" && String(entry.league || "").trim().length > 0)
+                return entry;
+        }
+
+        return root.activeLeagueEntry || {};
+    }
+
+    function hasEntryTarget(entry) {
+        if (root.entryType(entry) === "team")
+            return String(entry && entry.favoriteTeam || "").trim().length > 0;
+
+        return String(entry && entry.league || "").trim().length > 0;
+    }
+
+    function scopeEntries(flagName) {
+        return root.savedLeagueEntries.filter((entry) => {
+            if (!root.hasEntryTarget(entry))
+                return false;
+
+            return entry && entry[flagName] !== false;
+        });
+    }
+
+    function liveScopeEntries() {
+        return root.scopeEntries("includeLive");
+    }
+
+    function scheduleScopeEntries() {
+        return root.scopeEntries("includeSchedules");
+    }
+
+    function recentScopeEntries() {
+        return root.scopeEntries("includeRecent");
+    }
+
+    function tableScopeEntries() {
+        return root.scopeEntries("includeTables");
     }
 
     function optionValues(options) {
@@ -194,11 +254,17 @@ PlasmoidItem {
     }
 
     function teamWatchMode() {
-        return root.followTeamMode;
+        return root.watchedTeamEntries().length > 0;
     }
 
     function watchedTeamEntries() {
-        return root.followTeamMode && root.favoriteTeam.length > 0 ? [root.activeLeagueEntry] : [];
+        const teams = root.savedLeagueEntries.filter((entry) => {
+            return root.entryType(entry) === "team" && String(entry.favoriteTeam || "").trim().length > 0;
+        });
+        if (teams.length > 0)
+            return teams;
+
+        return root.favoriteTeam.length > 0 && root.entryType(root.activeLeagueEntry) === "team" ? [root.activeLeagueEntry] : [];
     }
 
     function watchedTeamNames() {
@@ -231,6 +297,40 @@ PlasmoidItem {
         return names;
     }
 
+    function watchedTeamPriorityMap() {
+        let order = {};
+        const names = root.watchedTeamNames();
+        for (let index = 0; index < names.length; index += 1)
+            order[names[index].toLowerCase()] = index;
+
+        return order;
+    }
+
+    function watchedTeamPriorityForName(teamName) {
+        const names = root.watchedTeamNames();
+        if (names.length === 0)
+            return Number.MAX_SAFE_INTEGER;
+
+        const normalizedTeam = String(teamName || "").trim();
+        if (normalizedTeam.length === 0)
+            return Number.MAX_SAFE_INTEGER;
+
+        for (let index = 0; index < names.length; index += 1) {
+            const favorite = names[index];
+            if (SportsApi.sameTeamName(normalizedTeam, favorite) || normalizedTeam.toLowerCase().indexOf(favorite.toLowerCase()) >= 0)
+                return index;
+        }
+
+        return Number.MAX_SAFE_INTEGER;
+    }
+
+    function watchedTeamPriorityForMatch(match) {
+        if (!match)
+            return Number.MAX_SAFE_INTEGER;
+
+        return Math.min(root.watchedTeamPriorityForName(match.homeTeam), root.watchedTeamPriorityForName(match.awayTeam), root.watchedTeamPriorityForName(match.team));
+    }
+
     function effectiveFavoriteTeamName() {
         const names = root.watchedTeamNames();
         return names.length > 0 ? names[0] : root.favoriteTeam;
@@ -248,7 +348,8 @@ PlasmoidItem {
         const names = root.watchedTeamDisplayNames();
         if (names.length === 1)
             return names[0];
-        return root.favoriteTeam;
+
+        return names.length > 1 ? i18ncp("@label", "%1 saved team", "%1 saved teams", names.length) : root.favoriteTeam;
     }
 
     function teamWatchSignature() {
@@ -256,11 +357,17 @@ PlasmoidItem {
     }
 
     function activeTitleLabel() {
+        if (root.savedLeagueCount > 1)
+            return SportVisuals.label(root.selectedSport.length > 0 ? root.selectedSport : "football");
+
+        if (root.followTeamMode && root.watchedTeamNames().length > 1)
+            return i18nc("@label", "Saved Teams");
+
         return root.followTeamMode ? root.displayFavoriteTeam(root.activeLeagueEntry) : root.selectedLeagueLabel;
     }
 
     function activeSubtitleLabel() {
-        return root.followTeamMode ? i18nc("@label", "All competitions") : root.selectedCountryLabel;
+        return root.followTeamMode ? i18nc("@label", "All competitions") : root.selectedCountryLabel.length > 0 ? root.selectedCountryLabel : i18nc("@label", "Combined scope");
     }
 
     function activeHeaderBadge() {
@@ -497,7 +604,12 @@ PlasmoidItem {
     }
 
     function emptySchedulesText() {
-        return root.teamWatchMode() ? i18nc("@info:status", "No scheduled matches for %1.", root.watchedTeamsLabel()) : i18nc("@info:status", "No scheduled matches for the selected league.");
+        const teamScopes = root.scheduleScopeEntries().filter(entry => root.entryType(entry) === "team").length;
+        const competitionScopes = root.scheduleScopeEntries().filter(entry => root.entryType(entry) === "competition").length;
+        if (teamScopes > 0 && competitionScopes === 0)
+            return i18nc("@info:status", "No scheduled matches for %1.", root.watchedTeamsLabel());
+
+        return i18nc("@info:status", "No scheduled matches for your saved sports.");
     }
 
     function setActiveSavedLeagueIndex(index) {
@@ -543,6 +655,164 @@ PlasmoidItem {
         Plasmoid.configuration.defaultSelectionMigrated = true;
     }
 
+    function requestOptionsForEntry(entry, token, manual, override) {
+        const type = root.entryType(entry);
+        const options = {
+            "provider": effectiveProvider(),
+            "baseUrl": effectiveBaseUrl(),
+            "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
+            "sports": String(entry && entry.sport || "football").trim(),
+            "country": String(entry && entry.country || "").trim(),
+            "league": type === "team" ? "" : String(entry && entry.league || "").trim(),
+            "favoriteTeam": type === "team" ? String(entry && entry.favoriteTeam || "").trim() : "",
+            "followMode": type === "team" ? "team" : "league",
+            "refreshToken": token,
+            "forceLiveRefresh": Boolean(manual),
+            "scoreboardDaysBack": 30,
+            "scoreboardDaysForward": 90
+        };
+        return Object.assign(options, override || {});
+    }
+
+    function matchKey(match) {
+        const value = match || {};
+        const timestamp = Number(value.timestamp || 0);
+        const status = String(value.status || "").trim().toLowerCase();
+        const start = String(value.startTime || "").trim().toLowerCase();
+        const league = String(value.league || "").trim().toLowerCase();
+        const home = String(value.homeTeam || "").trim().toLowerCase();
+        const away = String(value.awayTeam || "").trim().toLowerCase();
+        const homeScore = String(value.homeScore !== undefined ? value.homeScore : "").trim();
+        const awayScore = String(value.awayScore !== undefined ? value.awayScore : "").trim();
+        return [league, home, away, timestamp > 0 ? String(timestamp) : start, status, homeScore, awayScore].join("|");
+    }
+
+    function mergeScopedMatches(existing, scopedMatches) {
+        let byKey = {};
+        (Array.isArray(existing) ? existing : []).forEach((match) => {
+            const key = root.matchKey(match);
+            if (key.length > 0)
+                byKey[key] = Object.assign({}, match);
+        });
+        (Array.isArray(scopedMatches) ? scopedMatches : []).forEach((match) => {
+            const key = root.matchKey(match);
+            if (key.length === 0)
+                return;
+
+            const current = byKey[key];
+            if (!current) {
+                byKey[key] = Object.assign({}, match);
+                return;
+            }
+
+            const currentOrder = Number(current.scopeOrder);
+            const nextOrder = Number(match.scopeOrder);
+            if (!Number.isFinite(currentOrder) || (Number.isFinite(nextOrder) && nextOrder < currentOrder))
+                current.scopeOrder = nextOrder;
+            if (String(current.league || "").trim().length === 0 && String(match.league || "").trim().length > 0)
+                current.league = match.league;
+            if (String(current.homeBadge || "").trim().length === 0 && String(match.homeBadge || "").trim().length > 0)
+                current.homeBadge = match.homeBadge;
+            if (String(current.awayBadge || "").trim().length === 0 && String(match.awayBadge || "").trim().length > 0)
+                current.awayBadge = match.awayBadge;
+        });
+
+        return Object.keys(byKey).map((key) => byKey[key]);
+    }
+
+    function filterMatchesByEntries(matches, entries) {
+        const scopedEntries = Array.isArray(entries) ? entries : [];
+        if (scopedEntries.length === 0)
+            return [];
+
+        return (Array.isArray(matches) ? matches : []).filter(match => {
+            for (let index = 0; index < scopedEntries.length; index += 1) {
+                if (root.matchBelongsToEntry(scopedEntries[index], match))
+                    return true;
+            }
+            return false;
+        });
+    }
+
+    function matchBelongsToEntry(entry, match) {
+        function normalizedKey(value) {
+            return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+        }
+
+        const type = root.entryType(entry);
+        if (type === "team") {
+            const team = String(entry && entry.favoriteTeam || "").trim();
+            if (team.length === 0)
+                return false;
+
+            return SportsApi.sameTeamName(match && match.homeTeam, team)
+                || SportsApi.sameTeamName(match && match.awayTeam, team)
+                || SportsApi.sameTeamName(match && match.team, team);
+        }
+
+        const leagueSlug = ProviderCatalog.sportScoreSlug(entry && entry.league || "");
+        const leagueLabelKey = normalizedKey(root.displayLeagueLabel(entry));
+        if (leagueSlug.length === 0)
+            return true;
+
+        const matchLeagueLabel = String(match && match.league || "").trim();
+        if (matchLeagueLabel.length === 0)
+            return false;
+
+        const matchLeagueSlug = ProviderCatalog.sportScoreSlug(matchLeagueLabel);
+        if (matchLeagueSlug === leagueSlug)
+            return true;
+
+        const matchLeagueKey = normalizedKey(matchLeagueLabel);
+        const leagueSlugKey = normalizedKey(leagueSlug);
+        return matchLeagueKey.length > 0 && (matchLeagueKey.indexOf(leagueSlugKey) >= 0 || leagueSlugKey.indexOf(matchLeagueKey) >= 0 || (leagueLabelKey.length > 0 && (matchLeagueKey.indexOf(leagueLabelKey) >= 0 || leagueLabelKey.indexOf(matchLeagueKey) >= 0)));
+    }
+
+    function fetchScopedMatches(entries, token, manual, fetcher, onSuccess, onError, override) {
+        const scopeEntries = Array.isArray(entries) ? entries : [];
+        if (scopeEntries.length === 0) {
+            onSuccess([]);
+            return;
+        }
+
+        let pending = scopeEntries.length;
+        let merged = [];
+        let errors = [];
+        scopeEntries.forEach((entry, index) => {
+            const options = root.requestOptionsForEntry(entry, token, manual, override);
+            fetcher(options, (matches) => {
+                const scopedMatches = (Array.isArray(matches) ? matches : []).filter(match => root.matchBelongsToEntry(entry, match)).map(match => {
+                    const copy = Object.assign({}, match || {});
+                    copy.scopeOrder = index;
+                    return copy;
+                });
+                merged = root.mergeScopedMatches(merged, scopedMatches);
+                pending -= 1;
+                if (pending > 0)
+                    return;
+
+                if (merged.length > 0 || errors.length === 0) {
+                    onSuccess(merged);
+                } else {
+                    onError(errors.join(", "));
+                }
+            }, (message) => {
+                const text = String(message || "").trim();
+                if (text.length > 0)
+                    errors.push(text);
+                pending -= 1;
+                if (pending > 0)
+                    return;
+
+                if (merged.length > 0 || errors.length === 0) {
+                    onSuccess(merged);
+                } else {
+                    onError(errors.join(", "));
+                }
+            });
+        });
+    }
+
     function refreshScores(manual) {
         if (!root.hasSportSelection()) {
             root.refreshToken += 1;
@@ -564,7 +834,12 @@ PlasmoidItem {
             root.discoveredTeamCompetitions = [];
             root.teamTableOptions = [];
             root.selectedTeamTableSlug = "";
+            root.teamTableSeasonOptions = [];
+            root.selectedTeamTableSeasonKey = "";
             root.teamTableLoading = false;
+            root.teamTableSeasonLoading = false;
+            root.teamTableFormLoading = false;
+            root.pendingSeasonTableRefresh = false;
             root.loading = false;
             root.liveLoading = false;
             root.schedulesLoading = false;
@@ -575,6 +850,7 @@ PlasmoidItem {
             root.scheduleRequestCompleted = true;
             root.tableScheduleFallbackStarted = false;
             root.recentResultsTableFallbackStarted = false;
+            root.teamTableSeasonScopeKey = "";
             root.errorMessage = i18nc("@info:status", "Add a sport in the widget settings.");
             root.tableErrorMessage = "";
             root.lastUpdatedText = "";
@@ -591,20 +867,9 @@ PlasmoidItem {
         root.refreshToken = token;
         root.liveRefreshToken += 1;
         root.liveRefreshInFlight = false;
-        const options = {
-            "provider": effectiveProvider(),
-            "baseUrl": effectiveBaseUrl(),
-            "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
-            "sports": root.selectedSport,
-            "country": root.selectedCountry,
-            "league": root.effectiveRequestLeague(),
-            "favoriteTeam": root.effectiveFavoriteTeamName(),
-            "followMode": root.effectiveFollowMode(),
-            "refreshToken": token,
-            "forceLiveRefresh": Boolean(manual),
-            "scoreboardDaysBack": 30,
-            "scoreboardDaysForward": 90
-        };
+        const options = root.currentRequestOptions();
+        options.refreshToken = token;
+        options.forceLiveRefresh = Boolean(manual);
         root.pendingRequests = 4;
         root.refreshErrors = [];
         root.tableRequestCompleted = false;
@@ -624,14 +889,24 @@ PlasmoidItem {
         root.discoveredTeamCompetitions = [];
         root.teamTableLoading = false;
         root.teamTableRequestToken += 1;
+        root.teamTableSeasonLoading = false;
+        root.teamTableFormLoading = false;
+        root.teamTableFormRequestToken += 1;
+        root.pendingSeasonTableRefresh = false;
+        root.teamTableSeasonRequestToken += 1;
+        root.teamTableSeasonScopeKey = "";
         emptySchedulesTimer.stop();
         root.errorMessage = "";
+        liveMatchesModel.clear();
+        scoresModel.clear();
+        recentResultsListModel.clear();
         syncTeamTableOptions();
         applyTable([], true);
         root.tableErrorMessage = "";
-        recentResultsListModel.clear();
+        if (root.watchedTeamEntries().length > 0)
+            refreshTeamCompetitionOptions(options);
         tableFallbackTimer.restart();
-        SportsApi.fetchLiveScores(options, (matches) => {
+        root.fetchScopedMatches(root.liveScopeEntries(), token, manual, SportsApi.fetchLiveScores, (matches) => {
             if (!root.isCurrentRefresh(token))
                 return;
 
@@ -646,7 +921,17 @@ PlasmoidItem {
             root.liveLoading = false;
             finishRefresh(manual, message, token);
         });
-        SportsApi.fetchLeagueTable(options, (table) => {
+        const hasCompetitionTableScope = root.tableScopeEntries().some(entry => root.entryType(entry) === "competition");
+        if (!hasCompetitionTableScope || String(options.league || "").trim().length === 0) {
+            root.tableRequestCompleted = true;
+            tableFallbackTimer.stop();
+            applyTable([], true);
+            root.tableErrorMessage = root.teamTableOptions.length > 0 ? "" : i18nc("@info:status", "No table scope enabled.");
+            if (root.currentDisplayTableSlug().length > 0)
+                root.refreshDisplayTableForSelection();
+            finishRefresh(manual, "", token);
+        } else {
+            SportsApi.fetchLeagueTable(options, (table) => {
             if (!root.isCurrentRefresh(token))
                 return;
 
@@ -657,19 +942,36 @@ PlasmoidItem {
             if (table.length > 0) {
                 applyTable(table, true);
                 root.tableErrorMessage = "";
-                refreshTeamCompetitionOptions(options);
+                const activeSeasonOption = root.selectedTeamTableSeasonOption();
                 enrichTableForm(Object.assign({}, options, {
                     "followMode": "league",
-                    "league": root.currentDisplayTableSlug()
+                    "league": root.currentDisplayTableSlug(),
+                    "country": root.currentDisplayTableCountry(),
+                    "seasonKey": String(root.selectedTeamTableSeasonKey || "").trim(),
+                    "seasonLabel": String(activeSeasonOption && activeSeasonOption.label || "").trim(),
+                    "seasonId": String(activeSeasonOption && activeSeasonOption.id || "").trim(),
+                    "seasonProvider": String(activeSeasonOption && activeSeasonOption.provider || "").trim()
                 }));
-                refreshRecentResultsFromTable(options);
-                if (root.teamWatchMode() || (root.scheduleRequestCompleted && scoresModel.count === 0))
+                if (root.recentScopeEntries().length > 0)
+                    refreshRecentResultsFromTable(options);
+                if (root.scheduleScopeEntries().length > 0 && (root.teamWatchMode() || (root.scheduleRequestCompleted && scoresModel.count === 0)))
                     refreshSchedulesFromTable(options);
+                if (root.currentDisplayTableSlug() !== ProviderCatalog.sportScoreSlug(root.selectedLeague))
+                    root.refreshDisplayTableForSelection();
+                else if (root.selectedTeamTableSeasonKey.length > 0)
+                    root.refreshDisplayTableForSelection();
             } else {
                 applyTable([], true);
                 root.tableErrorMessage = i18nc("@info:status", "No table rows returned for %1.", root.selectedLeagueLabel || root.selectedLeague);
-                if (root.teamWatchMode())
+                if (root.scheduleScopeEntries().length > 0 || root.recentScopeEntries().length > 0)
                     refreshClubModeSections(options);
+                if (root.currentDisplayTableSlug() !== ProviderCatalog.sportScoreSlug(root.selectedLeague) && root.currentDisplayTableSlug().length > 0)
+                    root.refreshDisplayTableForSelection();
+            }
+
+            if (root.pendingSeasonTableRefresh && root.selectedTeamTableSeasonKey.length > 0 && root.currentDisplayTableSlug().length > 0) {
+                root.pendingSeasonTableRefresh = false;
+                root.refreshDisplayTableForSelection();
             }
 
             if (!alreadyCounted)
@@ -683,30 +985,32 @@ PlasmoidItem {
             tableFallbackTimer.stop();
             applyTable([], true);
             root.tableErrorMessage = message;
-            if (root.teamWatchMode())
+            if (root.scheduleScopeEntries().length > 0 || root.recentScopeEntries().length > 0)
                 refreshClubModeSections(options);
+            if (root.currentDisplayTableSlug() !== ProviderCatalog.sportScoreSlug(root.selectedLeague) && root.currentDisplayTableSlug().length > 0)
+                root.refreshDisplayTableForSelection();
+            if (root.pendingSeasonTableRefresh && root.selectedTeamTableSeasonKey.length > 0 && root.currentDisplayTableSlug().length > 0) {
+                root.pendingSeasonTableRefresh = false;
+                root.refreshDisplayTableForSelection();
+            }
             if (!alreadyCounted)
                 finishRefresh(manual, message, token);
         });
-        SportsApi.fetchScoresFixtures(options, (fixtures) => {
+        }
+        root.fetchScopedMatches(root.scheduleScopeEntries(), token, manual, SportsApi.fetchScoresFixtures, (fixtures) => {
             if (!root.isCurrentRefresh(token))
                 return;
 
             root.scheduleRequestCompleted = true;
-            if (root.teamWatchMode()) {
-                if (root.rowsForFollowMode().length > 0) {
-                    refreshSchedulesFromTable(options);
-                } else if (root.tableRequestCompleted && root.rowsForFollowMode().length === 0) {
-                    deferEmptySchedulesMessage("");
-                }
-                finishRefresh(manual, "", token);
-                return;
-            }
 
             const scheduledCount = applySchedules(fixtures, root.updatedText());
             if (scheduledCount > 0) {
                 emptySchedulesTimer.stop();
                 root.schedulesLoading = false;
+            } else if (root.scheduleScopeEntries().length === 0) {
+                emptySchedulesTimer.stop();
+                root.schedulesLoading = false;
+                root.errorMessage = i18nc("@info:status", "No saved items are enabled for Schedules.");
             } else if (root.tableRows.length > 0) {
                 refreshSchedulesFromTable(options);
             } else if (root.tableRequestCompleted && root.tableRows.length === 0) {
@@ -719,36 +1023,27 @@ PlasmoidItem {
                 return;
 
             root.scheduleRequestCompleted = true;
-            if (root.teamWatchMode()) {
-                if (root.rowsForFollowMode().length > 0) {
-                    refreshSchedulesFromTable(options);
-                } else if (root.tableRequestCompleted && root.rowsForFollowMode().length === 0) {
-                    deferEmptySchedulesMessage(message);
-                }
-                finishRefresh(manual, message, token);
-                return;
-            }
-
             applySchedules([], root.updatedText());
-            if (root.tableRows.length > 0) {
+            if (root.scheduleScopeEntries().length === 0) {
+                emptySchedulesTimer.stop();
+                root.schedulesLoading = false;
+                root.errorMessage = i18nc("@info:status", "No saved items are enabled for Schedules.");
+            } else if (root.tableRows.length > 0) {
                 refreshSchedulesFromTable(options);
             } else if (root.tableRequestCompleted && root.tableRows.length === 0) {
                 deferEmptySchedulesMessage(message);
             }
 
             finishRefresh(manual, message, token);
+        }, {
+            "preferTeamRecentResults": false
         });
-        SportsApi.fetchRecentResults(options, (results) => {
+        root.fetchScopedMatches(root.recentScopeEntries(), token, manual, SportsApi.fetchRecentResults, (results) => {
             if (!root.isCurrentRefresh(token))
                 return;
 
-            if (root.teamWatchMode() && root.recentResultsTableFallbackStarted) {
-                finishRefresh(manual, "", token);
-                return;
-            }
-
             const hasResults = results.length > 0;
-            if (!root.teamWatchMode() && (results.length > 0 || recentResultsListModel.count === 0))
+            if (results.length > 0 || recentResultsListModel.count === 0)
                 applyRecentResults(results);
             if (hasResults || !root.recentResultsTableFallbackStarted)
                 root.recentResultsLoading = false;
@@ -757,11 +1052,13 @@ PlasmoidItem {
             if (!root.isCurrentRefresh(token))
                 return;
 
-            if (!root.teamWatchMode() && recentResultsListModel.count === 0)
+            if (recentResultsListModel.count === 0)
                 applyRecentResults([]);
             if (!root.recentResultsTableFallbackStarted)
                 root.recentResultsLoading = false;
             finishRefresh(manual, message, token);
+        }, {
+            "preferTeamRecentResults": true
         });
     }
 
@@ -777,33 +1074,29 @@ PlasmoidItem {
 
         const token = root.liveRefreshToken + 1;
         root.liveRefreshToken = token;
-        const selectedSport = root.selectedSport;
-        const selectedCountry = root.selectedCountry;
-        const selectedLeague = root.effectiveRequestLeague();
-        const selectedFollowMode = root.effectiveFollowMode();
+        const selectedEntriesSignature = JSON.stringify(root.liveScopeEntries().map((entry) => ({
+            "sport": String(entry && entry.sport || ""),
+            "country": String(entry && entry.country || ""),
+            "league": String(entry && entry.league || ""),
+            "team": String(entry && entry.favoriteTeam || ""),
+            "type": String(root.entryType(entry))
+        })));
         const selectedWatchSignature = root.teamWatchSignature();
-        const options = {
-            "provider": effectiveProvider(),
-            "baseUrl": effectiveBaseUrl(),
-            "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
-            "sports": selectedSport,
-            "country": selectedCountry,
-            "league": selectedLeague,
-            "favoriteTeam": root.effectiveFavoriteTeamName(),
-            "followMode": selectedFollowMode,
-            "refreshToken": root.refreshToken,
-            "forceLiveRefresh": true,
-            "scoreboardDaysBack": 1,
-            "scoreboardDaysForward": 1
-        };
 
         root.liveLoading = liveMatchesModel.count === 0;
         root.liveRefreshInFlight = true;
-        SportsApi.fetchLiveScores(options, (matches) => {
+        root.fetchScopedMatches(root.liveScopeEntries(), root.refreshToken, true, SportsApi.fetchLiveScores, (matches) => {
             if (!root.isCurrentLiveRefresh(token))
                 return;
 
-            if (selectedSport !== root.selectedSport || selectedCountry !== root.selectedCountry || selectedLeague !== root.effectiveRequestLeague() || selectedFollowMode !== root.effectiveFollowMode() || selectedWatchSignature !== root.teamWatchSignature()) {
+            const currentSignature = JSON.stringify(root.liveScopeEntries().map((entry) => ({
+                "sport": String(entry && entry.sport || ""),
+                "country": String(entry && entry.country || ""),
+                "league": String(entry && entry.league || ""),
+                "team": String(entry && entry.favoriteTeam || ""),
+                "type": String(root.entryType(entry))
+            })));
+            if (selectedEntriesSignature !== currentSignature || selectedWatchSignature !== root.teamWatchSignature()) {
                 root.liveRefreshInFlight = false;
                 return;
             }
@@ -818,6 +1111,9 @@ PlasmoidItem {
 
             root.liveLoading = false;
             root.liveRefreshInFlight = false;
+        }, {
+            "scoreboardDaysBack": 1,
+            "scoreboardDaysForward": 1
         });
     }
 
@@ -845,7 +1141,8 @@ PlasmoidItem {
             if (!root.isCurrentRefresh(options.refreshToken))
                 return;
 
-            const scheduledCount = applySchedules(fixtures, root.updatedText());
+            const scopedFixtures = root.filterMatchesByEntries(fixtures, root.scheduleScopeEntries());
+            const scheduledCount = applySchedules(scopedFixtures, root.updatedText());
             if (scheduledCount > 0) {
                 emptySchedulesTimer.stop();
                 root.schedulesLoading = false;
@@ -884,8 +1181,9 @@ PlasmoidItem {
             if (!root.isCurrentRefresh(options.refreshToken))
                 return;
 
-            if ((results.length > 0 && (recentResultsListModel.count === 0 || results.length > recentResultsListModel.count)) || recentResultsListModel.count === 0)
-                applyRecentResults(results);
+            const scopedResults = root.filterMatchesByEntries(results, root.recentScopeEntries());
+            if ((scopedResults.length > 0 && (recentResultsListModel.count === 0 || scopedResults.length > recentResultsListModel.count)) || recentResultsListModel.count === 0)
+                applyRecentResults(scopedResults);
             root.recentResultsLoading = false;
         }, (message) => {
             if (!root.isCurrentRefresh(options.refreshToken))
@@ -936,18 +1234,29 @@ PlasmoidItem {
             return;
 
         refreshTeamCompetitionOptions(options);
-        refreshRecentResultsFromTable(options);
-        refreshSchedulesFromTable(options);
+        if (root.recentScopeEntries().length > 0)
+            refreshRecentResultsFromTable(options);
+        if (root.scheduleScopeEntries().length > 0)
+            refreshSchedulesFromTable(options);
     }
 
     function enrichTableForm(options) {
+        root.teamTableFormRequestToken += 1;
+        const formToken = root.teamTableFormRequestToken;
+        root.teamTableFormLoading = true;
         const requestSport = SportVisuals.normalizedSport(options.sports);
         const requestLeague = ProviderCatalog.sportScoreSlug(options.league);
         SportsApi.fetchLeagueForm(Object.assign({}, options, {
             "provider": "sportscore",
             "baseUrl": "https://sportscore.com/api/widget",
+            "matchDateFormat": root.configuredDateFormat(),
+            "matchTimeFormat": root.configuredTimeFormat(),
             "tableRows": root.tableRows
         }), (formByTeam) => {
+            if (formToken !== root.teamTableFormRequestToken)
+                return;
+
+            root.teamTableFormLoading = false;
             if (!root.isCurrentRefresh(options.refreshToken))
                 return;
 
@@ -962,22 +1271,40 @@ PlasmoidItem {
                 if (!form || form.length === 0)
                     return row;
 
+                const incomingDetails = SportsApi.formDetailsForTeam(formByTeam, row.team);
                 const copy = Object.assign({}, row);
                 copy.form = form;
-                copy.formDetails = SportsApi.formDetailsForTeam(formByTeam, row.team);
+                copy.formDetails = incomingDetails;
                 return copy;
             });
-            applyTable(rows, !root.teamWatchMode() || root.currentDisplayTableSlug() === ProviderCatalog.sportScoreSlug(root.selectedLeague));
+            applyTable(rows, root.currentDisplayTableSlug() === ProviderCatalog.sportScoreSlug(root.selectedLeague));
         }, () => {
+            if (formToken !== root.teamTableFormRequestToken)
+                return;
+
+            root.teamTableFormLoading = false;
         });
     }
 
     function currentDisplayTableSlug() {
-        if (!root.teamWatchMode())
-            return ProviderCatalog.sportScoreSlug(root.selectedLeague);
+        const selectedRaw = String(root.selectedTeamTableSlug || "").trim();
+        let selectedCountry = "";
+        const selectedRawSlug = ProviderCatalog.sportScoreSlug(selectedRaw);
+        for (let index = 0; index < root.teamTableOptions.length; index += 1) {
+            const option = root.teamTableOptions[index] || {};
+            if (ProviderCatalog.sportScoreSlug(option.slug) !== selectedRawSlug)
+                continue;
 
-        const selected = ProviderCatalog.sportScoreSlug(root.selectedTeamTableSlug);
-        return selected.length > 0 ? selected : ProviderCatalog.sportScoreSlug(root.selectedLeague);
+            selectedCountry = String(option.country || "").trim();
+            break;
+        }
+        const selectedResolved = ProviderCatalog.resolveFootballLeagueCode(selectedCountry, selectedRaw);
+        const selected = ProviderCatalog.sportScoreSlug(selectedResolved);
+        if (selected.length > 0)
+            return selected;
+
+        const firstOption = Array.isArray(root.teamTableOptions) && root.teamTableOptions.length > 0 ? root.teamTableOptions[0] : {};
+        return ProviderCatalog.sportScoreSlug(firstOption.slug || root.selectedLeague);
     }
 
     function currentDisplayTableLabel() {
@@ -992,22 +1319,45 @@ PlasmoidItem {
         if (label.length > 0)
             return label;
 
-        if (root.teamWatchMode())
+        if (root.watchedTeamNames().length > 0)
             return slug.length > 0 ? root.titleFromSlug(slug) : i18nc("@label", "All competitions");
 
         return root.selectedLeagueLabel;
     }
 
-    function addTeamTableOption(options, seen, label, slug) {
-        const normalizedSlug = ProviderCatalog.sportScoreSlug(slug || label);
+    function currentDisplayTableCountry() {
+        const slug = root.currentDisplayTableSlug();
+        for (let index = 0; index < root.teamTableOptions.length; index += 1) {
+            const option = root.teamTableOptions[index] || {};
+            if (ProviderCatalog.sportScoreSlug(option.slug) !== slug)
+                continue;
+
+            const country = String(option.country || "").trim();
+            if (country.length > 0)
+                return country;
+        }
+
+        const inferred = String(ProviderCatalog.countryCodeForLeague(slug) || "").trim();
+        if (inferred.length > 0)
+            return inferred;
+
+        return root.selectedCountry;
+    }
+
+    function addTeamTableOption(options, seen, label, slug, country) {
+        const resolvedCountry = String(country || "").trim();
+        const resolvedLeague = ProviderCatalog.resolveFootballLeagueCode(resolvedCountry, String(slug || label).trim() || String(label || "").trim());
+        const normalizedSlug = ProviderCatalog.sportScoreSlug(resolvedLeague);
         if (normalizedSlug.length === 0 || seen[normalizedSlug])
             return;
 
         const normalizedLabel = String(label || ProviderCatalog.leagueLabel(normalizedSlug) || root.titleFromSlug(normalizedSlug)).trim();
+        const normalizedCountry = String(resolvedCountry || ProviderCatalog.countryCodeForLeague(normalizedSlug) || "").trim();
         seen[normalizedSlug] = true;
         options.push({
             "slug": normalizedSlug,
-            "label": normalizedLabel
+            "label": normalizedLabel,
+            "country": normalizedCountry
         });
     }
 
@@ -1017,7 +1367,7 @@ PlasmoidItem {
             if (label.length === 0)
                 return;
 
-            root.addTeamTableOption(options, seen, label, label);
+            root.addTeamTableOption(options, seen, label, label, ProviderCatalog.countryCodeForLeague(label));
         });
     }
 
@@ -1025,81 +1375,199 @@ PlasmoidItem {
         (Array.isArray(competitions) ? competitions : []).forEach(competition => {
             const label = String(competition && competition.label || "").trim();
             const slug = String(competition && competition.slug || label).trim();
-            root.addTeamTableOption(options, seen, label, slug);
+            root.addTeamTableOption(options, seen, label, slug, ProviderCatalog.countryCodeForLeague(slug));
         });
     }
 
     function collectTeamTableOptions() {
-        if (!root.teamWatchMode())
-            return [];
-
         let seen = {};
         let options = [];
-        if (root.selectedLeague.length > 0)
-            root.addTeamTableOption(options, seen, root.selectedLeagueLabel, root.selectedLeague);
+        const tableEntries = root.tableScopeEntries();
+        tableEntries.forEach((entry) => {
+            if (root.entryType(entry) !== "competition")
+                return;
+
+            const league = String(entry && entry.league || "").trim();
+            if (league.length === 0)
+                return;
+
+            root.addTeamTableOption(options, seen, root.displayLeagueLabel(entry), league, String(entry && entry.country || "").trim());
+        });
+        // Include discovered team competitions (now constrained to provider-matched teams)
+        // to expose domestic leagues that may not appear in the current match window.
         root.addTeamTableOptionsFromCompetitions(options, seen, root.discoveredTeamCompetitions);
-        root.addTeamTableOptionsFromMatches(options, seen, root.filterFavoriteMatches(root.latestLiveMatches));
-        root.addTeamTableOptionsFromMatches(options, seen, root.filterFavoriteMatches(root.latestScheduleMatches));
-        root.addTeamTableOptionsFromMatches(options, seen, root.filterFavoriteMatches(root.latestRecentMatches));
+        root.addTeamTableOptionsFromMatches(options, seen, root.latestLiveMatches);
+        root.addTeamTableOptionsFromMatches(options, seen, root.latestScheduleMatches);
+        root.addTeamTableOptionsFromMatches(options, seen, root.latestRecentMatches);
         return options;
     }
 
     function refreshTeamCompetitionOptions(options) {
-        if (!root.teamWatchMode() || root.effectiveFavoriteTeamName().length === 0)
+        const teamEntries = root.watchedTeamEntries();
+        if (teamEntries.length === 0)
             return;
 
         const requestToken = options.refreshToken;
-        SportsApi.fetchTeamCompetitions(Object.assign({}, options, {
-            "tableRows": root.rowsForFollowMode()
-        }), (competitions) => {
-            if (!root.isCurrentRefresh(requestToken))
-                return;
+        let pending = teamEntries.length;
+        let competitions = [];
+        teamEntries.forEach((entry) => {
+            SportsApi.fetchTeamCompetitions(root.requestOptionsForEntry(entry, requestToken, false), (rows) => {
+                competitions = competitions.concat(Array.isArray(rows) ? rows : []);
+                pending -= 1;
+                if (pending > 0 || !root.isCurrentRefresh(requestToken))
+                    return;
 
-            root.discoveredTeamCompetitions = Array.isArray(competitions) ? competitions : [];
-            syncTeamTableOptions();
-            if (root.currentDisplayTableSlug().length > 0)
-                root.refreshDisplayTableForSelection();
-        }, () => {
+                root.discoveredTeamCompetitions = competitions;
+                syncTeamTableOptions();
+                if (root.currentDisplayTableSlug().length > 0)
+                    root.refreshDisplayTableForSelection();
+            }, () => {
+                pending -= 1;
+                if (pending > 0 || !root.isCurrentRefresh(requestToken))
+                    return;
+
+                root.discoveredTeamCompetitions = competitions;
+                syncTeamTableOptions();
+                if (root.currentDisplayTableSlug().length > 0)
+                    root.refreshDisplayTableForSelection();
+            });
         });
     }
 
     function syncTeamTableOptions() {
         const options = root.collectTeamTableOptions();
         root.teamTableOptions = options;
-        if (!root.teamWatchMode()) {
-            root.selectedTeamTableSlug = "";
+        if (options.length === 0) {
+            root.teamTableSeasonScopeKey = "";
+            root.teamTableSeasonOptions = [];
+            root.selectedTeamTableSeasonKey = "";
             return;
         }
 
-        const fallbackSlug = ProviderCatalog.sportScoreSlug(root.selectedLeague);
         const currentSlug = ProviderCatalog.sportScoreSlug(root.selectedTeamTableSlug);
         const hasCurrent = options.some(option => ProviderCatalog.sportScoreSlug(option.slug) === currentSlug);
+        let changed = false;
         if (currentSlug.length === 0 || !hasCurrent)
-            root.selectedTeamTableSlug = fallbackSlug.length > 0 ? fallbackSlug : options.length > 0 ? ProviderCatalog.sportScoreSlug(options[0].slug) : "";
+            root.selectedTeamTableSlug = options.length > 0 ? ProviderCatalog.sportScoreSlug(options[0].slug) : "";
+        changed = ProviderCatalog.sportScoreSlug(root.selectedTeamTableSlug) !== currentSlug;
+        if (changed && root.tableRequestCompleted && !root.teamTableLoading && root.currentDisplayTableSlug().length > 0)
+            root.refreshDisplayTableForSelection();
+
+        root.syncTableSeasonOptions();
     }
 
     function selectTeamTable(slug) {
-        if (!root.teamWatchMode())
-            return;
-
         const normalizedSlug = ProviderCatalog.sportScoreSlug(slug);
         if (normalizedSlug.length === 0 || normalizedSlug === root.currentDisplayTableSlug())
             return;
 
         root.selectedTeamTableSlug = normalizedSlug;
+        root.syncTableSeasonOptions();
         root.refreshDisplayTableForSelection();
     }
 
-    function currentRequestOptions() {
-        return {
+    function selectTeamTableSeason(seasonKey) {
+        const normalizedKey = String(seasonKey || "").trim();
+        if (normalizedKey.length === 0 || normalizedKey === root.selectedTeamTableSeasonKey)
+            return;
+
+        root.selectedTeamTableSeasonKey = normalizedKey;
+        root.refreshDisplayTableForSelection();
+    }
+
+    function selectedTeamTableSeasonOption() {
+        const selected = String(root.selectedTeamTableSeasonKey || "").trim();
+        const options = Array.isArray(root.teamTableSeasonOptions) ? root.teamTableSeasonOptions : [];
+        for (let index = 0; index < options.length; index += 1) {
+            const option = options[index] || {};
+            if (String(option.key || "").trim() === selected)
+                return option;
+        }
+
+        return {};
+    }
+
+    function syncTableSeasonOptions() {
+        const slug = root.currentDisplayTableSlug();
+        const tableCountry = root.currentDisplayTableCountry();
+        if (slug.length === 0) {
+            root.teamTableSeasonScopeKey = "";
+            root.teamTableSeasonLoading = false;
+            root.teamTableSeasonOptions = [];
+            root.selectedTeamTableSeasonKey = "";
+            return;
+        }
+
+        const scopeKey = `${SportVisuals.normalizedSport(root.selectedSport)}|${ProviderCatalog.sportScoreSlug(tableCountry)}|${slug}`;
+        if (root.teamTableSeasonScopeKey === scopeKey && root.teamTableSeasonOptions.length > 0)
+            return;
+
+        root.teamTableSeasonScopeKey = scopeKey;
+        root.teamTableSeasonLoading = true;
+        root.teamTableSeasonRequestToken += 1;
+        const token = root.teamTableSeasonRequestToken;
+        const previousKey = String(root.selectedTeamTableSeasonKey || "").trim();
+        SportsApi.fetchLeagueSeasons({
             "provider": effectiveProvider(),
             "baseUrl": effectiveBaseUrl(),
             "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
             "sports": root.selectedSport,
-            "country": root.selectedCountry,
-            "league": root.effectiveRequestLeague(),
-            "favoriteTeam": root.effectiveFavoriteTeamName(),
-            "followMode": root.effectiveFollowMode(),
+            "country": tableCountry,
+            "league": slug,
+            "followMode": "league",
+            "refreshToken": root.refreshToken
+        }, (seasons) => {
+            if (token !== root.teamTableSeasonRequestToken)
+                return;
+
+            const options = Array.isArray(seasons) ? seasons.filter(row => String(row && row.key || "").trim().length > 0) : [];
+            root.teamTableSeasonOptions = options;
+            let nextKey = "";
+            if (options.some(option => String(option.key || "").trim() === previousKey)) {
+                nextKey = previousKey;
+            } else {
+                const preferred = options.find(option => Boolean(option && option.isDefault));
+                nextKey = String(preferred && preferred.key || options[0] && options[0].key || "").trim();
+            }
+
+            root.selectedTeamTableSeasonKey = nextKey;
+            root.teamTableSeasonLoading = false;
+            const canRefreshNow = root.tableRequestCompleted
+                && !root.teamTableLoading
+                && root.currentDisplayTableSlug().length > 0
+                && nextKey.length > 0;
+            if (canRefreshNow) {
+                root.pendingSeasonTableRefresh = false;
+                root.refreshDisplayTableForSelection();
+            } else if (nextKey.length > 0 && root.currentDisplayTableSlug().length > 0) {
+                root.pendingSeasonTableRefresh = true;
+            }
+        }, () => {
+            if (token !== root.teamTableSeasonRequestToken)
+                return;
+
+            root.teamTableSeasonOptions = [];
+            root.teamTableSeasonLoading = false;
+            root.pendingSeasonTableRefresh = false;
+            const hadSelection = root.selectedTeamTableSeasonKey.length > 0;
+            root.selectedTeamTableSeasonKey = "";
+            if (hadSelection && root.tableRequestCompleted && !root.teamTableLoading && root.currentDisplayTableSlug().length > 0)
+                root.refreshDisplayTableForSelection();
+        });
+    }
+
+    function currentRequestOptions() {
+        const entry = root.firstCompetitionEntry();
+        const type = root.entryType(entry);
+        return {
+            "provider": effectiveProvider(),
+            "baseUrl": effectiveBaseUrl(),
+            "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
+            "sports": String(entry && entry.sport || root.selectedSport || "football").trim(),
+            "country": String(entry && entry.country || root.selectedCountry || "").trim(),
+            "league": type === "team" ? "" : String(entry && entry.league || root.selectedLeague || "").trim(),
+            "favoriteTeam": type === "team" ? String(entry && entry.favoriteTeam || "").trim() : "",
+            "followMode": type === "team" ? "team" : "league",
             "refreshToken": root.refreshToken,
             "scoreboardDaysBack": 30,
             "scoreboardDaysForward": 90
@@ -1107,28 +1575,56 @@ PlasmoidItem {
     }
 
     function matchScopeOptions(options) {
-        if (!root.teamWatchMode())
-            return options;
-
         return Object.assign({}, options);
     }
 
     function refreshDisplayTableForSelection() {
-        if (!root.teamWatchMode())
-            return;
-
+        root.pendingSeasonTableRefresh = false;
         const slug = root.currentDisplayTableSlug();
-        const primarySlug = ProviderCatalog.sportScoreSlug(root.selectedLeague);
+        const tableCountry = root.currentDisplayTableCountry();
+        const primarySlug = root.primaryTableRows.length > 0 ? ProviderCatalog.sportScoreSlug(root.selectedLeague) : "";
+        const seasonOptions = Array.isArray(root.teamTableSeasonOptions) ? root.teamTableSeasonOptions : [];
+        let selectedSeasonKey = String(root.selectedTeamTableSeasonKey || "").trim();
+        if (selectedSeasonKey.length === 0 && seasonOptions.length > 0) {
+            const preferred = seasonOptions.find(option => Boolean(option && option.isDefault));
+            selectedSeasonKey = String(preferred && preferred.key || seasonOptions[0] && seasonOptions[0].key || "").trim();
+            if (selectedSeasonKey.length > 0)
+                root.selectedTeamTableSeasonKey = selectedSeasonKey;
+        }
+
+        let seasonOption = root.selectedTeamTableSeasonOption();
+        if (selectedSeasonKey.length > 0 && String(seasonOption && seasonOption.key || "").trim() !== selectedSeasonKey)
+            seasonOption = seasonOptions.find(option => String(option && option.key || "").trim() === selectedSeasonKey) || seasonOption;
+        const selectedSeasonId = String(seasonOption && seasonOption.id || "").trim();
+        const selectedSeasonLabel = String(seasonOption && seasonOption.label || "").trim();
+        const selectedSeasonProvider = String(seasonOption && seasonOption.provider || "").trim();
+        const useSeasonRequest = selectedSeasonKey.length > 0;
+        const hasResolvedSeasonSelection = selectedSeasonKey.length === 0
+            || selectedSeasonId.length > 0
+            || selectedSeasonLabel.length > 0
+            || selectedSeasonProvider.length > 0;
         root.teamTableRequestToken += 1;
         const token = root.teamTableRequestToken;
         if (slug.length === 0) {
             root.teamTableLoading = false;
+            root.teamTableFormLoading = false;
+            root.teamTableFormRequestToken += 1;
             applyTable([], false);
             root.tableErrorMessage = i18nc("@info:status", "Choose a competition to show a table.");
             return;
         }
 
-        if (slug.length === 0 || slug === primarySlug) {
+        if (useSeasonRequest && !hasResolvedSeasonSelection) {
+            root.teamTableLoading = false;
+            root.teamTableFormLoading = false;
+            root.teamTableFormRequestToken += 1;
+            root.pendingSeasonTableRefresh = true;
+            if (!root.teamTableSeasonLoading)
+                root.syncTableSeasonOptions();
+            return;
+        }
+
+        if (slug.length === 0 || (primarySlug.length > 0 && slug === primarySlug && !useSeasonRequest)) {
             root.teamTableLoading = false;
             applyTable(root.primaryTableRows, false);
             root.tableErrorMessage = root.primaryTableRows.length > 0 ? "" : i18nc("@info:status", "No table rows returned for %1.", root.selectedLeagueLabel || root.selectedLeague);
@@ -1137,8 +1633,12 @@ PlasmoidItem {
                 "baseUrl": effectiveBaseUrl(),
                 "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
                 "sports": root.selectedSport,
-                "country": root.selectedCountry,
+                "country": tableCountry,
                 "league": slug,
+                "seasonKey": selectedSeasonKey,
+                "seasonLabel": selectedSeasonLabel,
+                "seasonId": selectedSeasonId,
+                "seasonProvider": selectedSeasonProvider,
                 "followMode": "league",
                 "refreshToken": root.refreshToken
             });
@@ -1147,20 +1647,28 @@ PlasmoidItem {
 
         root.teamTableLoading = true;
         root.tableErrorMessage = "";
-        SportsApi.fetchLeagueTable({
+        const requestOptions = {
             "provider": effectiveProvider(),
             "baseUrl": effectiveBaseUrl(),
             "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
             "sports": root.selectedSport,
-            "country": root.selectedCountry,
+            "country": tableCountry,
             "league": slug,
+            "seasonKey": selectedSeasonKey,
+            "seasonLabel": selectedSeasonLabel,
+            "seasonId": selectedSeasonId,
+            "seasonProvider": selectedSeasonProvider,
             "followMode": "league",
             "refreshToken": root.refreshToken
-        }, (table) => {
+        };
+        const requestFn = useSeasonRequest ? SportsApi.fetchLeagueTableForSeason : SportsApi.fetchLeagueTable;
+        requestFn(requestOptions, (table) => {
             if (token !== root.teamTableRequestToken)
                 return;
 
             root.teamTableLoading = false;
+            root.teamTableFormLoading = false;
+            root.teamTableFormRequestToken += 1;
             table = Array.isArray(table) ? table : [];
             applyTable(table, false);
             root.tableErrorMessage = table.length > 0 ? "" : i18nc("@info:status", "No table rows returned for %1.", root.currentDisplayTableLabel());
@@ -1170,8 +1678,12 @@ PlasmoidItem {
                     "baseUrl": effectiveBaseUrl(),
                     "apiKey": String(Plasmoid.configuration.apiKey || "").trim(),
                     "sports": root.selectedSport,
-                    "country": root.selectedCountry,
+                    "country": tableCountry,
                     "league": slug,
+                    "seasonKey": selectedSeasonKey,
+                    "seasonLabel": selectedSeasonLabel,
+                    "seasonId": selectedSeasonId,
+                    "seasonProvider": selectedSeasonProvider,
                     "followMode": "league",
                     "refreshToken": root.refreshToken
                 });
@@ -1181,6 +1693,8 @@ PlasmoidItem {
                 return;
 
             root.teamTableLoading = false;
+            root.teamTableFormLoading = false;
+            root.teamTableFormRequestToken += 1;
             applyTable([], false);
             root.tableErrorMessage = message;
         });
@@ -1231,7 +1745,9 @@ PlasmoidItem {
             matches = prioritizeFavorite(matches);
         }
         matches.forEach((match) => {
-            return scoresModel.append(matchForModel(match));
+            const row = matchForModel(match);
+            row.leagueGroup = root.liveLeagueGroupLabel(row);
+            return scoresModel.append(row);
         });
         if (matches.length > 0) {
             root.errorMessage = "";
@@ -1254,6 +1770,41 @@ PlasmoidItem {
             root.lastUpdatedText = root.updatedText();
     }
 
+    function liveLeagueGroupLabel(match) {
+        const league = String(match && match.league || "").trim();
+        if (league.length > 0)
+            return league;
+
+        return i18nc("@label", "Matches");
+    }
+
+    function sortLiveMatches(matches) {
+        return (Array.isArray(matches) ? matches.slice() : []).sort((left, right) => {
+            const leftScopeOrder = Number(left && left.scopeOrder);
+            const rightScopeOrder = Number(right && right.scopeOrder);
+            if (Number.isFinite(leftScopeOrder) && Number.isFinite(rightScopeOrder) && leftScopeOrder !== rightScopeOrder)
+                return leftScopeOrder - rightScopeOrder;
+
+            const leftGroup = root.liveLeagueGroupLabel(left);
+            const rightGroup = root.liveLeagueGroupLabel(right);
+            const groupOrder = leftGroup.localeCompare(rightGroup);
+            if (groupOrder !== 0)
+                return groupOrder;
+
+            const leftPriority = root.watchedTeamPriorityForMatch(left);
+            const rightPriority = root.watchedTeamPriorityForMatch(right);
+            if (leftPriority !== rightPriority)
+                return leftPriority - rightPriority;
+
+            const leftMinute = String(left && left.minute || "");
+            const rightMinute = String(right && right.minute || "");
+            if (leftMinute !== rightMinute)
+                return rightMinute.localeCompare(leftMinute);
+
+            return String(left && left.homeTeam || "").localeCompare(String(right && right.homeTeam || ""));
+        });
+    }
+
     function applyLiveMatches(matches) {
         liveMatchesModel.clear();
         const sourceMatches = Array.isArray(matches) ? matches.slice() : [];
@@ -1262,8 +1813,11 @@ PlasmoidItem {
         matches = filterFavoriteMatches(sourceMatches);
         matches = filterCurrentCompetitionMatches(matches);
         matches = prioritizeFavorite(matches);
+        matches = sortLiveMatches(matches);
         matches.forEach((match) => {
-            return liveMatchesModel.append(matchForModel(match));
+            const row = matchForModel(match);
+            row.leagueGroup = root.liveLeagueGroupLabel(row);
+            return liveMatchesModel.append(row);
         });
         return matches.length;
     }
@@ -1277,13 +1831,25 @@ PlasmoidItem {
         matches = filterCurrentCompetitionMatches(matches);
         matches = sortRecentResultsByDate(matches);
         matches.forEach((match) => {
-            return recentResultsListModel.append(matchForModel(match));
+            const row = matchForModel(match);
+            row.leagueGroup = root.liveLeagueGroupLabel(row);
+            return recentResultsListModel.append(row);
         });
         return matches.length;
     }
 
     function sortRecentResultsByDate(matches) {
         return (Array.isArray(matches) ? matches.slice() : []).sort((left, right) => {
+            const leftScopeOrder = Number(left && left.scopeOrder);
+            const rightScopeOrder = Number(right && right.scopeOrder);
+            if (Number.isFinite(leftScopeOrder) && Number.isFinite(rightScopeOrder) && leftScopeOrder !== rightScopeOrder)
+                return leftScopeOrder - rightScopeOrder;
+
+            const leftPriority = root.watchedTeamPriorityForMatch(left);
+            const rightPriority = root.watchedTeamPriorityForMatch(right);
+            if (leftPriority !== rightPriority)
+                return leftPriority - rightPriority;
+
             const leftTime = Number(left && left.timestamp || 0);
             const rightTime = Number(right && right.timestamp || 0);
             if (leftTime > 0 && rightTime > 0 && leftTime !== rightTime)
@@ -1357,6 +1923,16 @@ PlasmoidItem {
 
             return String(match.homeScore || "").length === 0 && String(match.awayScore || "").length === 0;
         }).sort((left, right) => {
+            const leftScopeOrder = Number(left && left.scopeOrder);
+            const rightScopeOrder = Number(right && right.scopeOrder);
+            if (Number.isFinite(leftScopeOrder) && Number.isFinite(rightScopeOrder) && leftScopeOrder !== rightScopeOrder)
+                return leftScopeOrder - rightScopeOrder;
+
+            const leftPriority = root.watchedTeamPriorityForMatch(left);
+            const rightPriority = root.watchedTeamPriorityForMatch(right);
+            if (leftPriority !== rightPriority)
+                return leftPriority - rightPriority;
+
             const leftTime = Number(left.timestamp || 0);
             const rightTime = Number(right.timestamp || 0);
             if (leftTime > 0 && rightTime > 0 && leftTime !== rightTime)
@@ -1388,16 +1964,20 @@ PlasmoidItem {
         if (root.watchedTeamNames().length === 0)
             return items;
 
-        return items.slice().sort((left, right) => {
-            return Number(isFavoriteMatch(right)) - Number(isFavoriteMatch(left));
-        });
+        return items.map((match, index) => ({
+            match,
+            index,
+            priority: root.watchedTeamPriorityForMatch(match)
+        })).sort((left, right) => {
+            if (left.priority !== right.priority)
+                return left.priority - right.priority;
+
+            return left.index - right.index;
+        }).map(item => item.match);
     }
 
     function filterFavoriteMatches(items) {
-        if (!root.teamWatchMode() || root.watchedTeamNames().length === 0)
-            return items;
-
-        return items.filter((match) => isFavoriteMatch(match));
+        return items;
     }
 
     function filterCurrentCompetitionMatches(items) {
@@ -1625,7 +2205,7 @@ PlasmoidItem {
         }
 
         function onActiveSavedLeagueIndexChanged() {
-            root.scheduleConfigRefresh();
+            root.syncTeamTableOptions();
         }
 
     }
@@ -1687,7 +2267,11 @@ PlasmoidItem {
         followTeamMode: root.teamWatchMode()
         teamTableOptions: root.teamTableOptions
         selectedTableSlug: root.currentDisplayTableSlug()
-        tableLoading: root.teamTableLoading
+        teamTableSeasonOptions: root.teamTableSeasonOptions
+        selectedTableSeasonKey: root.selectedTeamTableSeasonKey
+        teamTableSeasonLoading: root.teamTableSeasonLoading
+        tableLoading: root.teamTableLoading || root.teamTableSeasonLoading
+        tableFormLoading: root.teamTableFormLoading
         tableModel: tableModel
         tableRows: root.tableRows
         league: root.selectedLeague
@@ -1699,6 +2283,7 @@ PlasmoidItem {
         onConfigureRequested: root.openSportSettings()
         onLeagueSelected: (index) => root.setActiveSavedLeagueIndex(index)
         onTeamTableSelected: (slug) => root.selectTeamTable(slug)
+        onTeamTableSeasonSelected: (seasonKey) => root.selectTeamTableSeason(seasonKey)
     }
 
 }

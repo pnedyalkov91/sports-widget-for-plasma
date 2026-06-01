@@ -50,6 +50,8 @@ const ESPN_SOCCER_LEAGUES = {
 };
 
 const SOFASCORE_TOURNAMENTS = {
+    "english-premier-league": { id: 17, label: "Premier League" },
+    "premier-league": { id: 17, label: "Premier League" },
     "bulgarian-cup": { id: 365, label: "Bulgarian Cup" },
     "bulgarian-first-league": { id: 247, label: "Bulgarian First League" }
 };
@@ -187,10 +189,234 @@ function fetchLiveMatchDetails(options, onSuccess, onError) {
 
 function fetchLeagueTable(options, onSuccess, onError) {
     const provider = "sportscore";
-    fetchProviderTable(provider, Object.assign({}, options, {
+    function fetchFromWidgetApi() {
+        fetchProviderTable(provider, Object.assign({}, options, {
         provider,
         baseUrl: ProviderCatalog.defaultBaseUrl(provider)
     }), onSuccess, onError);
+    }
+
+    if (!canFetchSportScoreCompetitionFixtures(options)) {
+        fetchFromWidgetApi();
+        return;
+    }
+
+    fetchSportScoreCompetitionTable(options, rows => {
+        if (rows.length > 0) {
+            onSuccess(rows);
+            return;
+        }
+
+        fetchFromWidgetApi();
+    }, () => {
+        fetchFromWidgetApi();
+    });
+}
+
+function fetchLeagueSeasons(options, onSuccess, onError) {
+    if (!isFootballSelection(options) || ProviderCatalog.sportScoreSlug(options && options.league).length === 0) {
+        onSuccess([]);
+        return;
+    }
+
+    function finish(rows) {
+        const seasons = selectDefaultSeasonOptions(rows);
+        onSuccess(seasons);
+    }
+
+    function fetchFromTheSportsDB() {
+        fetchTheSportsDBLeagueSeasons(options, rows => {
+            finish(rows);
+        }, onError);
+    }
+
+    function fetchFromSofaScore() {
+        fetchSofaScoreLeagueSeasons(options, rows => {
+            if (rows.length > 0) {
+                finish(rows);
+                return;
+            }
+
+            fetchFromTheSportsDB();
+        }, fetchFromTheSportsDB);
+    }
+
+    fetchSportScoreLeagueSeasons(options, rows => {
+        if (rows.length > 0) {
+            finish(rows);
+            return;
+        }
+
+        fetchFromSofaScore();
+    }, fetchFromSofaScore);
+}
+
+function fetchLeagueTableForSeason(options, onSuccess, onError) {
+    const seasonId = stringValue(options && options.seasonId).trim();
+    const seasonLabel = stringValue(options && options.seasonLabel).trim();
+    const providerHint = stringValue(options && options.seasonProvider).trim().toLowerCase();
+    if (seasonId.length === 0 && seasonLabel.length === 0) {
+        fetchLeagueTable(options, onSuccess, onError);
+        return;
+    }
+
+    if (canFetchSportScoreCompetitionFixtures(options) && seasonLabel.length > 0) {
+        fetchSportScoreCompetitionTableForSeasonLabel(options, rows => {
+            if (rows.length > 0) {
+                onSuccess(rows);
+                return;
+            }
+
+            fetchLeagueTableForSeasonFallback(options, seasonId, providerHint, onSuccess, onError);
+        }, () => {
+            fetchLeagueTableForSeasonFallback(options, seasonId, providerHint, onSuccess, onError);
+        });
+        return;
+    }
+
+    fetchLeagueTableForSeasonFallback(options, seasonId, providerHint, onSuccess, onError);
+}
+
+function fetchLeagueTableForSeasonFallback(options, seasonId, providerHint, onSuccess, onError) {
+    if (seasonId.length === 0) {
+        fetchLeagueTable(options, onSuccess, onError);
+        return;
+    }
+
+    function fetchFromSportScore() {
+        fetchLeagueTable(options, onSuccess, onError);
+    }
+
+    function fetchFromTheSportsDB() {
+        fetchTheSportsDBTableForSeason(options, rows => {
+            if (rows.length > 0) {
+                onSuccess(rows);
+                return;
+            }
+
+            fetchFromSportScore();
+        }, fetchFromSportScore);
+    }
+
+    function fetchFromSofaScore() {
+        fetchSofaScoreTableForSeason(options, rows => {
+            if (rows.length > 0) {
+                onSuccess(rows);
+                return;
+            }
+
+            fetchFromTheSportsDB();
+        }, fetchFromTheSportsDB);
+    }
+
+    if (providerHint === "sofascore") {
+        fetchFromSofaScore();
+        return;
+    }
+
+    if (providerHint === "thesportsdb") {
+        fetchFromTheSportsDB();
+        return;
+    }
+
+    if (canFetchSportScoreCompetitionFixtures(options)) {
+        fetchSportScoreCompetitionTable(options, rows => {
+            if (rows.length > 0) {
+                onSuccess(rows);
+                return;
+            }
+
+            fetchFromSofaScore();
+        }, () => {
+            fetchFromSofaScore();
+        });
+        return;
+    }
+
+    fetchFromSofaScore();
+}
+
+function fetchSportScoreCompetitionTableForSeasonLabel(options, onSuccess, onError) {
+    const country = String(options.country || "england").trim().toLowerCase();
+    const league = ProviderCatalog.sportScoreSlug(options.league);
+    const leagueLabel = ProviderCatalog.leagueLabel(options.league);
+    const seasonSegment = sportScoreSeasonSegmentFromLabel(options && options.seasonLabel);
+    if (seasonSegment.length === 0) {
+        onSuccess([]);
+        return;
+    }
+
+    const sourceUrl = country === "world" ? "https://sportscore.com/football/competitions/" : `https://sportscore.com/football/country/${encodeURIComponent(country)}/`;
+    requestText(cacheBustedUrl(sourceUrl), html => {
+        const competitionPath = sportScoreCompetitionPath(html, country, league);
+        if (competitionPath.length === 0) {
+            onSuccess([]);
+            return;
+        }
+
+        const seasonPath = `${stripTrailingSlash(competitionPath)}/${seasonSegment}/`;
+        requestText(cacheBustedUrl(`https://sportscore.com${seasonPath}`), seasonPage => {
+            onSuccess(normalizeSportScoreCompetitionTablePage(seasonPage, leagueLabel));
+        }, onError);
+    }, onError);
+}
+
+function fetchSportScoreLeagueSeasons(options, onSuccess, onError) {
+    if (!canFetchSportScoreCompetitionFixtures(options)) {
+        onSuccess([]);
+        return;
+    }
+
+    fetchSportScoreCompetitionPathWithFallback(options, competitionPath => {
+        if (competitionPath.length === 0) {
+            onSuccess([]);
+            return;
+        }
+
+        requestText(cacheBustedUrl(`https://sportscore.com${competitionPath}`), competitionPage => {
+            const rows = sportScoreSeasonOptionsFromCompetitionPage(competitionPage)
+                .map((season, index) => normalizeSportScoreSeasonOption(season, index))
+                .filter(option => stringValue(option && option.key).length > 0)
+                .sort((left, right) => seasonSortScore(right) - seasonSortScore(left));
+            onSuccess(rows);
+        }, onError);
+    }, () => {
+        onSuccess([]);
+    });
+}
+
+function normalizeSportScoreSeasonOption(season, index) {
+    season = season || {};
+    const label = stringValue(season.label).trim();
+    const path = stringValue(season.path).trim();
+    const keyBase = sportScoreSeasonMatchKey(label.length > 0 ? label : path);
+    if (keyBase.length === 0)
+        return {};
+
+    const yearScore = parseSeasonYearValue(keyBase) || (1000 - numberValue(index));
+    return {
+        id: "",
+        key: `sportscore:${keyBase}`,
+        provider: "sportscore",
+        label: normalizeSeasonLabelDisplay(label.length > 0 ? label : keyBase),
+        isCurrent: false,
+        isOngoing: false,
+        isCompleted: false,
+        yearScore
+    };
+}
+
+function sportScoreSeasonSegmentFromLabel(label) {
+    const key = sportScoreSeasonMatchKey(label);
+    const direct = /^(\d{4})-(\d{4})$/.exec(key);
+    if (direct)
+        return `${direct[1]}-${direct[2]}`;
+
+    const short = /^(\d{2})\/(\d{2})$/.exec(stringValue(label).trim());
+    if (short)
+        return `${Number(short[1]) + 2000}-${Number(short[2]) + 2000}`;
+
+    return "";
 }
 
 function fetchTeamCompetitions(options, onSuccess, onError) {
@@ -200,47 +426,46 @@ function fetchTeamCompetitions(options, onSuccess, onError) {
         return;
     }
 
-    let pending = 0;
-    let rows = [];
-    let errors = [];
-
-    function remember(error) {
-        if (stringValue(error).length > 0)
-            errors.push(error);
-    }
-
-    function finish() {
-        pending -= 1;
-        if (pending > 0)
-            return;
-
-        rows = mergeCompetitionOptions(rows);
-        if (rows.length > 0 || errors.length === 0) {
-            onSuccess(rows);
-        } else {
-            onError(errors.join(", "));
-        }
-    }
-
-    pending += 1;
-    fetchTheSportsDBTeamCompetitions(options, competitions => {
-        rows = rows.concat(competitions);
-        finish();
-    }, message => {
-        remember(message);
-        finish();
-    });
-
     if (canFetchSportScoreTeamFixtures(options)) {
-        pending += 1;
         fetchSportScoreTeamCompetitions(options, competitions => {
-            rows = rows.concat(competitions);
-            finish();
+            const primary = mergeCompetitionOptions(competitions);
+            // SportScore can return a narrow rolling window for some teams.
+            // Always try to enrich with TheSportsDB and dedupe the merged list.
+            fetchTheSportsDBTeamCompetitions(options, fallbackCompetitions => {
+                const merged = mergeCompetitionOptions(primary.concat(fallbackCompetitions));
+                if (merged.length > 0) {
+                    onSuccess(merged);
+                    return;
+                }
+
+                onSuccess(primary);
+            }, () => {
+                onSuccess(primary);
+            });
         }, message => {
-            remember(message);
-            finish();
+            const primaryError = stringValue(message);
+            fetchTheSportsDBTeamCompetitions(options, fallbackCompetitions => {
+                const merged = mergeCompetitionOptions(fallbackCompetitions);
+                if (merged.length > 0) {
+                    onSuccess(merged);
+                    return;
+                }
+
+                onError(primaryError.length > 0 ? primaryError : "No competitions found for this team.");
+            }, fallbackMessage => {
+                const fallbackError = stringValue(fallbackMessage);
+                onError(primaryError.length > 0 ? primaryError : fallbackError.length > 0 ? fallbackError : "No competitions found for this team.");
+            });
         });
+        return;
     }
+
+    // Fallback only when SportScore team fixtures are unavailable.
+    fetchTheSportsDBTeamCompetitions(options, competitions => {
+        onSuccess(mergeCompetitionOptions(competitions));
+    }, message => {
+        onError(stringValue(message));
+    });
 }
 
 function fetchTeamBadge(options, onSuccess, onError) {
@@ -581,6 +806,11 @@ function fetchTeamCompetitionFixturesFallback(options, onSuccess, onError) {
 }
 
 function fetchRecentResults(options, onSuccess, onError) {
+    if (isSeasonScopedRequest(options)) {
+        fetchSportScoreCompetitionRecentResultsOrFallback(options, onSuccess, onError);
+        return;
+    }
+
     if ((Boolean(options && options.preferTeamRecentResults) || Array.isArray(options && options.tableRows)) && canFetchSportScoreTeamFixtures(options)) {
         fetchSportScoreTeamRecentResults(options, results => {
             if (results.length > 0) {
@@ -749,9 +979,13 @@ function fetchTheSportsDBRecentResults(options, onSuccess, onError) {
 
         requestJson(`${THESPORTSDB_API_BASE_URL}/eventspastleague.php?id=${encodeURIComponent(league.id)}`, payload => {
             const events = arrayValue(payload && payload.events);
-            const seed = events.map(event => normalizeTheSportsDBResult(event, league)).filter(isFinishedMatch);
-            const latestEvent = events[0] || {};
-            const season = stringValue(latestEvent.strSeason);
+            const wantedSeason = theSportsDBSeasonFromOptions(options);
+            const seasonEvents = wantedSeason.length > 0
+                ? events.filter(event => stringValue(event && event.strSeason) === wantedSeason)
+                : events;
+            const seed = seasonEvents.map(event => normalizeTheSportsDBResult(event, league)).filter(isFinishedMatch);
+            const latestEvent = seasonEvents[0] || events[0] || {};
+            const season = wantedSeason.length > 0 ? wantedSeason : stringValue(latestEvent.strSeason);
             const latestRound = numberValue(latestEvent.intRound);
 
             if (season.length === 0 || latestRound <= 0) {
@@ -762,6 +996,18 @@ function fetchTheSportsDBRecentResults(options, onSuccess, onError) {
             fetchTheSportsDBRecentRounds(league, season, latestRound, seed, onSuccess, onError);
         }, onError);
     }, onError);
+}
+
+function theSportsDBSeasonFromOptions(options) {
+    const direct = stringValue(options && options.seasonId).trim();
+    if (/^\d{4}-\d{4}$/.test(direct))
+        return direct;
+
+    const fromLabel = sportScoreSeasonSegmentFromLabel(options && options.seasonLabel);
+    if (/^\d{4}-\d{4}$/.test(fromLabel))
+        return fromLabel;
+
+    return "";
 }
 
 function fetchTheSportsDBRecentRounds(league, season, latestRound, seed, onSuccess, onError) {
@@ -841,6 +1087,7 @@ function fetchSportScoreCompetitionFixturesOrProvider(options, provider, onSucce
 
 function fetchLeagueForm(options, onSuccess, onError) {
     const sport = normalizeSports(options.sports)[0] || "football";
+    const seasonScopedRequest = isSeasonScopedRequest(options);
 
     function canUseSportScore() {
         const league = String(options.league || "").trim().toUpperCase();
@@ -848,13 +1095,93 @@ function fetchLeagueForm(options, onSuccess, onError) {
         return (sport === "football" || sport === "soccer") && ProviderCatalog.sportScoreSlug(league).length > 0 && rows.length > 0;
     }
 
-    function fetchFromFixtures() {
-        fetchScoresFixtures(options, matches => {
-            onSuccess(formByTeam(matches, options));
-        }, onError);
+    function fetchFromLeagueRecentResults(primaryForms) {
+        const primary = primaryForms || {};
+        const seasonScoped = isSeasonScopedRequest(options);
+        const requestOptions = Object.assign({}, options, {
+            preferTeamRecentResults: false,
+            skipLeagueFilter: false,
+            recentResultsLimit: seasonScoped ? 320 : 160
+        });
+        delete requestOptions.tableRows;
+        function finishWithMatches(matches) {
+            const seasonalForms = formByTeam(matches, requestOptions);
+            const merged = mergeFormMapsWithPreference(primary, seasonalForms, isSeasonScopedRequest(options));
+            onSuccess(merged);
+        }
+
+        fetchRecentResults(requestOptions, matches => {
+            if (canFetchSofaScoreRecentResults(requestOptions)) {
+                fetchSofaScoreRecentResults(requestOptions, sofaMatches => {
+                    const combined = sortRecentMatches(dedupeRecentMatches(arrayValue(matches).concat(arrayValue(sofaMatches))))
+                        .slice(0, recentResultsLimitValue(requestOptions));
+                    finishWithMatches(combined);
+                }, () => {
+                    finishWithMatches(matches);
+                });
+                return;
+            }
+
+            finishWithMatches(matches);
+        }, () => {
+            if (canFetchSofaScoreRecentResults(requestOptions)) {
+                fetchSofaScoreRecentResults(requestOptions, finishWithMatches, () => {
+                    if (Object.keys(primary).length > 0)
+                        onSuccess(primary);
+                    else
+                        onError("No season results returned for form.");
+                });
+                return;
+            }
+
+            if (Object.keys(primary).length > 0)
+                onSuccess(primary);
+            else
+                onError("No season results returned for form.");
+        });
     }
 
-    function fetchFromSofaScoreTeamRows(primaryForms, fallback) {
+    function formMapFromTableRows(rows) {
+        const result = {};
+        arrayValue(rows).forEach(row => {
+            const key = normalizedText(row && row.team);
+            const values = formValues(row && row.form);
+            if (key.length === 0 || values.length === 0)
+                return;
+
+            result[key] = formEntry(values, []);
+        });
+        return result;
+    }
+
+    function fetchFromSofaScoreSeasonTable(primaryForms) {
+        const primary = primaryForms || {};
+        if (!seasonScopedRequest) {
+            fetchFromLeagueRecentResults(primary);
+            return;
+        }
+
+        const rows = rowsNeedingForm(options.tableRows, primary);
+        if (rows.length === 0) {
+            onSuccess(primary);
+            return;
+        }
+
+        fetchSofaScoreTableForSeason(options, tableRows => {
+            const tableForms = formMapFromTableRows(tableRows);
+            const merged = mergeFormMaps(primary, tableForms);
+            if (rowsNeedingForm(options.tableRows, merged).length === 0) {
+                onSuccess(merged);
+                return;
+            }
+
+            fetchFromLeagueRecentResults(merged);
+        }, () => {
+            fetchFromLeagueRecentResults(primary);
+        });
+    }
+
+    function fetchFromSofaScoreTeamRows(primaryForms) {
         const primary = primaryForms || {};
         const rows = rowsNeedingForm(options.tableRows, primary);
         if (rows.length === 0) {
@@ -865,24 +1192,32 @@ function fetchLeagueForm(options, onSuccess, onError) {
         fetchSofaScoreTeamForms(options, rows, sofaForms => {
             const merged = mergeFormMaps(primary, sofaForms);
             if (Object.keys(merged).length > 0) {
-                onSuccess(merged);
+                fetchFromSofaScoreSeasonTable(merged);
             } else {
-                fallback();
+                fetchFromSofaScoreSeasonTable({});
             }
         }, () => {
             if (Object.keys(primary).length > 0) {
-                onSuccess(primary);
+                fetchFromSofaScoreSeasonTable(primary);
             } else {
-                fallback();
+                fetchFromSofaScoreSeasonTable({});
             }
         });
     }
 
     function fetchFromSportScore() {
+        // Team endpoints are "latest/current" oriented and can short-circuit old-season
+        // enrichment with non-season data. In season scope, always derive form from the
+        // requested season pipeline.
+        if (seasonScopedRequest) {
+            fetchFromSofaScoreSeasonTable({});
+            return;
+        }
+
         fetchSportScoreTeamForms(options, forms => {
-            fetchFromSofaScoreTeamRows(forms, fetchFromFixtures);
+            fetchFromSofaScoreTeamRows(forms);
         }, () => {
-            fetchFromSofaScoreTeamRows({}, fetchFromFixtures);
+            fetchFromSofaScoreTeamRows({});
         });
     }
 
@@ -891,23 +1226,44 @@ function fetchLeagueForm(options, onSuccess, onError) {
         return;
     }
 
-    fetchFromSofaScoreTeamRows({}, fetchFromFixtures);
+    fetchFromLeagueRecentResults();
 }
 
 function rowsNeedingForm(tableRows, forms) {
     const rows = Array.isArray(tableRows) ? tableRows : [];
     return rows.filter(row => {
-        const form = formForTeam(forms || {}, row && row.team);
-        return formValues(form).length < FORM_RESULTS_LIMIT;
+        const entry = formEntryForTeam(forms || {}, row && row.team);
+        const values = formValues(entry);
+        if (values.length < FORM_RESULTS_LIMIT)
+            return true;
+
+        const detailsCount = formDetails(entry).length;
+        return detailsCount < Math.min(values.length, FORM_RESULTS_LIMIT);
     });
 }
 
 function mergeFormMaps(primaryForms, fallbackForms) {
+    return mergeFormMapsWithPreference(primaryForms, fallbackForms, false);
+}
+
+function mergeFormMapsWithPreference(primaryForms, fallbackForms, preferFallbackWhenEqual) {
     const merged = Object.assign({}, primaryForms || {});
     Object.keys(fallbackForms || {}).forEach(key => {
-        const current = normalizedFormString(merged[key]);
-        const fallback = normalizedFormString(fallbackForms[key]);
-        if (formValues(fallback).length > formValues(current).length)
+        const currentEntry = merged[key];
+        const fallbackEntry = fallbackForms[key];
+        const current = normalizedFormString(currentEntry);
+        const fallback = normalizedFormString(fallbackEntry);
+        const currentCount = formValues(current).length;
+        const fallbackCount = formValues(fallback).length;
+        const currentDetailsCount = formDetails(currentEntry).length;
+        const fallbackDetailsCount = formDetails(fallbackEntry).length;
+        const betterDetails = fallbackDetailsCount > currentDetailsCount;
+        const equalCounts = fallbackCount === currentCount;
+        const preferByPolicy = Boolean(preferFallbackWhenEqual)
+            && fallbackCount > 0
+            && equalCounts
+            && (fallbackDetailsCount > 0 || currentDetailsCount === 0);
+        if (fallbackCount > currentCount || (equalCounts && betterDetails) || preferByPolicy)
             merged[key] = fallbackForms[key];
     });
 
@@ -1233,6 +1589,12 @@ function fetchSportScoreTeamPayloadForRow(baseUrl, row, limit, onSuccess, onErro
         const slug = slugs[index];
         index += 1;
         requestSportScoreTeamPayload(baseUrl, slug, limit, payload => {
+            const team = payload && payload.team || {};
+            if (!sportScoreTeamMatchesRequest(team, row && row.team, slug)) {
+                tryNext(lastError);
+                return;
+            }
+
             onSuccess(payload || {});
         }, message => {
             if (isHttpNotFound(message)) {
@@ -1538,15 +1900,26 @@ function fetchSportScoreCompetitionFixtures(options, onSuccess, onError) {
     const leagueLabel = ProviderCatalog.leagueLabel(options.league);
     const sourceUrl = country === "world" ? "https://sportscore.com/football/competitions/" : `https://sportscore.com/football/country/${encodeURIComponent(country)}/`;
 
-    requestText(sourceUrl, html => {
-        const path = sportScoreCompetitionPath(html, country, league);
-        if (path.length === 0) {
+    requestText(cacheBustedUrl(sourceUrl), html => {
+        const competitionPath = sportScoreCompetitionPath(html, country, league);
+        if (competitionPath.length === 0) {
             onSuccess([]);
             return;
         }
 
-        requestText(`https://sportscore.com${path}`, page => {
-            onSuccess(normalizeSportScoreFixturePage(page, leagueLabel));
+        requestText(cacheBustedUrl(`https://sportscore.com${competitionPath}`), competitionPage => {
+            const seasonPath = sportScorePreferredSeasonPath(competitionPage, options);
+            const finalPath = seasonPath.length > 0 ? seasonPath : competitionPath;
+            if (finalPath === competitionPath) {
+                onSuccess(normalizeSportScoreFixturePage(competitionPage, leagueLabel));
+                return;
+            }
+
+            requestText(cacheBustedUrl(`https://sportscore.com${finalPath}`), seasonPage => {
+                onSuccess(normalizeSportScoreFixturePage(seasonPage, leagueLabel));
+            }, () => {
+                onSuccess(normalizeSportScoreFixturePage(competitionPage, leagueLabel));
+            });
         }, onError);
     }, onError);
 }
@@ -1557,17 +1930,233 @@ function fetchSportScoreCompetitionRecentResults(options, onSuccess, onError) {
     const leagueLabel = ProviderCatalog.leagueLabel(options.league);
     const sourceUrl = country === "world" ? "https://sportscore.com/football/competitions/" : `https://sportscore.com/football/country/${encodeURIComponent(country)}/`;
 
-    requestText(sourceUrl, html => {
-        const path = sportScoreCompetitionPath(html, country, league);
-        if (path.length === 0) {
+    requestText(cacheBustedUrl(sourceUrl), html => {
+        const competitionPath = sportScoreCompetitionPath(html, country, league);
+        if (competitionPath.length === 0) {
             onSuccess([]);
             return;
         }
 
-        requestText(`https://sportscore.com${path}`, page => {
-            onSuccess(normalizeSportScoreRecentResultPage(page, leagueLabel));
+        requestText(cacheBustedUrl(`https://sportscore.com${competitionPath}`), competitionPage => {
+            const seasonPath = sportScorePreferredSeasonPath(competitionPage, options);
+            const finalPath = seasonPath.length > 0 ? seasonPath : competitionPath;
+            if (finalPath === competitionPath) {
+                onSuccess(normalizeSportScoreRecentResultPage(competitionPage, leagueLabel));
+                return;
+            }
+
+            requestText(cacheBustedUrl(`https://sportscore.com${finalPath}`), seasonPage => {
+                onSuccess(normalizeSportScoreRecentResultPage(seasonPage, leagueLabel));
+            }, () => {
+                onSuccess(normalizeSportScoreRecentResultPage(competitionPage, leagueLabel));
+            });
         }, onError);
     }, onError);
+}
+
+function fetchSportScoreCompetitionTable(options, onSuccess, onError) {
+    const country = String(options.country || "england").trim().toLowerCase();
+    const league = ProviderCatalog.sportScoreSlug(options.league);
+    const leagueLabel = ProviderCatalog.leagueLabel(options.league);
+    const sourceUrl = country === "world" ? "https://sportscore.com/football/competitions/" : `https://sportscore.com/football/country/${encodeURIComponent(country)}/`;
+
+    requestText(cacheBustedUrl(sourceUrl), html => {
+        const competitionPath = sportScoreCompetitionPath(html, country, league);
+        if (competitionPath.length === 0) {
+            onSuccess([]);
+            return;
+        }
+
+        requestText(cacheBustedUrl(`https://sportscore.com${competitionPath}`), competitionPage => {
+            const seasonPath = sportScorePreferredSeasonPath(competitionPage, options);
+            const finalPath = seasonPath.length > 0 ? seasonPath : competitionPath;
+            if (finalPath === competitionPath) {
+                onSuccess(normalizeSportScoreCompetitionTablePage(competitionPage, leagueLabel));
+                return;
+            }
+
+            requestText(cacheBustedUrl(`https://sportscore.com${finalPath}`), seasonPage => {
+                onSuccess(normalizeSportScoreCompetitionTablePage(seasonPage, leagueLabel));
+            }, () => {
+                onSuccess(normalizeSportScoreCompetitionTablePage(competitionPage, leagueLabel));
+            });
+        }, onError);
+    }, onError);
+}
+
+function sportScorePreferredSeasonPath(html, options) {
+    const seasons = sportScoreSeasonOptionsFromCompetitionPage(html);
+    if (seasons.length === 0)
+        return "";
+
+    const wanted = sportScoreSeasonMatchKey(stringValue(options && options.seasonLabel).trim());
+    if (wanted.length > 0) {
+        for (let index = 0; index < seasons.length; index += 1) {
+            const row = seasons[index];
+            if (sportScoreSeasonMatchKey(row.label) === wanted)
+                return row.path;
+        }
+    }
+
+    // Choose the newest season by label key when no explicit season is requested.
+    let best = seasons[0];
+    let bestScore = sportScoreSeasonSortScore(best && best.label);
+    for (let index = 1; index < seasons.length; index += 1) {
+        const candidate = seasons[index];
+        const score = sportScoreSeasonSortScore(candidate && candidate.label);
+        if (score > bestScore) {
+            best = candidate;
+            bestScore = score;
+        }
+    }
+
+    return stringValue(best && best.path);
+}
+
+function sportScoreSeasonOptionsFromCompetitionPage(html) {
+    const text = stringValue(html);
+    let rows = [];
+    const seen = {};
+
+    const pattern = /<option[^>]*value="([^"]+\/\d{4}-\d{4}\/?)"[^>]*>([^<]+)<\/option>/g;
+    let match = pattern.exec(text);
+    while (match) {
+        const path = sportScorePathFromUrl(match[1]);
+        const label = htmlText(match[2]);
+        const key = sportScoreSeasonMatchKey(label.length > 0 ? label : path);
+        if (path.length > 0 && key.length > 0 && !seen[key]) {
+            seen[key] = true;
+            rows.push({ path, label });
+        }
+
+        match = pattern.exec(text);
+    }
+
+    // Some pages render history links outside of <select>; accept direct season links too.
+    const linkPattern = /href="(\/football\/competition\/[^"]+\/(\d{4}-\d{4})\/?)"/g;
+    match = linkPattern.exec(text);
+    while (match) {
+        const path = sportScorePathFromUrl(match[1]);
+        const key = sportScoreSeasonMatchKey(match[2]);
+        if (path.length > 0 && key.length > 0 && !seen[key]) {
+            seen[key] = true;
+            rows.push({ path, label: match[2] });
+        }
+        match = linkPattern.exec(text);
+    }
+
+    return rows;
+}
+
+function sportScoreSeasonMatchKey(value) {
+    const text = stringValue(value).trim();
+    if (text.length === 0)
+        return "";
+
+    const direct = text.match(/(\d{4})\D+(\d{4})/);
+    if (direct)
+        return `${direct[1]}-${direct[2]}`;
+
+    const short = text.match(/(\d{2})\D+(\d{2})/);
+    if (short) {
+        const start = Number(short[1]);
+        const end = Number(short[2]);
+        if (Number.isFinite(start) && Number.isFinite(end))
+            return `${start + 2000}-${end + 2000}`;
+    }
+
+    return normalizedText(text);
+}
+
+function sportScoreSeasonSortScore(label) {
+    const key = sportScoreSeasonMatchKey(label);
+    const direct = /^(\d{4})-(\d{4})$/.exec(key);
+    if (direct)
+        return numberValue(direct[1]) * 10000 + numberValue(direct[2]);
+
+    const single = /^(\d{4})$/.exec(key);
+    if (single)
+        return numberValue(single[1]) * 10000;
+
+    return 0;
+}
+
+function normalizeSportScoreCompetitionTablePage(html, leagueLabel) {
+    const tableSection = sportScoreStandingsTableSection(html);
+    if (tableSection.length === 0)
+        return [];
+
+    let rows = [];
+    const rowPattern = /<tr>([\s\S]*?)<\/tr>/g;
+    let rowMatch = rowPattern.exec(tableSection);
+    while (rowMatch) {
+        const rowHtml = rowMatch[1];
+        const cells = [];
+        const cellPattern = /<td\b[^>]*>([\s\S]*?)<\/td>/g;
+        let cellMatch = cellPattern.exec(rowHtml);
+        while (cellMatch) {
+            cells.push(htmlText(cellMatch[1]));
+            cellMatch = cellPattern.exec(rowHtml);
+        }
+
+        if (cells.length >= 10) {
+            const teamAnchor = /<td class="team-col">[\s\S]*?<a[^>]*href="([^"]+)"/.exec(rowHtml);
+            const crestMatch = /<td class="team-col">[\s\S]*?<img[^>]*src="([^"]+)"/.exec(rowHtml);
+            const formRaw = String(cells[10] || "").trim();
+            const form = formRaw.length > 0
+                ? formRaw.split(/\s+/).map(value => String(value || "").trim().toUpperCase()).filter(value => value === "W" || value === "D" || value === "L").join(",")
+                : "";
+
+            rows.push({
+                position: numberValue(cells[0]),
+                team: stringValue(cells[1]),
+                group: "",
+                groupIndex: 0,
+                played: numberValue(cells[2]),
+                won: numberValue(cells[3]),
+                draw: numberValue(cells[4]),
+                lost: numberValue(cells[5]),
+                goalsFor: numberValue(cells[6]),
+                goalsAgainst: numberValue(cells[7]),
+                goalDifference: numberValue(cells[8]),
+                points: numberValue(cells[9]),
+                form,
+                crest: crestMatch ? htmlDecode(crestMatch[1]) : "",
+                teamSlug: sportScoreTeamSlug({
+                    team: stringValue(cells[1]),
+                    teamPath: teamAnchor ? htmlDecode(teamAnchor[1]) : ""
+                }),
+                league: stringValue(leagueLabel)
+            });
+        }
+
+        rowMatch = rowPattern.exec(tableSection);
+    }
+
+    return rows
+        .filter(row => stringValue(row.team).length > 0)
+        .sort((left, right) => numberValue(left.position) - numberValue(right.position) || stringValue(left.team).localeCompare(stringValue(right.team)));
+}
+
+function sportScoreStandingsTableSection(html) {
+    const value = stringValue(html);
+    const tableStart = value.indexOf('<table class="standings-table"');
+    if (tableStart < 0)
+        return "";
+
+    const bodyStart = value.indexOf("<tbody", tableStart);
+    if (bodyStart < 0)
+        return "";
+
+    const bodyOpenEnd = value.indexOf(">", bodyStart);
+    if (bodyOpenEnd < 0)
+        return "";
+
+    const bodyEnd = value.indexOf("</tbody>", bodyOpenEnd + 1);
+    if (bodyEnd < 0)
+        return "";
+
+    return value.slice(bodyOpenEnd + 1, bodyEnd);
 }
 
 function fetchFallbackFixtures(options, onSuccess, onError) {
@@ -2130,7 +2719,220 @@ function similarityScore(left, right) {
 }
 
 function canFetchSofaScoreFixtures(options) {
-    return isFootballSelection(options) && ProviderCatalog.leagueLabel(options && options.league).length > 0;
+    return isFootballSelection(options) && ProviderCatalog.sportScoreSlug(options && options.league).length > 0;
+}
+
+function fetchSofaScoreLeagueSeasons(options, onSuccess, onError) {
+    resolveSofaScoreLeague(options, league => {
+        const leagueId = numberValue(league && league.id);
+        if (leagueId <= 0) {
+            onSuccess([]);
+            return;
+        }
+
+        requestJson(`${SOFASCORE_API_BASE_URL}/unique-tournament/${leagueId}/seasons`, payload => {
+            const now = Date.now();
+            const rows = arrayValue(payload && payload.seasons)
+                .map((season, index) => normalizeSofaScoreSeasonOption(season, league, index, now))
+                .filter(option => stringValue(option && option.id).length > 0)
+                .sort((left, right) => seasonSortScore(right) - seasonSortScore(left));
+            onSuccess(rows);
+        }, onError);
+    }, onError);
+}
+
+function normalizeSofaScoreSeasonOption(season, league, index, now) {
+    season = season || {};
+    const id = numberValue(season.id);
+    if (id <= 0)
+        return {};
+
+    const seasonLabel = sofaScoreSeasonLabel(season);
+    const startTimestamp = numberValue(season.startDateTimestamp) * 1000;
+    const endTimestamp = numberValue(season.endDateTimestamp) * 1000;
+    const current = Boolean(season.current);
+    const ongoing = current || (startTimestamp > 0 && endTimestamp > 0 && now >= startTimestamp && now <= endTimestamp) || (startTimestamp > 0 && endTimestamp === 0 && now >= startTimestamp);
+    const completed = endTimestamp > 0 && endTimestamp < now;
+    const yearScore = sofaScoreSeasonYearScore(season, startTimestamp, endTimestamp, index);
+
+    return {
+        id: stringValue(id),
+        key: `sofascore:${id}`,
+        provider: "sofascore",
+        label: normalizeSeasonLabelDisplay(seasonLabel.length > 0 ? seasonLabel : stringValue(id)),
+        isCurrent: current,
+        isOngoing: ongoing,
+        isCompleted: completed,
+        yearScore
+    };
+}
+
+function sofaScoreSeasonYearScore(season, startTimestamp, endTimestamp, index) {
+    const yearValue = stringValue(season && season.year);
+    const fromYear = parseSeasonYearValue(yearValue);
+    if (fromYear > 0)
+        return fromYear;
+
+    if (endTimestamp > 0)
+        return new Date(endTimestamp).getFullYear();
+
+    if (startTimestamp > 0)
+        return new Date(startTimestamp).getFullYear();
+
+    return 1000 - index;
+}
+
+function sofaScoreSeasonLabel(season) {
+    const direct = stringValue(season && (season.year || season.name || season.slug));
+    if (direct.length > 0)
+        return direct;
+
+    const startTimestamp = numberValue(season && season.startDateTimestamp) * 1000;
+    const endTimestamp = numberValue(season && season.endDateTimestamp) * 1000;
+    if (startTimestamp > 0 && endTimestamp > 0) {
+        const startYear = new Date(startTimestamp).getFullYear();
+        const endYear = new Date(endTimestamp).getFullYear();
+        if (startYear === endYear)
+            return stringValue(startYear);
+
+        return `${startYear}/${String(endYear).slice(-2)}`;
+    }
+
+    return "";
+}
+
+function fetchSofaScoreTableForSeason(options, onSuccess, onError) {
+    resolveSofaScoreLeague(options, league => {
+        const leagueId = numberValue(league && league.id);
+        if (leagueId <= 0) {
+            onSuccess([]);
+            return;
+        }
+
+        requestJson(`${SOFASCORE_API_BASE_URL}/unique-tournament/${leagueId}/seasons`, payload => {
+            const seasons = arrayValue(payload && payload.seasons);
+            const seasonId = selectSofaScoreSeasonIdForOptions(options, seasons);
+            if (seasonId <= 0) {
+                onSuccess([]);
+                return;
+            }
+
+            const candidates = [
+                `${SOFASCORE_API_BASE_URL}/unique-tournament/${leagueId}/season/${seasonId}/standings/total`,
+                `${SOFASCORE_API_BASE_URL}/unique-tournament/${leagueId}/season/${seasonId}/standings`
+            ];
+            requestSofaScoreTableCandidates(candidates, league, onSuccess, onError);
+        }, onError);
+    }, onError);
+}
+
+function requestSofaScoreTableCandidates(urls, league, onSuccess, onError, index) {
+    const currentIndex = numberValue(index);
+    if (currentIndex >= urls.length) {
+        onError("SofaScore returned no standings for this season.");
+        return;
+    }
+
+    requestJson(urls[currentIndex], payload => {
+        const rows = normalizeSofaScoreTable(payload, league);
+        if (rows.length > 0) {
+            onSuccess(rows);
+            return;
+        }
+
+        requestSofaScoreTableCandidates(urls, league, onSuccess, onError, currentIndex + 1);
+    }, () => {
+        requestSofaScoreTableCandidates(urls, league, onSuccess, onError, currentIndex + 1);
+    });
+}
+
+function normalizeSofaScoreTable(payload, league) {
+    const standings = arrayValue(payload && payload.standings);
+    let rows = [];
+
+    standings.forEach((standing, groupIndex) => {
+        const group = stringValue(standing && (standing.name || standing.groupName || standing.description));
+        const tableRows = arrayValue(standing && (standing.rows || standing.table));
+        tableRows.forEach(row => {
+            const team = row && row.team ? row.team : {};
+            const teamName = stringValue(team.shortName || team.name || row && row.teamName);
+            if (teamName.length === 0)
+                return;
+
+            const teamId = numberValue(team.id || row && row.teamId);
+            rows.push({
+                position: numberValue(row && (row.position || row.rank || row.pos)),
+                team: teamName,
+                group,
+                groupIndex,
+                played: numberValue(row && (row.matches || row.played || row.p)),
+                won: numberValue(row && (row.wins || row.win || row.w)),
+                draw: numberValue(row && (row.draws || row.draw || row.d)),
+                lost: numberValue(row && (row.losses || row.lost || row.l)),
+                goalsFor: numberValue(row && (row.scoresFor || row.goalsFor || row.gf || row.goals_scored)),
+                goalsAgainst: numberValue(row && (row.scoresAgainst || row.goalsAgainst || row.ga || row.goals_conceded)),
+                points: numberValue(row && (row.points || row.pts)),
+                goalDifference: numberValue(row && (row.scoreDiffFormatted || row.scoreDiff || row.goalDifference || row.gd)),
+                form: stringValue(row && row.form),
+                crest: teamId > 0 ? sofaScoreTeamImage(teamId) : "",
+                teamSlug: ProviderCatalog.sportScoreSlug(teamName),
+                league: stringValue(league && league.label)
+            });
+        });
+    });
+
+    rows = rows
+        .filter(row => row.team.length > 0)
+        .sort((left, right) => left.groupIndex - right.groupIndex || left.position - right.position || left.team.localeCompare(right.team));
+
+    return consolidateSofaScoreStandings(rows);
+}
+
+function consolidateSofaScoreStandings(rows) {
+    rows = arrayValue(rows);
+    if (rows.length === 0)
+        return [];
+
+    let byTeam = {};
+    rows.forEach(row => {
+        const key = normalizedText(row && row.team);
+        if (key.length === 0)
+            return;
+
+        const current = byTeam[key];
+        if (!current || sofaScoreStandingRowScore(row) > sofaScoreStandingRowScore(current))
+            byTeam[key] = row;
+    });
+
+    const uniqueRows = Object.keys(byTeam).map(key => byTeam[key]);
+    if (uniqueRows.length === rows.length)
+        return uniqueRows;
+
+    const sorted = uniqueRows.sort((left, right) => {
+        return numberValue(right.points) - numberValue(left.points)
+            || numberValue(right.goalDifference) - numberValue(left.goalDifference)
+            || numberValue(right.goalsFor) - numberValue(left.goalsFor)
+            || numberValue(right.won) - numberValue(left.won)
+            || stringValue(left.team).localeCompare(stringValue(right.team));
+    });
+
+    return sorted.map((row, index) => {
+        const copy = Object.assign({}, row);
+        copy.position = index + 1;
+        copy.group = "";
+        copy.groupIndex = 0;
+        return copy;
+    });
+}
+
+function sofaScoreStandingRowScore(row) {
+    row = row || {};
+    const played = numberValue(row.played);
+    const points = numberValue(row.points);
+    const goalDifference = numberValue(row.goalDifference);
+    const group = normalizedText(row.group);
+    const stageBonus = group.indexOf("round") >= 0 ? 1000000 : 0;
+    return stageBonus + played * 10000 + points * 100 + goalDifference;
 }
 
 function canFetchSofaScoreTeamFixtures(options) {
@@ -2220,16 +3022,46 @@ function fetchSofaScoreRecentResults(options, onSuccess, onError) {
         }
 
         requestJson(`${SOFASCORE_API_BASE_URL}/unique-tournament/${league.id}/seasons`, payload => {
-            const season = arrayValue(payload && payload.seasons)[0];
-            const seasonId = numberValue(season && season.id);
+            const seasons = arrayValue(payload && payload.seasons);
+            const seasonId = selectSofaScoreSeasonIdForOptions(options, seasons);
             if (seasonId <= 0) {
                 onSuccess([]);
                 return;
             }
 
-            fetchSofaScoreRecentPage(league, seasonId, 0, [], onSuccess, onError);
+            const limit = recentResultsLimitValue(options);
+            fetchSofaScoreRecentPage(league, seasonId, 0, [], limit, onSuccess, onError);
         }, onError);
     }, onError);
+}
+
+function isSeasonScopedRequest(options) {
+    const seasonKey = stringValue(options && options.seasonKey).trim();
+    const seasonLabel = stringValue(options && options.seasonLabel).trim();
+    const seasonId = stringValue(options && options.seasonId).trim();
+    return seasonKey.length > 0 || seasonLabel.length > 0 || seasonId.length > 0;
+}
+
+function selectSofaScoreSeasonIdForOptions(options, seasons) {
+    const rows = arrayValue(seasons);
+    if (rows.length === 0)
+        return 0;
+
+    const wantedId = numberValue(options && options.seasonId);
+    if (wantedId > 0) {
+        const exact = rows.find(season => numberValue(season && season.id) === wantedId);
+        if (exact)
+            return wantedId;
+    }
+
+    const wantedLabel = sportScoreSeasonMatchKey(options && options.seasonLabel);
+    if (wantedLabel.length > 0) {
+        const byLabel = rows.find(season => sportScoreSeasonMatchKey(sofaScoreSeasonLabel(season)) === wantedLabel);
+        if (byLabel)
+            return numberValue(byLabel && byLabel.id);
+    }
+
+    return numberValue(rows[0] && rows[0].id);
 }
 
 function resolveSofaScoreLeague(options, onSuccess, onError) {
@@ -2252,7 +3084,7 @@ function resolveSofaScoreLeague(options, onSuccess, onError) {
 }
 
 function searchSofaScoreLeague(options, onSuccess, onError) {
-    const label = ProviderCatalog.leagueLabel(options && options.league);
+    const label = sofaScoreLeagueSearchLabel(options);
     if (label.length === 0) {
         onSuccess({});
         return;
@@ -2271,15 +3103,32 @@ function searchSofaScoreLeague(options, onSuccess, onError) {
     });
 }
 
+function sofaScoreLeagueSearchLabel(options) {
+    const catalogLabel = ProviderCatalog.leagueLabel(options && options.league);
+    if (catalogLabel.length > 0)
+        return catalogLabel;
+
+    const slug = ProviderCatalog.sportScoreSlug(options && options.league);
+    if (slug.length === 0)
+        return "";
+
+    return slug.split("-")
+        .map(part => part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : "")
+        .join(" ")
+        .trim();
+}
+
 function selectSofaScoreLeague(payload, options) {
-    const wantedLeague = ProviderCatalog.leagueLabel(options && options.league);
-    const wantedCountry = ProviderCatalog.countryLabel(options && options.country);
+    const wantedLeague = sofaScoreLeagueSearchLabel(options);
+    const hasCatalogLeague = ProviderCatalog.hasKnownFootballLeague(options && options.league);
+    const wantedCountry = hasCatalogLeague ? ProviderCatalog.countryLabel(options && options.country) : "";
+    const wantedSport = normalizeSports(options && options.sports)[0] || "football";
     const candidates = sofaScoreTournamentCandidates(payload);
     let best = {};
     let bestScore = 0;
 
     candidates.forEach(candidate => {
-        const score = sofaScoreCandidateScore(candidate, wantedLeague, wantedCountry);
+        const score = sofaScoreCandidateScore(candidate, wantedLeague, wantedCountry, wantedSport);
         if (score > bestScore) {
             bestScore = score;
             best = candidate;
@@ -2304,7 +3153,8 @@ function sofaScoreTournamentCandidates(payload) {
         result.push({
             id,
             label: name,
-            country: stringValue(category.name || category.country && category.country.name || entity.country && entity.country.name)
+            country: stringValue(category.name || category.country && category.country.name || entity.country && entity.country.name),
+            sport: normalizedText(category && category.sport && (category.sport.slug || category.sport.name) || entity && entity.sport && (entity.sport.slug || entity.sport.name))
         });
     }
 
@@ -2328,11 +3178,18 @@ function sofaScoreTournamentCandidates(payload) {
     return result;
 }
 
-function sofaScoreCandidateScore(candidate, leagueLabel, countryLabel) {
+function sofaScoreCandidateScore(candidate, leagueLabel, countryLabel, wantedSport) {
     const candidateName = normalizedText(candidate && candidate.label);
     const wantedName = normalizedText(leagueLabel);
     if (candidateName.length === 0 || wantedName.length === 0)
         return 0;
+
+    const requestedSport = normalizedText(wantedSport);
+    const candidateSport = normalizedText(candidate && candidate.sport);
+    if (requestedSport === "football" || requestedSport === "soccer") {
+        if (candidateSport.length > 0 && candidateSport !== "football" && candidateSport !== "soccer")
+            return 0;
+    }
 
     let score = similarityScore(candidateName, wantedName);
     if (score <= 0)
@@ -2351,27 +3208,35 @@ function sofaScoreCandidateScore(candidate, leagueLabel, countryLabel) {
     return score;
 }
 
-function fetchSofaScoreRecentPage(league, seasonId, page, matches, onSuccess, onError) {
+function fetchSofaScoreRecentPage(league, seasonId, page, matches, limit, onSuccess, onError) {
+    const target = Math.max(RECENT_RESULTS_LIMIT, numberValue(limit));
+    const maxPages = Math.max(4, Math.ceil(target / 20));
     const url = `${SOFASCORE_API_BASE_URL}/unique-tournament/${league.id}/season/${seasonId}/events/last/${page}`;
     requestJson(url, payload => {
-        const rows = matches.concat(arrayValue(payload && payload.events)
+        const pageEvents = arrayValue(payload && payload.events);
+        const rows = matches.concat(pageEvents
             .map(event => normalizeSofaScoreFixture(event, league))
             .filter(hasTeams)
             .filter(isFinishedMatch));
-        if (payload && payload.hasNextPage && page < 4 && rows.length < RECENT_RESULTS_LIMIT) {
-            fetchSofaScoreRecentPage(league, seasonId, page + 1, rows, onSuccess, onError);
+        const hasExplicitNextPage = payload && Object.prototype.hasOwnProperty.call(payload, "hasNextPage");
+        const canContinue = hasExplicitNextPage ? Boolean(payload && payload.hasNextPage) : pageEvents.length > 0;
+        if (canContinue && page < maxPages && rows.length < target) {
+            fetchSofaScoreRecentPage(league, seasonId, page + 1, rows, target, onSuccess, onError);
             return;
         }
 
-        onSuccess(sortRecentMatches(dedupeMatches(rows)).slice(0, RECENT_RESULTS_LIMIT));
+        onSuccess(sortRecentMatches(dedupeMatches(rows)).slice(0, target));
     }, onError);
 }
 
 function fetchSofaScoreFixturePage(league, seasonId, page, matches, onSuccess, onError) {
     const url = `${SOFASCORE_API_BASE_URL}/unique-tournament/${league.id}/season/${seasonId}/events/next/${page}`;
     requestJson(url, payload => {
-        const rows = matches.concat(arrayValue(payload && payload.events).map(event => normalizeSofaScoreFixture(event, league)).filter(hasTeams));
-        if (payload && payload.hasNextPage && page < 2) {
+        const pageEvents = arrayValue(payload && payload.events);
+        const rows = matches.concat(pageEvents.map(event => normalizeSofaScoreFixture(event, league)).filter(hasTeams));
+        const hasExplicitNextPage = payload && Object.prototype.hasOwnProperty.call(payload, "hasNextPage");
+        const canContinue = hasExplicitNextPage ? Boolean(payload && payload.hasNextPage) : pageEvents.length > 0;
+        if (canContinue && page < 2) {
             fetchSofaScoreFixturePage(league, seasonId, page + 1, rows, onSuccess, onError);
             return;
         }
@@ -2392,7 +3257,9 @@ function normalizeSofaScoreFixture(event, league) {
         sport: "football",
         league: league.label,
         homeTeam: stringValue(homeTeam.shortName || homeTeam.name),
+        homeTeamAliases: uniqueStringValues([homeTeam.name, homeTeam.shortName]),
         awayTeam: stringValue(awayTeam.shortName || awayTeam.name),
+        awayTeamAliases: uniqueStringValues([awayTeam.name, awayTeam.shortName]),
         homeScore: sofaScoreDisplayScore(homeScore),
         awayScore: sofaScoreDisplayScore(awayScore),
         status: statusLabel(status.description || status.type),
@@ -2440,6 +3307,140 @@ function sofaScoreStadium(venue) {
 function sofaScoreTeamImage(teamId) {
     const id = numberValue(teamId);
     return id > 0 ? `${SOFASCORE_API_BASE_URL}/team/${id}/image` : "";
+}
+
+function fetchTheSportsDBLeagueSeasons(options, onSuccess, onError) {
+    resolveTheSportsDBLeague(options, league => {
+        const leagueId = stringValue(league && league.id);
+        if (leagueId.length === 0) {
+            onSuccess([]);
+            return;
+        }
+
+        requestJson(`${THESPORTSDB_API_BASE_URL}/search_all_seasons.php?id=${encodeURIComponent(leagueId)}`, payload => {
+            const seasons = normalizeTheSportsDBSeasonOptions(payload, league);
+            if (seasons.length > 0) {
+                onSuccess(seasons);
+                return;
+            }
+
+            fetchTheSportsDBSeasonFallbackFromEvents(league, onSuccess, onError);
+        }, () => {
+            fetchTheSportsDBSeasonFallbackFromEvents(league, onSuccess, onError);
+        });
+    }, onError);
+}
+
+function fetchTheSportsDBSeasonFallbackFromEvents(league, onSuccess, onError) {
+    const leagueId = stringValue(league && league.id);
+    if (leagueId.length === 0) {
+        onSuccess([]);
+        return;
+    }
+
+    requestJson(`${THESPORTSDB_API_BASE_URL}/eventspastleague.php?id=${encodeURIComponent(leagueId)}`, payload => {
+        const events = arrayValue(payload && payload.events);
+        const seasons = {};
+        events.forEach(event => {
+            const season = stringValue(event && event.strSeason);
+            if (season.length > 0)
+                seasons[season] = true;
+        });
+        const rows = Object.keys(seasons).map((season, index) => {
+            const yearScore = parseSeasonYearValue(season) || (1000 - index);
+            return {
+                id: season,
+                key: `thesportsdb:${season}`,
+                provider: "thesportsdb",
+                label: normalizeSeasonLabelDisplay(season),
+                isCurrent: false,
+                isOngoing: false,
+                isCompleted: true,
+                yearScore
+            };
+        }).sort((left, right) => seasonSortScore(right) - seasonSortScore(left));
+        onSuccess(rows);
+    }, onError);
+}
+
+function normalizeTheSportsDBSeasonOptions(payload, league) {
+    const rows = arrayValue(payload && payload.seasons).map((season, index) => {
+        const label = stringValue(season && (season.strSeason || season.season));
+        if (label.length === 0)
+            return {};
+
+        const yearScore = parseSeasonYearValue(label) || (1000 - index);
+        return {
+            id: label,
+            key: `thesportsdb:${label}`,
+            provider: "thesportsdb",
+            label: normalizeSeasonLabelDisplay(label),
+            isCurrent: false,
+            isOngoing: false,
+            isCompleted: true,
+            yearScore
+        };
+    }).filter(row => stringValue(row && row.id).length > 0);
+
+    return rows.sort((left, right) => seasonSortScore(right) - seasonSortScore(left));
+}
+
+function fetchTheSportsDBTableForSeason(options, onSuccess, onError) {
+    const seasonId = stringValue(options && options.seasonId).trim();
+    if (seasonId.length === 0) {
+        onSuccess([]);
+        return;
+    }
+
+    resolveTheSportsDBLeague(options, league => {
+        const leagueId = stringValue(league && league.id);
+        if (leagueId.length === 0) {
+            onSuccess([]);
+            return;
+        }
+
+        const url = `${THESPORTSDB_API_BASE_URL}/lookuptable.php?l=${encodeURIComponent(leagueId)}&s=${encodeURIComponent(seasonId)}`;
+        requestJson(url, payload => {
+            const rows = normalizeTheSportsDBTable(payload, league);
+            if (rows.length > 0) {
+                onSuccess(rows);
+                return;
+            }
+
+            requestJson(`${THESPORTSDB_API_BASE_URL}/lookuptable.php?l=${encodeURIComponent(leagueId)}`, fallbackPayload => {
+                onSuccess(normalizeTheSportsDBTable(fallbackPayload, league));
+            }, onError);
+        }, onError);
+    }, onError);
+}
+
+function normalizeTheSportsDBTable(payload, league) {
+    const rows = arrayValue(payload && payload.table).map(row => {
+        const team = stringValue(row && row.strTeam);
+        if (team.length === 0)
+            return {};
+
+        return {
+            position: numberValue(row && (row.intRank || row.rank)),
+            team,
+            group: stringValue(row && (row.strGroup || row.strSubdivision || row.strDivision)),
+            groupIndex: 0,
+            played: numberValue(row && (row.intPlayed || row.played)),
+            won: numberValue(row && (row.intWin || row.win)),
+            draw: numberValue(row && (row.intDraw || row.draw)),
+            lost: numberValue(row && (row.intLoss || row.loss)),
+            goalsFor: numberValue(row && (row.intGoalsFor || row.goalsfor)),
+            goalsAgainst: numberValue(row && (row.intGoalsAgainst || row.goalsagainst)),
+            points: numberValue(row && (row.intPoints || row.points)),
+            goalDifference: numberValue(row && (row.intGoalDifference || row.goaldifference)),
+            form: stringValue(row && (row.strForm || row.form)),
+            crest: stringValue(row && (row.strTeamBadge || row.strBadge)),
+            teamSlug: ProviderCatalog.sportScoreSlug(team),
+            league: stringValue(league && league.label)
+        };
+    }).filter(row => stringValue(row && row.team).length > 0);
+
+    return rows.sort((left, right) => numberValue(left.position) - numberValue(right.position) || stringValue(left.team).localeCompare(stringValue(right.team)));
 }
 
 function canFetchTheSportsDBFixtures(options) {
@@ -3159,8 +4160,12 @@ function sportScoreLiveSchemaMap(html) {
 
 function sportScorePathFromUrl(url) {
     const value = stringValue(url);
-    const match = /^https?:\/\/[^/]+(\/football\/match\/[^?#]+\/?)/.exec(value);
-    return match ? match[1] : value;
+    const absolute = /^https?:\/\/[^/]+(\/football\/[^?#]+\/?)/.exec(value);
+    if (absolute)
+        return absolute[1];
+
+    const relative = /(\/football\/[^?#]+\/?)/.exec(value);
+    return relative ? relative[1] : value;
 }
 
 function schemaPlaceName(place) {
@@ -3194,6 +4199,69 @@ function sportScoreCompetitionPath(html, country, league) {
     const fallback = new RegExp(`href="(/football/competition/[^/]+/${escapedLeague}/[^"]+/)"`);
     match = fallback.exec(html);
     return match ? match[1] : "";
+}
+
+function sportScoreCompetitionSourceUrls(options) {
+    const primary = stringValue(options && options.country).trim().toLowerCase();
+    const inferred = stringValue(ProviderCatalog.countryCodeForLeague(options && options.league)).trim().toLowerCase();
+    const candidates = [];
+    const seen = {};
+
+    function addCountry(code) {
+        if (code.length === 0 || seen[code])
+            return;
+
+        seen[code] = true;
+        candidates.push(code);
+    }
+
+    addCountry(primary.length > 0 ? primary : "england");
+    addCountry(inferred);
+    addCountry("world");
+
+    return candidates.map(code => {
+        if (code === "world")
+            return { country: code, url: "https://sportscore.com/football/competitions/" };
+
+        return {
+            country: code,
+            url: `https://sportscore.com/football/country/${encodeURIComponent(code)}/`
+        };
+    });
+}
+
+function fetchSportScoreCompetitionPathWithFallback(options, onSuccess, onError) {
+    const league = ProviderCatalog.sportScoreSlug(options && options.league);
+    if (league.length === 0) {
+        onSuccess("");
+        return;
+    }
+
+    const sources = sportScoreCompetitionSourceUrls(options);
+    let index = 0;
+
+    function next() {
+        if (index >= sources.length) {
+            onSuccess("");
+            return;
+        }
+
+        const source = sources[index];
+        index += 1;
+        requestText(cacheBustedUrl(source.url), html => {
+            const path = sportScoreCompetitionPath(html, source.country, league);
+            if (path.length > 0) {
+                onSuccess(path);
+                return;
+            }
+
+            next();
+        }, () => {
+            next();
+        });
+    }
+
+    next();
 }
 
 function normalizeSportScoreFixturePage(html, leagueLabel) {
@@ -3465,6 +4533,60 @@ function escapeRegExp(value) {
     return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function selectDefaultSeasonOptions(seasons) {
+    const rows = arrayValue(seasons).slice();
+    if (rows.length === 0)
+        return [];
+
+    rows.sort((left, right) => seasonSortScore(right) - seasonSortScore(left));
+    let defaultIndex = rows.findIndex(row => Boolean(row && (row.isCurrent || row.isOngoing)));
+    if (defaultIndex < 0)
+        defaultIndex = rows.findIndex(row => !Boolean(row && row.isCompleted));
+    if (defaultIndex < 0)
+        defaultIndex = 0;
+
+    return rows.map((row, index) => {
+        const copy = Object.assign({}, row || {});
+        copy.isDefault = index === defaultIndex;
+        return copy;
+    });
+}
+
+function seasonSortScore(season) {
+    season = season || {};
+    const explicitYearScore = numberValue(season.yearScore);
+    if (explicitYearScore > 0)
+        return explicitYearScore;
+
+    const label = stringValue(season.label || season.id);
+    return parseSeasonYearValue(label);
+}
+
+function parseSeasonYearValue(value) {
+    const text = stringValue(value).trim();
+    if (text.length === 0)
+        return 0;
+
+    const parts = text.match(/\d{2,4}/g) || [];
+    if (parts.length === 0)
+        return 0;
+
+    let year = 0;
+    parts.forEach(part => {
+        const number = numberValue(part);
+        if (number <= 0)
+            return;
+
+        let candidate = number;
+        if (part.length === 2)
+            candidate = number >= 70 ? 1900 + number : 2000 + number;
+        if (candidate > year)
+            year = candidate;
+    });
+
+    return year;
+}
+
 function normalizeSports(value) {
     if (Array.isArray(value)) {
         return value.map(sport => String(sport).trim().toLowerCase()).filter(Boolean);
@@ -3529,7 +4651,7 @@ function teamFormFromMatches(matches, teamName, scopedTeamName, options) {
         } else {
             form.push("D");
         }
-        details.push(formMatchDetail(match));
+        details.push(formMatchDetail(match, options));
     });
 
     return formEntry(form.reverse(), details.reverse());
@@ -3542,9 +4664,9 @@ function formEntry(values, details) {
     };
 }
 
-function formMatchDetail(match) {
+function formMatchDetail(match, options) {
     const parts = [];
-    const date = formMatchDate(match);
+    const date = formMatchDate(match, options);
     const league = stringValue(match && match.league);
     if (date.length > 0)
         parts.push(date);
@@ -3559,21 +4681,140 @@ function formMatchDetail(match) {
     return result || title;
 }
 
-function formMatchDate(match) {
+function formMatchDate(match, options) {
     const timestamp = numberValue(match && match.timestamp);
     if (timestamp > 0) {
         const date = new Date(timestamp);
-        return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}`;
+        const dateText = formatConfiguredDateValue(date, options);
+        const timeText = formatConfiguredTimeValue(date, options);
+        return [dateText, timeText].filter(part => part.length > 0).join(" ");
     }
 
     return stringValue(match && match.startTime);
 }
 
+function configuredDateFormat(options) {
+    return stringValue(options && options.matchDateFormat).trim() || "dd.MM";
+}
+
+function configuredTimeFormat(options) {
+    return stringValue(options && options.matchTimeFormat).trim() || "HH:mm";
+}
+
+function formatConfiguredDateValue(date, options) {
+    const format = configuredDateFormat(options);
+    if (format === "locale-long") {
+        try {
+            return date.toLocaleDateString(undefined, { dateStyle: "long" });
+        } catch (error) {
+            return date.toLocaleDateString();
+        }
+    }
+    if (format === "locale-short") {
+        try {
+            return date.toLocaleDateString(undefined, { dateStyle: "short" });
+        } catch (error) {
+            return date.toLocaleDateString();
+        }
+    }
+
+    return formatDateWithPattern(date, format);
+}
+
+function formatConfiguredTimeValue(date, options) {
+    const format = configuredTimeFormat(options);
+    if (format === "locale")
+        return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    return formatTimeWithPattern(date, format);
+}
+
+function formatDateWithPattern(date, pattern) {
+    const text = stringValue(pattern).trim();
+    if (text.length === 0)
+        return "";
+
+    const monthShort = date.toLocaleDateString(undefined, { month: "short" });
+    return text.replace(/yyyy|yy|MMM|MM|M|dd|d/g, token => {
+        switch (token) {
+        case "yyyy":
+            return String(date.getFullYear());
+        case "yy":
+            return String(date.getFullYear()).slice(-2);
+        case "MMM":
+            return monthShort;
+        case "MM":
+            return pad(date.getMonth() + 1);
+        case "M":
+            return String(date.getMonth() + 1);
+        case "dd":
+            return pad(date.getDate());
+        case "d":
+            return String(date.getDate());
+        default:
+            return token;
+        }
+    });
+}
+
+function formatTimeWithPattern(date, pattern) {
+    const text = stringValue(pattern).trim();
+    if (text.length === 0)
+        return "";
+
+    const hours24 = date.getHours();
+    const hours12 = ((hours24 + 11) % 12) + 1;
+    const ampm = hours24 >= 12 ? "PM" : "AM";
+    return text.replace(/HH|H|hh|h|mm|ss|AP|ap/g, token => {
+        switch (token) {
+        case "HH":
+            return pad(hours24);
+        case "H":
+            return String(hours24);
+        case "hh":
+            return pad(hours12);
+        case "h":
+            return String(hours12);
+        case "mm":
+            return pad(date.getMinutes());
+        case "ss":
+            return pad(date.getSeconds());
+        case "AP":
+            return ampm;
+        case "ap":
+            return ampm.toLowerCase();
+        default:
+            return token;
+        }
+    });
+}
+
+function normalizeSeasonLabelDisplay(label) {
+    const text = stringValue(label).trim();
+    if (text.length === 0)
+        return "";
+
+    const key = sportScoreSeasonMatchKey(text);
+    const full = /^(\d{4})-(\d{4})$/.exec(key);
+    if (full)
+        return `${full[1]}/${full[2]}`;
+
+    const short = /^(\d{2})\/(\d{2})$/.exec(text);
+    if (short)
+        return `${Number(short[1]) + 2000}/${Number(short[2]) + 2000}`;
+
+    return text;
+}
+
 function formCacheKey(options, teamName) {
+    const season = sportScoreSeasonMatchKey(stringValue(options && options.seasonLabel).trim()
+        || stringValue(options && options.seasonId).trim()
+        || stringValue(options && options.seasonKey).trim());
     return [
         normalizedText(teamName),
         ProviderCatalog.sportScoreSlug(options && options.league),
-        normalizedText(ProviderCatalog.countryLabel(options && options.country))
+        normalizedText(ProviderCatalog.countryLabel(options && options.country)),
+        season
     ].join("|");
 }
 
@@ -3688,6 +4929,14 @@ function dedupeRecentMatches(matches) {
     });
 
     return rows;
+}
+
+function recentResultsLimitValue(options) {
+    const requested = numberValue(options && options.recentResultsLimit);
+    if (requested <= 0)
+        return RECENT_RESULTS_LIMIT;
+
+    return Math.max(RECENT_RESULTS_LIMIT, Math.min(300, requested));
 }
 
 function findMergeableRecentResult(rows, match) {
@@ -3863,19 +5112,27 @@ function filterMatchesForSelection(matches, options) {
     if (sport !== "football" && sport !== "soccer")
         return matches;
 
+    const seasonFiltered = filterMatchesForRequestedSeason(matches, options);
+    if (Boolean(options && options.skipLeagueFilter))
+        return seasonFiltered;
+
     if (stringValue(options && options.followMode).trim().toLowerCase() === "team")
-        return matches;
+        return seasonFiltered;
 
     const league = ProviderCatalog.sportScoreSlug(options.league);
     if (league.length === 0)
-        return matches;
+        return seasonFiltered;
 
     const label = ProviderCatalog.leagueLabel(options.league);
     const candidates = [league, label].map(normalizedText).filter(value => value.length > 0);
     if (candidates.length === 0)
-        return matches;
+        return seasonFiltered;
 
-    return matches.filter(match => {
+    return seasonFiltered.filter(match => {
+        const matchLeagueSlug = ProviderCatalog.sportScoreSlug(match && match.league);
+        if (matchLeagueSlug.length > 0 && (matchLeagueSlug === league || matchLeagueSlug.indexOf(league) >= 0 || league.indexOf(matchLeagueSlug) >= 0))
+            return true;
+
         const matchLeague = normalizedText(match.league);
         if (matchLeague.length === 0)
             return true;
@@ -3888,10 +5145,63 @@ function filterMatchesForSelection(matches, options) {
     });
 }
 
+function filterMatchesForRequestedSeason(matches, options) {
+    const window = requestedSeasonWindow(options);
+    if (!window)
+        return arrayValue(matches);
+
+    return arrayValue(matches).filter(match => {
+        const timestamp = numberValue(match && match.timestamp);
+        if (timestamp <= 0)
+            return true;
+
+        return timestamp >= window.start && timestamp < window.end;
+    });
+}
+
+function requestedSeasonWindow(options) {
+    const label = stringValue(options && options.seasonLabel).trim();
+    const id = stringValue(options && options.seasonId).trim();
+    const key = stringValue(options && options.seasonKey).trim();
+    const source = label.length > 0 ? label : (id.length > 0 ? id : key);
+    if (source.length === 0)
+        return null;
+
+    const normalized = sportScoreSeasonMatchKey(source);
+    const long = /^(\d{4})-(\d{4})$/.exec(normalized);
+    if (long) {
+        const startYear = numberValue(long[1]);
+        const endYear = numberValue(long[2]);
+        if (startYear > 0 && endYear > startYear) {
+            // Most football seasons run mid-year to mid-year.
+            return {
+                start: Date.UTC(startYear, 6, 1, 0, 0, 0),
+                end: Date.UTC(endYear, 6, 1, 0, 0, 0)
+            };
+        }
+    }
+
+    const single = /^(\d{4})$/.exec(source);
+    if (single) {
+        const year = numberValue(single[1]);
+        if (year > 0) {
+            return {
+                start: Date.UTC(year, 0, 1, 0, 0, 0),
+                end: Date.UTC(year + 1, 0, 1, 0, 0, 0)
+            };
+        }
+    }
+
+    return null;
+}
+
 function formByTeam(matches, options) {
     let result = {};
-    const finished = filterMatchesForSelection(matches || [], options || {}).filter(match => isFinishedMatch(match) && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore)))
-        .sort((left, right) => numberValue(right.timestamp) - numberValue(left.timestamp));
+    const maxMatches = Math.max(FORM_TEAM_MATCH_LIMIT, recentResultsLimitValue(options || {}));
+    const finished = filterMatchesForSelection(matches || [], options || {})
+        .filter(match => isFinishedMatch(match) && Number.isFinite(Number(match.homeScore)) && Number.isFinite(Number(match.awayScore)))
+        .sort((left, right) => numberValue(right.timestamp) - numberValue(left.timestamp))
+        .slice(0, maxMatches);
 
     function append(teamName, value, detail) {
         const key = normalizedText(teamName);
@@ -3923,7 +5233,7 @@ function formByTeam(matches, options) {
     finished.forEach(match => {
         const homeGoals = numberValue(match.homeScore);
         const awayGoals = numberValue(match.awayScore);
-        const detail = formMatchDetail(match);
+        const detail = formMatchDetail(match, options);
         if (homeGoals > awayGoals) {
             appendAll(match.homeTeam, match.homeTeamAliases, "W", detail);
             appendAll(match.awayTeam, match.awayTeamAliases, "L", detail);

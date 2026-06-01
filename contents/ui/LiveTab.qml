@@ -35,9 +35,17 @@ Item {
         spacing: 0
         model: root.liveModel
         boundsBehavior: Flickable.StopAtBounds
+        readonly property int contentColumnWidth: Math.max(0, width - Kirigami.Units.gridUnit)
 
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
+        }
+
+        section.property: "leagueGroup"
+        section.criteria: ViewSection.FullString
+        section.delegate: RoundSectionHeader {
+            width: liveList.contentColumnWidth
+            text: section
         }
 
         EmptyState {
@@ -47,7 +55,7 @@ Item {
         }
 
         delegate: LiveMatchDelegate {
-            width: liveList.width
+            width: liveList.contentColumnWidth
             sport: model.sport || ""
             league: model.league || ""
             homeTeam: model.homeTeam || ""

@@ -43,7 +43,11 @@ Item {
     property bool followTeamMode: false
     property var teamTableOptions: []
     property string selectedTableSlug: ""
+    property var teamTableSeasonOptions: []
+    property string selectedTableSeasonKey: ""
+    property bool teamTableSeasonLoading: false
     property bool tableLoading: false
+    property bool tableFormLoading: false
     property int sportCount: 0
     property int tableCount: 0
     property int recentResultsCount: 0
@@ -62,6 +66,7 @@ Item {
     signal configureRequested()
     signal leagueSelected(int index)
     signal teamTableSelected(string slug)
+    signal teamTableSeasonSelected(string seasonKey)
 
     function isFavoriteTeam(teamName) {
         const favorite = root.favoriteTeam.toLowerCase();
@@ -332,10 +337,20 @@ Item {
                         asynchronous: true
                     }
 
-                    Kirigami.Icon {
+                    Image {
+                        id: sportHeaderImage
+
                         anchors.fill: parent
                         source: Qt.resolvedUrl("../icons/sports/" + SportVisuals.iconName(root.sport))
-                        visible: !root.followTeamMode || root.activeClubBadge.length === 0
+                        visible: (!root.followTeamMode || root.activeClubBadge.length === 0) && status === Image.Ready
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                    }
+
+                    Kirigami.Icon {
+                        anchors.fill: parent
+                        source: "applications-games"
+                        visible: (!root.followTeamMode || root.activeClubBadge.length === 0) && sportHeaderImage.status !== Image.Ready
                         isMask: true
                         color: Kirigami.Theme.textColor
                     }
@@ -355,65 +370,6 @@ Item {
                     visible: false
                 }
 
-                ToolButton {
-                    id: savedLeagueSwitcher
-
-                    icon.name: "go-down"
-                    display: AbstractButton.IconOnly
-                    text: i18nc("@action:button", "Switch saved sport")
-                    visible: root.savedLeagueCount > 1
-                    ToolTip.visible: hovered
-                    ToolTip.text: i18nc("@info:tooltip", "Switch saved sport")
-                    onClicked: savedLeagueMenu.open()
-
-                    Menu {
-                        id: savedLeagueMenu
-
-                        y: savedLeagueSwitcher.height
-
-                        MenuItem {
-                            text: i18nc("@title:menu", "Saved Competitions")
-                            enabled: false
-                            visible: root.savedEntryTypeCount("competition") > 0
-                        }
-
-                        Repeater {
-                            model: root.savedEntriesOfType("competition")
-
-                            delegate: MenuItem {
-                                required property var modelData
-
-                                text: root.savedLeagueMenuText(modelData.entry)
-                                checkable: true
-                                checked: modelData.sourceIndex === root.activeSavedLeagueIndex
-                                onTriggered: root.leagueSelected(modelData.sourceIndex)
-                            }
-                        }
-
-                        MenuSeparator {
-                            visible: root.savedEntryTypeCount("competition") > 0 && root.savedEntryTypeCount("team") > 0
-                        }
-
-                        MenuItem {
-                            text: i18nc("@title:menu", "Saved Teams")
-                            enabled: false
-                            visible: root.savedEntryTypeCount("team") > 0
-                        }
-
-                        Repeater {
-                            model: root.savedEntriesOfType("team")
-
-                            delegate: MenuItem {
-                                required property var modelData
-
-                                text: root.savedLeagueMenuText(modelData.entry)
-                                checkable: true
-                                checked: modelData.sourceIndex === root.activeSavedLeagueIndex
-                                onTriggered: root.leagueSelected(modelData.sourceIndex)
-                            }
-                        }
-                    }
-                }
             }
 
             ToolButton {
@@ -544,6 +500,7 @@ Item {
                 tableCount: root.tableCount
                 tableErrorMessage: root.tableErrorMessage
                 tableLoading: root.tableLoading
+                formLoading: root.tableFormLoading
                 league: root.league
                 leagueLabel: root.tableLeagueLabel.length > 0 ? root.tableLeagueLabel : root.activeLeagueLabel
                 sport: root.sport
@@ -551,7 +508,11 @@ Item {
                 followTeamMode: root.followTeamMode
                 tableOptions: root.teamTableOptions
                 selectedTableSlug: root.selectedTableSlug
+                seasonOptions: root.teamTableSeasonOptions
+                selectedSeasonKey: root.selectedTableSeasonKey
+                seasonLoading: root.teamTableSeasonLoading
                 onTableSelected: (slug) => root.teamTableSelected(slug)
+                onSeasonSelected: (seasonKey) => root.teamTableSeasonSelected(seasonKey)
             }
 
         }

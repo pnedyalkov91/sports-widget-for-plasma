@@ -9830,6 +9830,23 @@ function leagueLabel(leagueCode) {
     return "";
 }
 
+function leagueCountryCode(leagueCode) {
+    const value = String(leagueCode || "").trim();
+    if (value.length === 0)
+        return "";
+
+    for (let countryIndex = 0; countryIndex < FOOTBALL_COUNTRIES.length; countryIndex += 1) {
+        const country = FOOTBALL_COUNTRIES[countryIndex];
+        const leagues = country.leagues || [];
+        for (let leagueIndex = 0; leagueIndex < leagues.length; leagueIndex += 1) {
+            if (leagues[leagueIndex].value === value)
+                return String(country.value || "").trim();
+        }
+    }
+
+    return "";
+}
+
 function countryLabel(countryCode) {
     const country = countryByCode(countryCode);
     if (!country)

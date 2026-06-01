@@ -18,6 +18,7 @@ Item {
     property int tableCount: 0
     property string tableErrorMessage: ""
     property bool tableLoading: false
+    property bool formLoading: false
     property string league: ""
     property string leagueLabel: ""
     property string sport: "football"
@@ -25,10 +26,18 @@ Item {
     property bool followTeamMode: false
     property var tableOptions: []
     property string selectedTableSlug: ""
+    property var seasonOptions: []
+    property string selectedSeasonKey: ""
+    property bool seasonLoading: false
     readonly property int rowCount: tableRows ? tableRows.length : 0
     readonly property var displayRows: groupedRows()
+    readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
+    readonly property color tableSecondaryTextColor: Kirigami.Theme.disabledTextColor
+    readonly property color tableHighlightTextColor: Kirigami.Theme.highlightColor
+    readonly property color tableRowDividerColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.12)
 
     signal tableSelected(string slug)
+    signal seasonSelected(string seasonKey)
 
     function groupedRows() {
         const rows = root.tableRows || [];
@@ -76,9 +85,116 @@ Item {
         return root.leagueLabel.length > 0 ? root.leagueLabel : root.leagueTitle().replace(/\s+Table$/, "");
     }
 
+    onSelectedTableSlugChanged: {
+        if (tableSelector)
+            tableSelector.syncSelection();
+    }
+
+    onTableOptionsChanged: {
+        if (tableSelector)
+            tableSelector.syncSelection();
+    }
+
+    onSelectedSeasonKeyChanged: {
+        if (seasonSelector)
+            seasonSelector.syncSelection();
+    }
+
+    onSeasonOptionsChanged: {
+        if (seasonSelector)
+            seasonSelector.syncSelection();
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: Kirigami.Units.smallSpacing
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: Array.isArray(root.tableOptions) && root.tableOptions.length > 0
+
+            PlasmaComponents.Label {
+                text: i18nc("@label", "Table:")
+                color: root.tablePrimaryTextColor
+            }
+
+            ComboBox {
+                id: tableSelector
+
+                Layout.fillWidth: true
+                textRole: "label"
+                model: root.tableOptions
+                onActivated: {
+                    const option = model && index >= 0 ? model[index] : null;
+                    const slug = String(option && option.slug || "").trim();
+                    if (slug.length > 0)
+                        root.tableSelected(slug);
+                }
+
+                function syncSelection() {
+                    const selected = ProviderCatalog.sportScoreSlug(root.selectedTableSlug);
+                    let fallback = 0;
+                    for (let index = 0; index < count; index += 1) {
+                        const option = model[index] || {};
+                        if (ProviderCatalog.sportScoreSlug(option.slug) === selected) {
+                            currentIndex = index;
+                            return;
+                        }
+                    }
+                    currentIndex = fallback;
+                }
+
+                Component.onCompleted: syncSelection()
+                onModelChanged: syncSelection()
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: (Array.isArray(root.seasonOptions) && root.seasonOptions.length > 0) || root.seasonLoading
+
+            PlasmaComponents.Label {
+                text: i18nc("@label", "Season:")
+                color: root.tablePrimaryTextColor
+            }
+
+            ComboBox {
+                id: seasonSelector
+
+                Layout.fillWidth: true
+                textRole: "label"
+                model: root.seasonOptions
+                enabled: !root.seasonLoading
+                onActivated: {
+                    const option = model && index >= 0 ? model[index] : null;
+                    const key = String(option && option.key || "").trim();
+                    if (key.length > 0)
+                        root.seasonSelected(key);
+                }
+
+                function syncSelection() {
+                    const selected = String(root.selectedSeasonKey || "").trim();
+                    let fallback = 0;
+                    for (let index = 0; index < count; index += 1) {
+                        const option = model[index] || {};
+                        if (String(option.key || "").trim() === selected) {
+                            currentIndex = index;
+                            return;
+                        }
+                    }
+                    currentIndex = fallback;
+                    const fallbackOption = model && fallback >= 0 && fallback < count ? model[fallback] : null;
+                    const fallbackKey = String(fallbackOption && fallbackOption.key || "").trim();
+                    if (fallbackKey.length > 0 && fallbackKey !== selected)
+                        root.seasonSelected(fallbackKey);
+                }
+
+                Component.onCompleted: syncSelection()
+                onModelChanged: syncSelection()
+            }
+        }
 
         Item {
             Layout.fillWidth: true
@@ -88,6 +204,7 @@ Item {
                 id: tableList
 
                 anchors.fill: parent
+                visible: !root.tableLoading
                 clip: true
                 spacing: 0
                 boundsBehavior: Flickable.StopAtBounds
@@ -122,8 +239,30 @@ Item {
 
             EmptyState {
                 anchors.fill: parent
-                visible: root.rowCount === 0
-                text: root.tableLoading ? i18nc("@info:status", "Updating table") : root.tableErrorMessage.length > 0 ? root.tableErrorMessage : i18nc("@info:placeholder", "No table data")
+                visible: root.rowCount === 0 && !root.tableLoading
+                text: root.tableErrorMessage.length > 0 ? root.tableErrorMessage : i18nc("@info:placeholder", "No table data")
+            }
+
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.max(0, parent.width - Kirigami.Units.gridUnit * 2)
+                visible: root.tableLoading
+                spacing: Kirigami.Units.smallSpacing
+
+                PlasmaComponents.BusyIndicator {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.large
+                    Layout.preferredHeight: Layout.preferredWidth
+                    running: root.tableLoading
+                }
+
+                PlasmaComponents.Label {
+                    Layout.fillWidth: true
+                    text: i18nc("@info:status", "Updating table")
+                    color: root.tableSecondaryTextColor
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                }
             }
         }
     }
@@ -141,13 +280,13 @@ Item {
                 Layout.preferredWidth: Kirigami.Units.iconSizes.large
                 Layout.preferredHeight: Layout.preferredWidth
                 source: "view-calendar-day"
-                color: "#9db7be"
+                color: root.tableSecondaryTextColor
             }
 
             PlasmaComponents.Label {
                 Layout.fillWidth: true
                 text: parent.parent.text
-                color: "#9db7be"
+                color: root.tableSecondaryTextColor
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
@@ -157,23 +296,14 @@ Item {
     component TableHeader: Rectangle {
         property string title: ""
 
-        height: Kirigami.Units.gridUnit * 4.2
+        height: Kirigami.Units.gridUnit * 2.15
         color: "transparent"
 
         Column {
             anchors.fill: parent
             anchors.leftMargin: Kirigami.Units.smallSpacing
             anchors.rightMargin: Kirigami.Units.smallSpacing
-            spacing: Kirigami.Units.smallSpacing
-
-            PlasmaComponents.Label {
-                width: parent.width
-                text: parent.parent.title
-                color: "#ffffff"
-                elide: Text.ElideRight
-                font.bold: true
-                font.pixelSize: Kirigami.Units.gridUnit * 1.1
-            }
+            spacing: 0
 
             RowLayout {
                 width: parent.width
@@ -249,7 +379,7 @@ Item {
     component HeaderLabel: PlasmaComponents.Label {
         property string tooltip: ""
 
-        color: "#9db7be"
+        color: root.tableSecondaryTextColor
         font.bold: true
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
@@ -278,7 +408,7 @@ Item {
                 anchors.leftMargin: Kirigami.Units.smallSpacing
                 anchors.rightMargin: Kirigami.Units.smallSpacing
                 text: parent.rowData.group || ""
-                color: "#ff9f1a"
+                color: root.tableHighlightTextColor
                 font.bold: true
                 elide: Text.ElideRight
             }
@@ -288,7 +418,7 @@ Item {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: 1
-                color: Qt.rgba(1, 0.62, 0.10, 0.28)
+                color: Qt.rgba(root.tableHighlightTextColor.r, root.tableHighlightTextColor.g, root.tableHighlightTextColor.b, 0.28)
             }
         }
     }
@@ -314,6 +444,7 @@ Item {
             formDetails: rowData.formDetails || []
             crest: rowData.crest || ""
             favorite: root.isFavoriteTeam(rowData.team || "")
+            formLoading: root.formLoading
         }
     }
 
@@ -332,16 +463,17 @@ Item {
         property var formDetails: []
         property string crest: ""
         property bool favorite: false
+        property bool formLoading: false
 
         height: Kirigami.Units.gridUnit * 2.7
-        color: favorite ? Qt.rgba(1, 0.59, 0.31, 0.14) : "transparent"
+        color: favorite ? Qt.rgba(root.tableHighlightTextColor.r, root.tableHighlightTextColor.g, root.tableHighlightTextColor.b, 0.14) : "transparent"
 
         Rectangle {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             height: 1
-            color: Qt.rgba(1, 1, 1, 0.09)
+            color: root.tableRowDividerColor
         }
 
         RowLayout {
@@ -352,7 +484,7 @@ Item {
 
             PlasmaComponents.Label {
                 text: position
-                color: "#e7fbff"
+                color: root.tablePrimaryTextColor
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 1.35
                 horizontalAlignment: Text.AlignHCenter
                 font.pixelSize: Kirigami.Units.gridUnit
@@ -369,7 +501,7 @@ Item {
 
             PlasmaComponents.Label {
                 text: team
-                color: "#e7fbff"
+                color: root.tablePrimaryTextColor
                 Layout.fillWidth: true
                 elide: Text.ElideRight
                 font.bold: true
@@ -412,7 +544,7 @@ Item {
 
             RowValue {
                 text: points
-                color: "#ffffff"
+                color: root.tablePrimaryTextColor
                 font.bold: true
                 font.pixelSize: Kirigami.Units.gridUnit * 1.25
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 2.8
@@ -423,12 +555,13 @@ Item {
                 Layout.preferredHeight: Kirigami.Units.gridUnit * 1.3
                 form: parent.parent.form
                 details: parent.parent.formDetails
+                loading: parent.parent.formLoading
             }
         }
     }
 
     component RowValue: PlasmaComponents.Label {
-        color: "#d7eef2"
+        color: root.tablePrimaryTextColor
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
     }
@@ -436,6 +569,7 @@ Item {
     component FormBadges: Item {
         property string form: ""
         property var details: []
+        property bool loading: false
 
         function results() {
             const text = String(form || "").trim();
@@ -459,7 +593,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             spacing: 3
-            visible: parent.results().length > 0
+            visible: !parent.loading && parent.results().length > 0
 
             Repeater {
                 model: parent.parent.results()
@@ -497,9 +631,17 @@ Item {
 
         PlasmaComponents.Label {
             anchors.centerIn: parent
-            visible: parent.results().length === 0
+            visible: !parent.loading && parent.results().length === 0
             text: "-"
-            color: "#9db7be"
+            color: root.tableSecondaryTextColor
+        }
+
+        PlasmaComponents.BusyIndicator {
+            anchors.centerIn: parent
+            width: Kirigami.Units.gridUnit * 1.15
+            height: width
+            visible: parent.loading
+            running: visible
         }
     }
 }

@@ -42,7 +42,7 @@ Item {
 
         readonly property int contentColumnWidth: Math.max(0, width - Kirigami.Units.gridUnit)
 
-        section.property: "matchday"
+        section.property: "leagueGroup"
         section.criteria: ViewSection.FullString
         section.delegate: RoundSectionHeader {
             width: resultsList.contentColumnWidth

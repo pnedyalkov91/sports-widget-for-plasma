@@ -314,6 +314,10 @@ KCM.SimpleKCM {
         const copy = Object.assign({}, entry || {});
         copy.type = root.entryType(copy);
         copy.followMode = copy.type === "team" ? "team" : "league";
+        copy.includeLive = copy.includeLive !== false;
+        copy.includeSchedules = copy.includeSchedules !== false;
+        copy.includeRecent = copy.includeRecent !== false;
+        copy.includeTables = copy.includeTables !== false;
         if (copy.type === "team") {
             copy.favoriteTeam = root.stripLegacyTeamPrefix(copy.customFavoriteTeamLabel || copy.favoriteTeam || copy.customLeagueLabel || copy.leagueLabel || copy.league || "");
             copy.league = "";
@@ -340,7 +344,11 @@ KCM.SimpleKCM {
             leagueLabel: root.currentEntryType === "team" ? i18nc("@label", "All competitions") : root.leagueLabel(),
             favoriteTeam: root.currentEntryType === "team" ? root.cfg_favoriteTeam || "" : "",
             followMode: root.currentEntryType === "team" ? "team" : "league",
-            type: root.currentEntryType === "team" ? "team" : "competition"
+            type: root.currentEntryType === "team" ? "team" : "competition",
+            includeLive: true,
+            includeSchedules: true,
+            includeRecent: true,
+            includeTables: true
         };
     }
 
@@ -370,6 +378,10 @@ KCM.SimpleKCM {
         } else {
             copy.favoriteTeam = "";
         }
+        copy.includeLive = copy.includeLive !== false;
+        copy.includeSchedules = copy.includeSchedules !== false;
+        copy.includeRecent = copy.includeRecent !== false;
+        copy.includeTables = copy.includeTables !== false;
         delete copy.starred;
 
         let targetIndex = replaceIndex;
@@ -492,6 +504,24 @@ KCM.SimpleKCM {
             delete saved[index].customCountryLabel;
         if (saved[index].customFavoriteTeamLabel.length === 0)
             delete saved[index].customFavoriteTeamLabel;
+        root.saveLeagues(saved);
+    }
+
+    function setEntryIncludes(index, key, enabled) {
+        const allowed = {
+            "includeLive": true,
+            "includeSchedules": true,
+            "includeRecent": true,
+            "includeTables": true
+        };
+        if (!allowed[key])
+            return;
+
+        const saved = root.savedLeagues();
+        if (index < 0 || index >= saved.length)
+            return;
+
+        saved[index][key] = Boolean(enabled);
         root.saveLeagues(saved);
     }
 
