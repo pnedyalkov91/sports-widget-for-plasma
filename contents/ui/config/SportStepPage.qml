@@ -16,6 +16,7 @@ ColumnLayout {
     property string filterText: ""
     property string filterPlaceholder: ""
     readonly property int cardMinimumWidth: Kirigami.Units.gridUnit * 10
+    readonly property int contentColumns: cardGrid.columns
     property alias headerContent: headerExtra.data
     default property alias cards: cardGrid.data
 

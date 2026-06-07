@@ -12,6 +12,10 @@ Item {
     id: root
 
     property string text: ""
+    property bool collapsible: false
+    property bool collapsed: false
+
+    signal toggled()
 
     function withAlpha(color, alpha) {
         try {
@@ -36,9 +40,19 @@ Item {
         spacing: Kirigami.Units.smallSpacing
         visible: root.visible
 
+        Kirigami.Icon {
+            Layout.preferredWidth: Kirigami.Units.iconSizes.small
+            Layout.preferredHeight: Layout.preferredWidth
+            visible: root.collapsible
+            source: root.collapsed ? "go-next-symbolic" : "go-down-symbolic"
+            isMask: true
+            color: Kirigami.Theme.disabledTextColor
+        }
+
         PlasmaComponents.Label {
             text: root.text
-            color: Kirigami.Theme.disabledTextColor
+            color: Kirigami.Theme.textColor
+            opacity: 0.82
             font.bold: true
             elide: Text.ElideRight
         }
@@ -48,5 +62,12 @@ Item {
             Layout.preferredHeight: 1
             color: root.withAlpha(Kirigami.Theme.separatorColor, 0.5)
         }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        enabled: root.collapsible
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.toggled()
     }
 }

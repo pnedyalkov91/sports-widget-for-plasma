@@ -15,9 +15,12 @@ Item {
     property string awayTeam: ""
     property string homeScore: ""
     property string awayScore: ""
+    property string homePenaltyScore: ""
+    property string awayPenaltyScore: ""
     property string status: ""
     property string minute: ""
     property string startTime: ""
+    property real timestamp: 0
     property string stadium: ""
     property string homeBadge: ""
     property string awayBadge: ""
@@ -25,20 +28,33 @@ Item {
     property string matchPath: ""
     property string liveUrl: ""
     property string detailsProvider: ""
-    property string espnLeagueSlug: ""
-    property string espnEventId: ""
     property bool popular: false
     property bool favorite: false
     property bool selected: false
     property bool showScore: true
+    property bool splitLeagueAndTimeLines: false
+    property bool splitDateAndTimeLines: false
+    property real scoreRowHeight: 0
     property bool expanded: false
     property bool detailsLoading: false
     property bool detailsLoaded: false
     property string detailsError: ""
     property var details: ({})
     property int requestGeneration: 0
+    readonly property string detailsIdentity: [
+        root.detailsProvider,
+        root.matchPath,
+        root.liveUrl,
+        root.homeTeam,
+        root.awayTeam,
+        root.homeScore,
+        root.awayScore,
+        root.startTime,
+        root.timestamp
+    ].join("|")
 
     signal clicked()
+    signal doubleClicked()
 
     function loadDetails(force) {
         if (!root.expanded)
@@ -50,10 +66,10 @@ Item {
         if (root.detailsLoaded && !force)
             return;
 
-        if (root.liveUrl.length === 0 && root.matchPath.length === 0 && root.espnEventId.length === 0) {
+        if (root.liveUrl.length === 0 && root.matchPath.length === 0) {
             root.details = {};
             root.detailsLoaded = true;
-            root.detailsError = i18nc("@info:status", "Detailed live information is not available for this match.");
+            root.detailsError = i18nc("@info:status", "Detailed match information is not available for this match.");
             return;
         }
 
@@ -63,15 +79,18 @@ Item {
         root.detailsError = "";
 
         SportsApi.fetchLiveMatchDetails({
+            "sport": root.sport,
+            "sports": root.sport,
+            "league": root.league,
             "liveUrl": root.liveUrl,
             "matchPath": root.matchPath,
             "detailsProvider": root.detailsProvider,
-            "espnLeagueSlug": root.espnLeagueSlug,
-            "espnEventId": root.espnEventId,
             "homeTeam": root.homeTeam,
             "awayTeam": root.awayTeam,
             "homeScore": root.homeScore,
-            "awayScore": root.awayScore
+            "awayScore": root.awayScore,
+            "startTime": root.startTime,
+            "timestamp": root.timestamp
         }, payload => {
             if (!root || generation !== root.requestGeneration)
                 return;
@@ -90,12 +109,24 @@ Item {
         });
     }
 
+    function resetDetails() {
+        root.requestGeneration += 1;
+        root.details = {};
+        root.detailsLoaded = false;
+        root.detailsLoading = false;
+        root.detailsError = "";
+    }
+
     width: parent ? parent.width : implicitWidth
     height: contentColumn.implicitHeight
     implicitHeight: contentColumn.implicitHeight
 
     Component.onCompleted: loadDetails(false)
     onExpandedChanged: loadDetails(false)
+    onDetailsIdentityChanged: {
+        resetDetails();
+        loadDetails(false);
+    }
 
     Column {
         id: contentColumn
@@ -105,15 +136,20 @@ Item {
 
         ScoreDelegate {
             width: parent.width
+            height: root.scoreRowHeight > 0 ? root.scoreRowHeight : implicitHeight
             sport: root.sport
             league: root.league
             homeTeam: root.homeTeam
             awayTeam: root.awayTeam
             homeScore: root.homeScore
             awayScore: root.awayScore
+            homePenaltyScore: root.homePenaltyScore
+            awayPenaltyScore: root.awayPenaltyScore
             status: root.status
             minute: root.minute
             startTime: root.startTime
+            splitLeagueAndTimeLines: root.splitLeagueAndTimeLines
+            splitDateAndTimeLines: root.splitDateAndTimeLines
             stadium: root.stadium
             homeBadge: root.homeBadge
             awayBadge: root.awayBadge
@@ -123,17 +159,25 @@ Item {
             favorite: root.favorite
             selected: root.selected || root.expanded
             onClicked: root.clicked()
+            onDoubleClicked: root.doubleClicked()
         }
 
-        LiveMatchDetails {
+        Loader {
+            id: detailsLoader
+
             width: parent.width
-            visible: root.expanded
-            height: root.expanded ? implicitHeight : 0
-            details: root.details
-            loading: root.detailsLoading
-            errorText: root.detailsError
-            homeTeam: root.homeTeam
-            awayTeam: root.awayTeam
+            active: root.expanded
+            visible: active
+            height: item ? item.implicitHeight : 0
+
+            sourceComponent: LiveMatchDetails {
+                width: detailsLoader.width
+                details: root.details
+                loading: root.detailsLoading
+                errorText: root.detailsError
+                homeTeam: root.homeTeam
+                awayTeam: root.awayTeam
+            }
         }
     }
 }

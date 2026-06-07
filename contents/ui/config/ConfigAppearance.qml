@@ -24,9 +24,27 @@ KCM.SimpleKCM {
     property int cfg_panelFontSize: Plasmoid.configuration.panelFontSize
     property bool cfg_panelFontBold: Plasmoid.configuration.panelFontBold
     property int cfg_panelEmblemSize: Plasmoid.configuration.panelEmblemSize
+    property bool cfg_panelMatchRotationEnabled: Plasmoid.configuration.panelMatchRotationEnabled
+    property int cfg_panelMatchRotationInterval: Plasmoid.configuration.panelMatchRotationInterval
+    property bool cfg_widgetMatchRotationEnabled: Plasmoid.configuration.widgetMatchRotationEnabled
+    property int cfg_widgetMatchRotationInterval: Plasmoid.configuration.widgetMatchRotationInterval
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
     property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+    property string cfg_nationalTeamVisualStyle: Plasmoid.configuration.nationalTeamVisualStyle
+    property string cfg_provider: Plasmoid.configuration.provider
+    property string cfg_apiBaseUrl: Plasmoid.configuration.apiBaseUrl
+    property string cfg_apiKey: Plasmoid.configuration.apiKey
+    property string cfg_theSportsDBApiKey: Plasmoid.configuration.theSportsDBApiKey
+    property string cfg_allSportsApiKey: Plasmoid.configuration.allSportsApiKey
+    property string cfg_apiSportsFootballKey: Plasmoid.configuration.apiSportsFootballKey
+    property string cfg_apiSportsBasketballKey: Plasmoid.configuration.apiSportsBasketballKey
+    property string cfg_apiSportsTennisKey: Plasmoid.configuration.apiSportsTennisKey
+    property string cfg_apiSportsCricketKey: Plasmoid.configuration.apiSportsCricketKey
+    property string cfg_apiSportsBaseballKey: Plasmoid.configuration.apiSportsBaseballKey
+    property string cfg_apiSportsHockeyKey: Plasmoid.configuration.apiSportsHockeyKey
+    property string cfg_apiSportsVolleyballKey: Plasmoid.configuration.apiSportsVolleyballKey
+    property string cfg_apiSportsAmericanFootballKey: Plasmoid.configuration.apiSportsAmericanFootballKey
     readonly property bool isVerticalPanel: Plasmoid.formFactor === PlasmaCore.Types.Vertical
 
     header: PlasmaComponents.TabBar {

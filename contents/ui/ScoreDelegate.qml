@@ -3,6 +3,7 @@
     SPDX-License-Identifier: GPL-3.0-only
 */
 
+import "../code/SportsApi.js" as SportsApi
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -17,6 +18,8 @@ Rectangle {
     property string awayTeam: ""
     property string homeScore: ""
     property string awayScore: ""
+    property string homePenaltyScore: ""
+    property string awayPenaltyScore: ""
     property string status: ""
     property string minute: ""
     property string startTime: ""
@@ -29,9 +32,13 @@ Rectangle {
     property bool favorite: false
     property bool selected: false
     property bool showScore: true
-    readonly property color liveColor: Qt.rgba(1, 0.32, 0.32, 1)
+    property bool splitLeagueAndTimeLines: false
+    property bool splitDateAndTimeLines: false
+    readonly property color liveColor: Kirigami.Theme.negativeTextColor
+    readonly property bool isBasketball: String(root.sport || "").toLowerCase() === "basketball"
 
     signal clicked()
+    signal doubleClicked()
 
     function scoreText() {
         if (!root.showScore)
@@ -39,8 +46,10 @@ Rectangle {
 
         if (root.homeScore.length === 0 && root.awayScore.length === 0)
             return "-";
-
-        return root.homeScore + " - " + root.awayScore;
+        let value = root.homeScore + " - " + root.awayScore;
+        if (root.homePenaltyScore.length > 0 && root.awayPenaltyScore.length > 0)
+            value += " (" + i18nc("@label:penalty shoot-out short", "Pens") + " " + root.homePenaltyScore + "-" + root.awayPenaltyScore + ")";
+        return value;
     }
 
     function centerTimeText() {
@@ -68,16 +77,60 @@ Rectangle {
         return competitionText.length > 0 ? competitionText : timeText;
     }
 
+    function leagueMetaText() {
+        const competitionText = root.league.trim();
+        if (root.matchday.length > 0 && competitionText.length > 0)
+            return root.matchday + " · " + competitionText;
+        if (root.matchday.length > 0)
+            return root.matchday;
+        return competitionText;
+    }
+
+    function dateTimeMetaText() {
+        if (root.minute.length > 0 && !root.isLiveMatch())
+            return root.minute;
+        if (root.startTime.length > 0)
+            return root.startTime;
+        return root.status === "Live" ? root.status : "";
+    }
+
+    function dateTimeDisplayText() {
+        const value = root.dateTimeMetaText();
+        if (!root.splitDateAndTimeLines)
+            return value;
+
+        const match = /^(.+\S)\s+(\d{1,2}:\d{2}(?::\d{2})?)$/.exec(value);
+        return match ? match[1] + "\n" + match[2] : value;
+    }
+
     function isLiveMatch() {
         return root.status === "Live";
     }
 
     function liveMinuteText() {
-        const value = root.minute.trim();
-        if (value.length === 0)
-            return "";
+        if (String(root.sport || "").toLowerCase() === "basketball")
+            return SportsApi.liveStatusText(root.sport, root.minute);
 
-        return /^\d+\+?$/.test(value) ? value + "'" : value;
+        const value = SportsApi.normalizedLiveMinute(root.minute);
+        if (value.length === 0)
+            return root.minute.trim();
+
+        const minuteMatch = /^(\d+)(?:\+(\d*))?$/.exec(value);
+        if (!minuteMatch)
+            return value;
+
+        if (minuteMatch[2] === undefined)
+            return minuteMatch[1] + "'";
+        return minuteMatch[2].length > 0 ? minuteMatch[1] + "' + " + minuteMatch[2] + "'" : minuteMatch[1] + "' +";
+    }
+
+    function stoppageMinutePart(index) {
+        const match = /^(\d+)\+(\d*)$/.exec(SportsApi.normalizedLiveMinute(root.minute));
+        return match && match[index].length > 0 ? match[index] + "'" : "";
+    }
+
+    function hasStoppageTime() {
+        return /^\d+\+\d*$/.test(SportsApi.normalizedLiveMinute(root.minute));
     }
 
     function withAlpha(color, alpha) {
@@ -91,7 +144,8 @@ Rectangle {
         }
     }
 
-    height: Kirigami.Units.gridUnit * 4.2
+    implicitHeight: Kirigami.Units.gridUnit * 4.2
+    height: implicitHeight
     color: selected ? withAlpha(Kirigami.Theme.highlightColor, 0.5) : favorite || hoverHandler.hovered ? withAlpha(Kirigami.Theme.alternateBackgroundColor, 0.5) : "transparent"
 
     Behavior on color {
@@ -109,8 +163,11 @@ Rectangle {
         color: withAlpha(Kirigami.Theme.highlightedTextColor, 0.5)
     }
 
-    TapHandler {
-        onTapped: root.clicked()
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        onClicked: root.clicked()
+        onDoubleClicked: root.doubleClicked()
     }
 
     HoverHandler {
@@ -131,6 +188,7 @@ Rectangle {
         anchors.fill: parent
         anchors.leftMargin: Kirigami.Units.smallSpacing
         anchors.rightMargin: Kirigami.Units.smallSpacing
+        visible: !root.isBasketball
 
         ColumnLayout {
             id: scoreColumn
@@ -195,14 +253,40 @@ Rectangle {
 
                     PlasmaComponents.Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.min(implicitWidth, Math.max(0, liveStatusContainer.width - liveStatusContainer.dotSize - liveStatusRow.spacing))
-                        text: root.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", root.liveMinuteText()) : i18nc("@info:live match status", "Live")
+                        text: i18nc("@info:live match status", "Live")
                         color: root.liveColor
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
                         font.bold: true
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    }
+
+                    PlasmaComponents.Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !root.hasStoppageTime() && root.liveMinuteText().length > 0
+                        text: root.liveMinuteText()
+                        color: root.liveColor
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    }
+
+                    MinuteBadge {
+                        visible: root.hasStoppageTime()
+                        text: root.stoppageMinutePart(1)
+                    }
+
+                    PlasmaComponents.Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.hasStoppageTime()
+                        text: "+"
+                        color: root.liveColor
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    }
+
+                    MinuteBadge {
+                        visible: root.hasStoppageTime() && root.stoppageMinutePart(2).length > 0
+                        text: root.stoppageMinutePart(2)
                     }
                 }
             }
@@ -213,7 +297,31 @@ Rectangle {
                 color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
-                visible: !root.isLiveMatch() || root.league.length > 0
+                visible: (!root.isLiveMatch() || root.league.length > 0) && !root.splitLeagueAndTimeLines
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+            }
+
+            PlasmaComponents.Label {
+                Layout.fillWidth: true
+                text: root.leagueMetaText()
+                color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+                horizontalAlignment: Text.AlignHCenter
+                visible: root.splitLeagueAndTimeLines && root.leagueMetaText().length > 0
+                wrapMode: Text.WordWrap
+                elide: Text.ElideNone
+                maximumLineCount: 2
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+            }
+
+            PlasmaComponents.Label {
+                Layout.fillWidth: true
+                text: root.dateTimeDisplayText()
+                color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+                horizontalAlignment: Text.AlignHCenter
+                visible: root.splitLeagueAndTimeLines && root.dateTimeMetaText().length > 0
+                wrapMode: Text.WordWrap
+                elide: Text.ElideNone
+                maximumLineCount: 2
                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
             }
 
@@ -303,33 +411,56 @@ Rectangle {
 
     }
 
+    BasketballScoreDelegate {
+        anchors.fill: parent
+        visible: root.isBasketball
+        homeTeam: root.homeTeam
+        awayTeam: root.awayTeam
+        homeScore: root.homeScore
+        awayScore: root.awayScore
+        minute: root.minute
+        startTime: root.startTime
+        homeBadge: root.homeBadge
+        awayBadge: root.awayBadge
+        live: root.isLiveMatch()
+        showScore: root.showScore
+        selected: root.selected
+    }
+
     component TeamLogo: Item {
         property string sourceUrl: ""
-        readonly property int backingSize: Math.ceil(Math.max(width, height, Kirigami.Units.iconSizes.huge) * Math.max(1, Screen.devicePixelRatio) * 2)
 
         Layout.preferredWidth: Kirigami.Units.iconSizes.large
         Layout.preferredHeight: Layout.preferredWidth
 
-        Image {
+        TeamBadgeImage {
             anchors.fill: parent
-            source: sourceUrl
-            visible: sourceUrl.length > 0
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            cache: true
-            smooth: true
-            sourceSize.width: parent.backingSize
-            sourceSize.height: parent.backingSize
+            sourceUrl: parent.sourceUrl
+            fallbackIcon: "emblem-favorite"
         }
 
-        Kirigami.Icon {
-            anchors.fill: parent
-            source: "emblem-favorite"
-            visible: sourceUrl.length === 0
-            color: Kirigami.Theme.disabledTextColor
-            opacity: 0.5
-        }
+    }
 
+    component MinuteBadge: Rectangle {
+        property string text: ""
+
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        width: Math.max(height, minuteLabel.implicitWidth + Kirigami.Units.smallSpacing)
+        height: Kirigami.Theme.smallFont.pixelSize + Kirigami.Units.smallSpacing
+        radius: 3
+        color: root.withAlpha(root.liveColor, 0.16)
+        border.width: 1
+        border.color: root.withAlpha(root.liveColor, 0.65)
+
+        PlasmaComponents.Label {
+            id: minuteLabel
+
+            anchors.centerIn: parent
+            text: parent.text
+            color: root.liveColor
+            font.bold: true
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
     }
 
 }

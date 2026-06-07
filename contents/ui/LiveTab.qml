@@ -16,8 +16,22 @@ Item {
     property string favoriteTeam: ""
     property bool loading: false
     property int selectedIndex: 0
+    property var collapsedGroups: ({})
 
     signal matchSelected(int index)
+
+    function isGroupCollapsed(group) {
+        return Boolean(root.collapsedGroups[String(group || "")]);
+    }
+
+    function toggleGroup(group) {
+        const key = String(group || "");
+        const next = {};
+        for (let existingKey in root.collapsedGroups)
+            next[existingKey] = root.collapsedGroups[existingKey];
+        next[key] = !root.isGroupCollapsed(key);
+        root.collapsedGroups = next;
+    }
 
     function isFavoriteTeam(teamName) {
         const favorite = root.favoriteTeam.toLowerCase();
@@ -46,6 +60,9 @@ Item {
         section.delegate: RoundSectionHeader {
             width: liveList.contentColumnWidth
             text: section
+            collapsible: true
+            collapsed: root.isGroupCollapsed(section)
+            onToggled: root.toggleGroup(section)
         }
 
         EmptyState {
@@ -56,15 +73,23 @@ Item {
 
         delegate: LiveMatchDelegate {
             width: liveList.contentColumnWidth
+            visible: !root.isGroupCollapsed(model.leagueGroup)
+            height: visible ? implicitHeight : 0
+            enabled: visible
             sport: model.sport || ""
             league: model.league || ""
             homeTeam: model.homeTeam || ""
             awayTeam: model.awayTeam || ""
             homeScore: model.homeScore || ""
             awayScore: model.awayScore || ""
+            homePenaltyScore: model.homePenaltyScore || ""
+            awayPenaltyScore: model.awayPenaltyScore || ""
             status: model.status || ""
             minute: model.minute || ""
             startTime: model.startTime || ""
+            splitLeagueAndTimeLines: true
+            scoreRowHeight: Kirigami.Units.gridUnit * 5.2
+            timestamp: Number(model.timestamp || 0)
             stadium: model.stadium || ""
             homeBadge: model.homeBadge || ""
             awayBadge: model.awayBadge || ""
@@ -73,13 +98,14 @@ Item {
             showScore: model.showScore !== false
             favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
             selected: index === root.selectedIndex
-            expanded: index === liveList.expandedIndex
+            expanded: visible && index === liveList.expandedIndex
             matchPath: model.matchPath || ""
             liveUrl: model.liveUrl || ""
             detailsProvider: model.detailsProvider || ""
-            espnLeagueSlug: model.espnLeagueSlug || ""
-            espnEventId: model.espnEventId || ""
             onClicked: {
+                root.matchSelected(index);
+            }
+            onDoubleClicked: {
                 root.matchSelected(index);
                 liveList.expandedIndex = liveList.expandedIndex === index ? -1 : index;
             }

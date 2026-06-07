@@ -50,4 +50,30 @@ Kirigami.FormLayout {
         Component.onCompleted: currentIndex = widgetTab.indexFor(model, widgetTab.configRoot.cfg_widgetTabs || "all")
         onActivated: widgetTab.configRoot.cfg_widgetTabs = currentValue
     }
+
+    Switch {
+        id: widgetMatchRotation
+
+        Kirigami.FormData.label: i18nc("@label:checkbox", "Match rotation:")
+        text: checked ? i18nc("@option:check", "Enabled") : i18nc("@option:check", "Disabled")
+        checked: widgetTab.configRoot.cfg_widgetMatchRotationEnabled
+        onToggled: widgetTab.configRoot.cfg_widgetMatchRotationEnabled = checked
+    }
+
+    SpinBox {
+        Kirigami.FormData.label: i18nc("@label:spinbox", "Rotation interval:")
+        visible: widgetMatchRotation.checked
+        enabled: visible
+        from: 5
+        to: 300
+        stepSize: 5
+        editable: true
+        value: Math.max(5, widgetTab.configRoot.cfg_widgetMatchRotationInterval || 30)
+        textFromValue: (value) => i18ncp("@item:valuesuffix seconds", "%1 second", "%1 seconds", value)
+        valueFromText: (text) => {
+            const value = parseInt(text, 10);
+            return Number.isFinite(value) ? value : 30;
+        }
+        onValueModified: widgetTab.configRoot.cfg_widgetMatchRotationInterval = value
+    }
 }

@@ -40,7 +40,10 @@ Control {
     property string panelAreaMode: "auto"
     property int panelAreaSize: 240
     property string sport: "sports"
-    readonly property color liveColor: Qt.rgba(1, 0.32, 0.32, 1)
+    property bool matchRotationEnabled: true
+    property int matchRotationInterval: 30
+    property int matchRotationCount: 0
+    readonly property color liveColor: Kirigami.Theme.negativeTextColor
     readonly property int effectiveManualFontPointSize: Math.max(6, compact.panelFontSize > 0 ? compact.panelFontSize : Kirigami.Theme.defaultFont.pointSize > 0 ? Kirigami.Theme.defaultFont.pointSize : 11)
     readonly property font effectivePanelFont: compact.useCustomFont()
         ? Qt.font({
@@ -55,7 +58,7 @@ Control {
             pointSize: Math.max(6, compact.effectiveManualFontPointSize - 2),
             bold: compact.panelFontBold
         })
-        : Kirigami.Theme.defaultFont
+        : Kirigami.Theme.smallFont
 
     function displayText() {
         const text = compact.panelText.trim();
@@ -135,7 +138,7 @@ Control {
     readonly property int contentMargin: Kirigami.Units.smallSpacing
     readonly property int matchColumnSpacing: Kirigami.Units.smallSpacing
     readonly property int teamContentSpacing: Math.max(2, Math.round(Kirigami.Units.smallSpacing / 2))
-    readonly property bool favoritePanelMode: compact.favoriteTeam.trim().length > 0 && compact.hasMatchDetails()
+    readonly property bool favoritePanelMode: compact.favoriteTeam.trim().length > 0 && compact.hasMatchDetails() && !compact.isLive
     readonly property bool favoriteRotationEnabled: compact.favoritePanelMode && compact.favoriteDetailsText().length > 0
     readonly property int estimatedLogoSize: compact.panelEmblemSize > 0
         ? Math.max(8, Math.min(64, compact.panelEmblemSize))
@@ -143,19 +146,22 @@ Control {
     readonly property int homeTeamNaturalWidth: compact.showTeamNames() ? Math.ceil(homeTeamMetrics.advanceWidth) : 0
     readonly property int awayTeamNaturalWidth: compact.showTeamNames() ? Math.ceil(awayTeamMetrics.advanceWidth) : 0
     readonly property int scoreNaturalWidth: Math.ceil(scoreMetrics.advanceWidth)
-    readonly property int liveNaturalWidth: compact.isLive ? Math.ceil(liveTextMetrics.advanceWidth) + 5 + compact.teamContentSpacing : 0
-    readonly property int centerNaturalWidth: Math.max(scoreNaturalWidth, liveNaturalWidth)
+    readonly property int liveDotNaturalWidth: compact.isLive ? 7 + compact.teamContentSpacing : 0
+    readonly property int liveStatusNaturalWidth: compact.isLive ? Math.ceil(liveTextMetrics.advanceWidth) : 0
+    readonly property int centerNaturalWidth: Math.max(scoreNaturalWidth, liveStatusNaturalWidth)
     readonly property int homeSideNaturalWidth: (compact.showBadges() ? compact.estimatedLogoSize : 0) + (compact.showBadges() && compact.showTeamNames() ? compact.teamContentSpacing : 0) + homeTeamNaturalWidth
     readonly property int awaySideNaturalWidth: (compact.showBadges() ? compact.estimatedLogoSize : 0) + (compact.showBadges() && compact.showTeamNames() ? compact.teamContentSpacing : 0) + awayTeamNaturalWidth
     readonly property int favoriteMatchNaturalWidth: homeSideNaturalWidth + Math.ceil(favoriteSeparatorMetrics.advanceWidth) + awaySideNaturalWidth + compact.matchColumnSpacing * 2 + compact.contentMargin * 2
     readonly property int favoriteDetailsNaturalWidth: Math.ceil(favoriteDetailsMetrics.advanceWidth) + compact.contentMargin * 2
-    readonly property int matchNaturalWidth: compact.favoritePanelMode ? Math.max(favoriteMatchNaturalWidth, favoriteDetailsNaturalWidth) : homeSideNaturalWidth + centerNaturalWidth + awaySideNaturalWidth + compact.matchColumnSpacing * 2 + compact.contentMargin * 2
+    readonly property int matchNaturalWidth: compact.favoritePanelMode ? Math.max(favoriteMatchNaturalWidth, favoriteDetailsNaturalWidth) : compact.liveDotNaturalWidth + homeSideNaturalWidth + centerNaturalWidth + awaySideNaturalWidth + compact.matchColumnSpacing * 2 + compact.contentMargin * 2
     readonly property int fallbackNaturalWidth: Math.ceil(fallbackTextMetrics.advanceWidth) + Kirigami.Units.iconSizes.medium + compact.matchColumnSpacing * 2 + (compact.liveCount > 0 ? Kirigami.Units.iconSizes.smallMedium + compact.matchColumnSpacing : 0)
     readonly property int naturalPanelWidth: compact.hasMatchDetails() ? matchNaturalWidth : fallbackNaturalWidth
     readonly property int minimumPanelWidth: compact.normalizedLayoutMode() === "badgesOnly" ? Kirigami.Units.gridUnit * 5 : Kirigami.Units.gridUnit * 9
     readonly property string effectivePanelAreaMode: compact.normalizedPanelAreaMode()
     readonly property int manualPanelAreaSize: Math.max(20, compact.panelAreaSize || 240)
     readonly property int requestedPanelWidth: compact.effectivePanelAreaMode === "manual" ? Math.max(compact.minimumPanelWidth, compact.manualPanelAreaSize) : Math.max(compact.minimumPanelWidth, compact.naturalPanelWidth)
+
+    signal rotateMatchRequested()
 
     TextMetrics {
         id: homeTeamMetrics
@@ -231,12 +237,45 @@ Control {
         onTriggered: compact.favoriteDetailsVisible = !compact.favoriteDetailsVisible
     }
 
+    Timer {
+        interval: Math.max(5, compact.matchRotationInterval || 30) * 1000
+        repeat: true
+        running: compact.matchRotationEnabled && compact.matchRotationCount > 1
+        onTriggered: matchRotationAnimation.restart()
+    }
+
+    SequentialAnimation {
+        id: matchRotationAnimation
+
+        NumberAnimation {
+            target: compactContent
+            property: "opacity"
+            to: 0
+            duration: Kirigami.Units.longDuration
+            easing.type: Easing.InOutQuad
+        }
+
+        ScriptAction {
+            script: compact.rotateMatchRequested()
+        }
+
+        NumberAnimation {
+            target: compactContent
+            property: "opacity"
+            to: 1
+            duration: Kirigami.Units.longDuration
+            easing.type: Easing.InOutQuad
+        }
+    }
+
     MouseArea {
         anchors.fill: parent
         onClicked: root.expanded = !root.expanded
     }
 
     contentItem: Item {
+        id: compactContent
+
         RowLayout {
             id: matchRow
 
@@ -245,6 +284,11 @@ Control {
             height: implicitHeight
             spacing: compact.matchColumnSpacing
             visible: compact.hasMatchDetails() && !compact.favoritePanelMode
+
+            LiveDot {
+                Layout.alignment: Qt.AlignVCenter
+                visible: compact.isLive
+            }
 
             RowLayout {
                 Layout.fillWidth: compact.showTeamNames()
@@ -285,22 +329,14 @@ Control {
 
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
-                    spacing: compact.teamContentSpacing
                     visible: compact.isLive
+                    spacing: Math.max(2, Math.round(compact.teamContentSpacing / 2))
 
-                    LiveDot {
+                    PanelSecondaryLabel {
                         Layout.alignment: Qt.AlignVCenter
-                    }
-
-                    Label {
-                        Layout.alignment: Qt.AlignVCenter
-                        Layout.minimumWidth: Math.ceil(liveTextMetrics.advanceWidth)
-                        Layout.preferredWidth: Math.ceil(liveTextMetrics.advanceWidth)
                         text: compact.displayLiveText()
                         color: compact.liveColor
-                        elide: Text.ElideRight
                         horizontalAlignment: Text.AlignHCenter
-                        font: compact.effectivePanelSecondaryFont
                     }
                 }
             }
@@ -449,6 +485,11 @@ Control {
         font: compact.effectivePanelFont
     }
 
+    component PanelSecondaryLabel: Label {
+        color: Kirigami.Theme.textColor
+        font: compact.effectivePanelSecondaryFont
+    }
+
     component LiveDot: Rectangle {
         Layout.preferredWidth: 5
         Layout.preferredHeight: Layout.preferredWidth
@@ -483,30 +524,14 @@ Control {
             Kirigami.Units.iconSizes.large
         ))
         readonly property int logoSize: compact.panelEmblemSize > 0 ? Math.max(8, Math.min(64, compact.panelEmblemSize)) : automaticLogoSize
-        readonly property int backingSize: Math.ceil(Math.max(width, height, Kirigami.Units.iconSizes.large) * Math.max(1, Screen.devicePixelRatio) * 2)
-
         Layout.preferredWidth: logoSize
         Layout.preferredHeight: logoSize
         Layout.alignment: Qt.AlignVCenter
 
-        Image {
+        TeamBadgeImage {
             anchors.fill: parent
-            source: sourceUrl
-            visible: sourceUrl.length > 0
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            cache: true
-            smooth: true
-            sourceSize.width: parent.backingSize
-            sourceSize.height: parent.backingSize
-        }
-
-        Kirigami.Icon {
-            anchors.fill: parent
-            source: "emblem-favorite"
-            visible: sourceUrl.length === 0
-            color: Kirigami.Theme.disabledTextColor
-            opacity: 0.5
+            sourceUrl: parent.sourceUrl
+            fallbackIcon: "emblem-favorite"
         }
     }
 

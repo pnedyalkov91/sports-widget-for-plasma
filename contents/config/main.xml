@@ -9,10 +9,43 @@
     <entry name="provider" type="String">
       <default>sportscore</default>
     </entry>
+    <entry name="defaultSport" type="String">
+      <default>football</default>
+    </entry>
     <entry name="apiBaseUrl" type="String">
-      <default>https://sportscore.com/api/widget</default>
+      <default></default>
     </entry>
     <entry name="apiKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="theSportsDBApiKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="allSportsApiKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsFootballKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsBasketballKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsTennisKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsCricketKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsBaseballKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsHockeyKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsVolleyballKey" type="String">
+      <default></default>
+    </entry>
+    <entry name="apiSportsAmericanFootballKey" type="String">
       <default></default>
     </entry>
     <entry name="selectedSports" type="String">
@@ -52,6 +85,9 @@
       <min>10</min>
       <max>300</max>
     </entry>
+    <entry name="nationalTeamVisualStyle" type="String">
+      <default>emblems</default>
+    </entry>
     <entry name="panelLayoutMode" type="String">
       <default>teamsAndBadges</default>
     </entry>
@@ -81,6 +117,22 @@
       <default>0</default>
       <min>0</min>
       <max>64</max>
+    </entry>
+    <entry name="panelMatchRotationEnabled" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="panelMatchRotationInterval" type="Int">
+      <default>30</default>
+      <min>5</min>
+      <max>300</max>
+    </entry>
+    <entry name="widgetMatchRotationEnabled" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="widgetMatchRotationInterval" type="Int">
+      <default>30</default>
+      <min>5</min>
+      <max>300</max>
     </entry>
     <entry name="matchDateFormat" type="String">
       <default>dd.MM</default>

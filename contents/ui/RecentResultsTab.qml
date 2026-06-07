@@ -17,8 +17,24 @@ Item {
     property bool loading: false
     property int selectedIndex: 0
     property string emptyText: i18nc("@info:placeholder", "No recent results")
+    property var collapsedGroups: ({})
 
     signal matchSelected(int index)
+
+    onResultsModelChanged: resultsList.expandedIndex = -1
+
+    function isGroupCollapsed(group) {
+        return Boolean(root.collapsedGroups[String(group || "")]);
+    }
+
+    function toggleGroup(group) {
+        const key = String(group || "");
+        const next = {};
+        for (let existingKey in root.collapsedGroups)
+            next[existingKey] = root.collapsedGroups[existingKey];
+        next[key] = !root.isGroupCollapsed(key);
+        root.collapsedGroups = next;
+    }
 
     function isFavoriteTeam(teamName) {
         const favorite = root.favoriteTeam.toLowerCase();
@@ -36,6 +52,8 @@ Item {
         spacing: 0
         boundsBehavior: Flickable.StopAtBounds
         model: root.resultsModel
+        reuseItems: true
+        cacheBuffer: Kirigami.Units.gridUnit * 10
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
         }
@@ -47,6 +65,9 @@ Item {
         section.delegate: RoundSectionHeader {
             width: resultsList.contentColumnWidth
             text: section
+            collapsible: true
+            collapsed: root.isGroupCollapsed(section)
+            onToggled: root.toggleGroup(section)
         }
 
         EmptyState {
@@ -54,19 +75,25 @@ Item {
             visible: resultsList.count === 0 && !root.loading
         }
 
-        delegate: ScoreDelegate {
+        delegate: LiveMatchDelegate {
             width: resultsList.contentColumnWidth
-            height: String(model.stadium || "").length > 0 ? Kirigami.Units.gridUnit * 4.2 : Kirigami.Units.gridUnit * 3.35
+            visible: !root.isGroupCollapsed(model.leagueGroup)
+            height: visible ? implicitHeight : 0
+            enabled: visible
+            scoreRowHeight: String(model.stadium || "").length > 0 ? Kirigami.Units.gridUnit * 5.4 : Kirigami.Units.gridUnit * 4.6
             sport: model.sport
             league: model.league
             homeTeam: model.homeTeam
             awayTeam: model.awayTeam
             homeScore: model.homeScore
             awayScore: model.awayScore
+            homePenaltyScore: model.homePenaltyScore || ""
+            awayPenaltyScore: model.awayPenaltyScore || ""
             status: model.status
             minute: model.minute
             startTime: model.startTime
-            matchday: ""
+            timestamp: Number(model.timestamp || 0)
+            splitLeagueAndTimeLines: true
             stadium: model.stadium || ""
             homeBadge: model.homeBadge
             awayBadge: model.awayBadge
@@ -75,8 +102,17 @@ Item {
             showScore: model.showScore !== false
             favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
             selected: index === root.selectedIndex
-            onClicked: root.matchSelected(index)
+            expanded: visible && index === resultsList.expandedIndex
+            matchPath: model.matchPath || ""
+            liveUrl: model.liveUrl || ""
+            detailsProvider: model.detailsProvider || ""
+            onClicked: {
+                root.matchSelected(index);
+                resultsList.expandedIndex = resultsList.expandedIndex === index ? -1 : index;
+            }
         }
+
+        property int expandedIndex: -1
     }
 
     ColumnLayout {

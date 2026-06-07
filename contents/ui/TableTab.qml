@@ -4,6 +4,7 @@
 */
 
 import "../code/providers/ProviderCatalog.js" as ProviderCatalog
+import "../code/providers/SportScoreSports.js" as SportScoreSports
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -18,7 +19,6 @@ Item {
     property int tableCount: 0
     property string tableErrorMessage: ""
     property bool tableLoading: false
-    property bool formLoading: false
     property string league: ""
     property string leagueLabel: ""
     property string sport: "football"
@@ -31,9 +31,11 @@ Item {
     property bool seasonLoading: false
     readonly property int rowCount: tableRows ? tableRows.length : 0
     readonly property var displayRows: groupedRows()
+    readonly property var tableColumns: SportScoreSports.standingsColumns(root.sport)
+    readonly property bool tableHasForm: SportScoreSports.standingsHasForm(root.sport)
     readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
     readonly property color tableSecondaryTextColor: Kirigami.Theme.disabledTextColor
-    readonly property color tableHighlightTextColor: Kirigami.Theme.highlightColor
+    readonly property color tableHighlightTextColor: Kirigami.Theme.linkColor
     readonly property color tableRowDividerColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.12)
 
     signal tableSelected(string slug)
@@ -74,11 +76,11 @@ Item {
     }
 
     function selectedTableLabel() {
-        const selected = ProviderCatalog.sportScoreSlug(root.selectedTableSlug);
+        const selected = ProviderCatalog.slugForValue(root.selectedTableSlug);
         const options = Array.isArray(root.tableOptions) ? root.tableOptions : [];
         for (let index = 0; index < options.length; index += 1) {
             const option = options[index] || {};
-            if (ProviderCatalog.sportScoreSlug(option.slug) === selected)
+            if (ProviderCatalog.slugForValue(option.slug) === selected)
                 return String(option.label || "").trim();
         }
 
@@ -133,11 +135,11 @@ Item {
                 }
 
                 function syncSelection() {
-                    const selected = ProviderCatalog.sportScoreSlug(root.selectedTableSlug);
+                    const selected = ProviderCatalog.slugForValue(root.selectedTableSlug);
                     let fallback = 0;
                     for (let index = 0; index < count; index += 1) {
                         const option = model[index] || {};
-                        if (ProviderCatalog.sportScoreSlug(option.slug) === selected) {
+                        if (ProviderCatalog.slugForValue(option.slug) === selected) {
                             currentIndex = index;
                             return;
                         }
@@ -320,57 +322,22 @@ Item {
                     Layout.fillWidth: true
                 }
 
-                HeaderLabel {
-                    text: i18nc("@label:abbreviation games played", "Pl")
-                    tooltip: i18nc("@label", "Played")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2.4
-                }
+                Repeater {
+                    model: root.tableColumns
 
-                HeaderLabel {
-                    text: i18nc("@label:abbreviation games won", "W")
-                    tooltip: i18nc("@label", "Won")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-                }
+                    HeaderLabel {
+                        required property var modelData
 
-                HeaderLabel {
-                    text: i18nc("@label:abbreviation games drawn", "D")
-                    tooltip: i18nc("@label", "Drawn")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
-                }
-
-                HeaderLabel {
-                    text: i18nc("@label:abbreviation games lost", "L")
-                    tooltip: i18nc("@label", "Lost")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-                }
-
-                HeaderLabel {
-                    text: i18nc("@label:abbreviation goals for", "F")
-                    tooltip: i18nc("@label", "Goals For")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-                }
-
-                HeaderLabel {
-                    text: i18nc("@label:abbreviation goals against", "A")
-                    tooltip: i18nc("@label", "Goals Against")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2.4
-                }
-
-                HeaderLabel {
-                    text: i18nc("@label", "GD")
-                    tooltip: i18nc("@label", "Goal Difference")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-                }
-
-                HeaderLabel {
-                    text: i18nc("@label:abbreviation points", "Pts")
-                    tooltip: i18nc("@label", "Points")
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2.8
+                        text: modelData.label || ""
+                        tooltip: modelData.tooltip || ""
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * Number(modelData.width || 2)
+                    }
                 }
 
                 HeaderLabel {
                     text: i18nc("@label", "Form")
                     Layout.preferredWidth: Kirigami.Units.gridUnit * 6.6
+                    visible: root.tableHasForm
                 }
             }
         }
@@ -427,43 +394,26 @@ Item {
         id: tableRowComponent
 
         TableRow {
-            property var rowData: ({})
-
+            rowData: ({})
             width: tableList.contentColumnWidth
-            position: rowData.position || 0
-            team: rowData.team || ""
-            played: rowData.played || 0
-            won: rowData.won || 0
-            draw: rowData.draw || 0
-            lost: rowData.lost || 0
-            goalsFor: rowData.goalsFor || 0
-            goalsAgainst: rowData.goalsAgainst || 0
-            points: rowData.points || 0
-            goalDifference: rowData.goalDifference || 0
-            form: rowData.form || ""
-            formDetails: rowData.formDetails || []
-            crest: rowData.crest || ""
-            favorite: root.isFavoriteTeam(rowData.team || "")
-            formLoading: root.formLoading
         }
     }
 
     component TableRow: Rectangle {
-        property int position: 0
-        property string team: ""
-        property int played: 0
-        property int won: 0
-        property int draw: 0
-        property int lost: 0
-        property int goalsFor: 0
-        property int goalsAgainst: 0
-        property int points: 0
-        property int goalDifference: 0
-        property string form: ""
-        property var formDetails: []
-        property string crest: ""
-        property bool favorite: false
-        property bool formLoading: false
+        id: tableRow
+
+        property var rowData: ({})
+        readonly property int position: Number(rowData.position || 0)
+        readonly property string team: String(rowData.team || "")
+        readonly property string form: String(rowData.form || "")
+        readonly property string crest: String(rowData.crest || "")
+        readonly property bool favorite: root.isFavoriteTeam(team)
+
+        function valueForColumn(column) {
+            const key = String(column && column.key || "");
+            const value = rowData && rowData[key] !== undefined && rowData[key] !== null ? rowData[key] : 0;
+            return String(value);
+        }
 
         height: Kirigami.Units.gridUnit * 2.7
         color: favorite ? Qt.rgba(root.tableHighlightTextColor.r, root.tableHighlightTextColor.g, root.tableHighlightTextColor.b, 0.14) : "transparent"
@@ -490,13 +440,10 @@ Item {
                 font.pixelSize: Kirigami.Units.gridUnit
             }
 
-            Image {
+            TeamBadgeImage {
                 Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                 Layout.preferredHeight: Layout.preferredWidth
-                source: crest
-                visible: crest.length > 0
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
+                sourceUrl: crest
             }
 
             PlasmaComponents.Label {
@@ -507,55 +454,25 @@ Item {
                 font.bold: true
             }
 
-            RowValue {
-                text: played
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2.4
-            }
+            Repeater {
+                model: root.tableColumns
 
-            RowValue {
-                text: won
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-            }
+                RowValue {
+                    required property var modelData
 
-            RowValue {
-                text: draw
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2.2
-            }
-
-            RowValue {
-                text: lost
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-            }
-
-            RowValue {
-                text: goalsFor
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-            }
-
-            RowValue {
-                text: goalsAgainst
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2.4
-            }
-
-            RowValue {
-                text: goalDifference
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-            }
-
-            RowValue {
-                text: points
-                color: root.tablePrimaryTextColor
-                font.bold: true
-                font.pixelSize: Kirigami.Units.gridUnit * 1.25
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 2.8
+                    text: tableRow.valueForColumn(modelData)
+                    color: root.tablePrimaryTextColor
+                    font.bold: Boolean(modelData.emphasized)
+                    font.pixelSize: Boolean(modelData.emphasized) ? Kirigami.Units.gridUnit * 1.25 : Kirigami.Theme.defaultFont.pixelSize
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * Number(modelData.width || 2)
+                }
             }
 
             FormBadges {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 6.6
                 Layout.preferredHeight: Kirigami.Units.gridUnit * 1.3
-                form: parent.parent.form
-                details: parent.parent.formDetails
-                loading: parent.parent.formLoading
+                form: tableRow.form
+                visible: root.tableHasForm
             }
         }
     }
@@ -567,9 +484,9 @@ Item {
     }
 
     component FormBadges: Item {
+        id: formBadges
+
         property string form: ""
-        property var details: []
-        property bool loading: false
 
         function results() {
             const text = String(form || "").trim();
@@ -582,18 +499,11 @@ Item {
             return text.replace(/[^A-Za-z]+/g, ",").split(",").filter(item => item.length > 0).slice(-5);
         }
 
-        function tooltipFor(index) {
-            if (!details || index < 0 || index >= details.length)
-                return "";
-
-            return String(details[index] || "");
-        }
-
         Row {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             spacing: 3
-            visible: !parent.loading && parent.results().length > 0
+            visible: parent.results().length > 0
 
             Repeater {
                 model: parent.parent.results()
@@ -602,12 +512,6 @@ Item {
                     width: Kirigami.Units.gridUnit * 1.1
                     height: width
                     radius: 2
-                    ToolTip.text: parent.parent.tooltipFor(index)
-                    ToolTip.visible: badgeHover.hovered && ToolTip.text.length > 0
-
-                    HoverHandler {
-                        id: badgeHover
-                    }
 
                     color: {
                         const result = String(modelData).toUpperCase();
@@ -631,17 +535,9 @@ Item {
 
         PlasmaComponents.Label {
             anchors.centerIn: parent
-            visible: !parent.loading && parent.results().length === 0
+            visible: parent.results().length === 0
             text: "-"
             color: root.tableSecondaryTextColor
-        }
-
-        PlasmaComponents.BusyIndicator {
-            anchors.centerIn: parent
-            width: Kirigami.Units.gridUnit * 1.15
-            height: width
-            visible: parent.loading
-            running: visible
         }
     }
 }

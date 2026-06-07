@@ -153,7 +153,7 @@ SportStepPage {
     }
 
     function loadVariantLeagues() {
-        const worldLeagues = ProviderCatalog.leagueOptions(root.configRoot ? root.configRoot.currentProvider : "sportscore", "football", "world");
+        const worldLeagues = ProviderCatalog.leagueOptions(root.configRoot ? root.configRoot.currentProvider : "", "football", "world");
         const filtered = (Array.isArray(worldLeagues) ? worldLeagues : []).filter(league => {
             const label = String(league && league.label || "").toLowerCase();
             return label.indexOf("world cup") >= 0

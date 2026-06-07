@@ -38,8 +38,19 @@ KCM.SimpleKCM {
 
     property bool cfg_prioritizePopular: Plasmoid.configuration.prioritizePopular
     property string cfg_provider: Plasmoid.configuration.provider
+    property string cfg_defaultSport: Plasmoid.configuration.defaultSport
     property string cfg_apiBaseUrl: Plasmoid.configuration.apiBaseUrl
     property string cfg_apiKey: Plasmoid.configuration.apiKey
+    property string cfg_theSportsDBApiKey: Plasmoid.configuration.theSportsDBApiKey
+    property string cfg_allSportsApiKey: Plasmoid.configuration.allSportsApiKey
+    property string cfg_apiSportsFootballKey: Plasmoid.configuration.apiSportsFootballKey
+    property string cfg_apiSportsBasketballKey: Plasmoid.configuration.apiSportsBasketballKey
+    property string cfg_apiSportsTennisKey: Plasmoid.configuration.apiSportsTennisKey
+    property string cfg_apiSportsCricketKey: Plasmoid.configuration.apiSportsCricketKey
+    property string cfg_apiSportsBaseballKey: Plasmoid.configuration.apiSportsBaseballKey
+    property string cfg_apiSportsHockeyKey: Plasmoid.configuration.apiSportsHockeyKey
+    property string cfg_apiSportsVolleyballKey: Plasmoid.configuration.apiSportsVolleyballKey
+    property string cfg_apiSportsAmericanFootballKey: Plasmoid.configuration.apiSportsAmericanFootballKey
     property string cfg_selectedSports: Plasmoid.configuration.selectedSports
     property string cfg_country: Plasmoid.configuration.country
     property string cfg_league: Plasmoid.configuration.league
@@ -51,6 +62,7 @@ KCM.SimpleKCM {
     property int cfg_refreshInterval: Plasmoid.configuration.refreshInterval
     property bool cfg_liveRefreshEnabled: Plasmoid.configuration.liveRefreshEnabled
     property int cfg_liveRefreshInterval: Plasmoid.configuration.liveRefreshInterval
+    property string cfg_nationalTeamVisualStyle: Plasmoid.configuration.nationalTeamVisualStyle
     property string cfg_panelLayoutMode: Plasmoid.configuration.panelLayoutMode
     property string cfg_panelAreaMode: Plasmoid.configuration.panelAreaMode
     property int cfg_panelAreaSize: Plasmoid.configuration.panelAreaSize
@@ -59,13 +71,28 @@ KCM.SimpleKCM {
     property int cfg_panelFontSize: Plasmoid.configuration.panelFontSize
     property bool cfg_panelFontBold: Plasmoid.configuration.panelFontBold
     property int cfg_panelEmblemSize: Plasmoid.configuration.panelEmblemSize
+    property bool cfg_panelMatchRotationEnabled: Plasmoid.configuration.panelMatchRotationEnabled
+    property int cfg_panelMatchRotationInterval: Plasmoid.configuration.panelMatchRotationInterval
+    property bool cfg_widgetMatchRotationEnabled: Plasmoid.configuration.widgetMatchRotationEnabled
+    property int cfg_widgetMatchRotationInterval: Plasmoid.configuration.widgetMatchRotationInterval
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
     property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
 
     property string cfg_providerDefault: "sportscore"
-    property string cfg_apiBaseUrlDefault: "https://sportscore.com/api/widget"
+    property string cfg_defaultSportDefault: "football"
+    property string cfg_apiBaseUrlDefault: ""
     property string cfg_apiKeyDefault: ""
+    property string cfg_theSportsDBApiKeyDefault: ""
+    property string cfg_allSportsApiKeyDefault: ""
+    property string cfg_apiSportsFootballKeyDefault: ""
+    property string cfg_apiSportsBasketballKeyDefault: ""
+    property string cfg_apiSportsTennisKeyDefault: ""
+    property string cfg_apiSportsCricketKeyDefault: ""
+    property string cfg_apiSportsBaseballKeyDefault: ""
+    property string cfg_apiSportsHockeyKeyDefault: ""
+    property string cfg_apiSportsVolleyballKeyDefault: ""
+    property string cfg_apiSportsAmericanFootballKeyDefault: ""
     property string cfg_selectedSportsDefault: ""
     property string cfg_countryDefault: ""
     property string cfg_leagueDefault: ""
@@ -77,6 +104,7 @@ KCM.SimpleKCM {
     property int cfg_refreshIntervalDefault: 15
     property bool cfg_liveRefreshEnabledDefault: true
     property int cfg_liveRefreshIntervalDefault: 30
+    property string cfg_nationalTeamVisualStyleDefault: "emblems"
     property string cfg_panelLayoutModeDefault: "teamsAndBadges"
     property string cfg_panelAreaModeDefault: "auto"
     property int cfg_panelAreaSizeDefault: 240
@@ -85,12 +113,15 @@ KCM.SimpleKCM {
     property int cfg_panelFontSizeDefault: 0
     property bool cfg_panelFontBoldDefault: false
     property int cfg_panelEmblemSizeDefault: 0
+    property bool cfg_panelMatchRotationEnabledDefault: true
+    property int cfg_panelMatchRotationIntervalDefault: 30
+    property bool cfg_widgetMatchRotationEnabledDefault: true
+    property int cfg_widgetMatchRotationIntervalDefault: 30
     property string cfg_matchDateFormatDefault: "dd.MM"
     property string cfg_matchTimeFormatDefault: "HH:mm"
     property string cfg_widgetTabsDefault: "all"
     property bool cfg_prioritizePopularDefault: false
-
-    readonly property string currentProvider: "sportscore"
+    readonly property string currentProvider: String(root.cfg_provider || "").trim()
     property string currentFollowMode: "league"
     property string currentEntryType: "competition"
     property int pageIndex: 0
@@ -129,7 +160,7 @@ KCM.SimpleKCM {
         if (root.normalizedSport().length === 0)
             return [];
 
-        return ProviderCatalog.leagueOptions(root.currentProvider, root.normalizedSport(), root.cfg_country || ProviderCatalog.defaultCountry(root.currentProvider, root.normalizedSport()));
+        return ProviderCatalog.leagueOptions(root.currentProvider, root.normalizedSport(), root.cfg_country || "");
     }
 
     function favoriteOptions() {
@@ -275,11 +306,8 @@ KCM.SimpleKCM {
 
     function selectSport(value) {
         root.cfg_selectedSports = value;
-        const defaultCountry = ProviderCatalog.defaultCountry(root.currentProvider, value);
-        const countries = ProviderCatalog.countryOptions(root.currentProvider, value);
-        root.cfg_country = countries.length > 0 ? defaultCountry : "";
-        const leagues = ProviderCatalog.leagueOptions(root.currentProvider, value, root.cfg_country);
-        root.cfg_league = leagues.length > 0 ? leagues[0].value : "";
+        root.cfg_country = "";
+        root.cfg_league = "";
         root.cfg_favoriteTeam = "";
         root.currentFollowMode = "league";
         root.currentEntryType = "competition";
@@ -318,6 +346,8 @@ KCM.SimpleKCM {
         copy.includeSchedules = copy.includeSchedules !== false;
         copy.includeRecent = copy.includeRecent !== false;
         copy.includeTables = copy.includeTables !== false;
+        copy.includePanel = copy.includePanel !== false;
+        copy.includeTooltip = copy.includeTooltip !== false;
         if (copy.type === "team") {
             copy.favoriteTeam = root.stripLegacyTeamPrefix(copy.customFavoriteTeamLabel || copy.favoriteTeam || copy.customLeagueLabel || copy.leagueLabel || copy.league || "");
             copy.league = "";
@@ -337,7 +367,7 @@ KCM.SimpleKCM {
     function currentEntry() {
         return {
             sport: root.normalizedSport(),
-            country: root.cfg_country || ProviderCatalog.defaultCountry(root.currentProvider, root.normalizedSport()),
+            country: root.cfg_country || "",
             countryLabel: root.countryLabel(),
             countryIcon: root.countryIcon(root.cfg_country),
             league: root.currentEntryType === "team" ? "" : root.cfg_league || "",
@@ -348,7 +378,9 @@ KCM.SimpleKCM {
             includeLive: true,
             includeSchedules: true,
             includeRecent: true,
-            includeTables: true
+            includeTables: true,
+            includePanel: true,
+            includeTooltip: true
         };
     }
 
@@ -382,6 +414,8 @@ KCM.SimpleKCM {
         copy.includeSchedules = copy.includeSchedules !== false;
         copy.includeRecent = copy.includeRecent !== false;
         copy.includeTables = copy.includeTables !== false;
+        copy.includePanel = copy.includePanel !== false;
+        copy.includeTooltip = copy.includeTooltip !== false;
         delete copy.starred;
 
         let targetIndex = replaceIndex;
@@ -410,7 +444,7 @@ KCM.SimpleKCM {
 
     function applySavedLeague(entry, index) {
         root.cfg_selectedSports = entry.sport || "football";
-        root.cfg_country = entry.country || ProviderCatalog.defaultCountry(root.currentProvider, root.cfg_selectedSports);
+        root.cfg_country = entry.country || "";
         root.cfg_league = entry.league || "";
         root.cfg_favoriteTeam = entry.favoriteTeam || "";
         root.currentEntryType = root.entryType(entry);
@@ -512,7 +546,9 @@ KCM.SimpleKCM {
             "includeLive": true,
             "includeSchedules": true,
             "includeRecent": true,
-            "includeTables": true
+            "includeTables": true,
+            "includePanel": true,
+            "includeTooltip": true
         };
         if (!allowed[key])
             return;

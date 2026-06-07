@@ -19,8 +19,22 @@ Item {
     property string emptyText: i18nc("@info:placeholder", "No scheduled matches")
     property string loadingText: i18nc("@info:status", "Loading schedules")
     property string emptyIconName: "view-calendar-day"
+    property var collapsedGroups: ({})
 
     signal matchSelected(int index)
+
+    function isGroupCollapsed(group) {
+        return Boolean(root.collapsedGroups[String(group || "")]);
+    }
+
+    function toggleGroup(group) {
+        const key = String(group || "");
+        const next = {};
+        for (let existingKey in root.collapsedGroups)
+            next[existingKey] = root.collapsedGroups[existingKey];
+        next[key] = !root.isGroupCollapsed(key);
+        root.collapsedGroups = next;
+    }
 
     function isFavoriteTeam(teamName) {
         const favorite = root.favoriteTeam.toLowerCase();
@@ -49,6 +63,9 @@ Item {
         section.delegate: RoundSectionHeader {
             width: scheduleList.contentColumnWidth
             text: section
+            collapsible: true
+            collapsed: root.isGroupCollapsed(section)
+            onToggled: root.toggleGroup(section)
         }
 
         EmptyState {
@@ -60,6 +77,9 @@ Item {
 
         delegate: ScoreDelegate {
             width: scheduleList.contentColumnWidth
+            visible: !root.isGroupCollapsed(model.leagueGroup)
+            height: visible ? implicitHeight : 0
+            enabled: visible
             sport: model.sport
             league: model.league
             homeTeam: model.homeTeam
@@ -76,6 +96,8 @@ Item {
             poster: model.poster
             popular: model.popular
             showScore: model.showScore !== false
+            splitLeagueAndTimeLines: true
+            splitDateAndTimeLines: true
             favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
             selected: index === root.selectedIndex
             onClicked: root.matchSelected(index)

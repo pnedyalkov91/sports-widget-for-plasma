@@ -6,6 +6,8 @@
 import "../../code/SportVisuals.js" as SportVisuals
 import "../../code/SportsApi.js" as SportsApi
 import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
+import "../../code/providers/ProviderCountries.js" as ProviderCountries
+import "../../code/providers/SportScoreSports.js" as SportScoreSports
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -36,13 +38,37 @@ ColumnLayout {
         return root.configRoot ? root.configRoot.entryType(entry) : "competition";
     }
 
+    function entryIsNationalTeam(entry) {
+        entry = entry || {};
+        if (entry.isNationalTeam === true)
+            return true;
+
+        const country = String(entry.country || "").trim().toLowerCase();
+        const detectedCountry = ProviderCountries.nationalTeamCountry(entry.favoriteTeam);
+        return country.length > 0 && detectedCountry === country;
+    }
+
+    function teamVisualSource(entry, providerBadge) {
+        providerBadge = String(providerBadge || "").trim();
+        if (!root.configRoot || root.configRoot.cfg_nationalTeamVisualStyle !== "flags" || !root.entryIsNationalTeam(entry))
+            return providerBadge;
+
+        const storedFlag = String(entry && entry.teamFlag || "").trim();
+        if (storedFlag.indexOf("file://") === 0)
+            return storedFlag;
+
+        const countryFlag = String(root.configRoot.countryIconForEntry(entry) || "").trim();
+        return countryFlag.indexOf("file://") === 0 ? countryFlag : providerBadge;
+    }
+
     function appendEntry(model, entry, sourceIndex) {
         const safeEntry = Object.assign({}, entry || {});
         const type = root.entryType(safeEntry);
-        const teamBadge = String(safeEntry.teamBadge || safeEntry.crest || "").trim();
+        const providerTeamBadge = String(safeEntry.teamBadge || safeEntry.crest || "").trim();
+        const teamBadge = root.teamVisualSource(safeEntry, providerTeamBadge);
         const parts = [SportVisuals.label(safeEntry.sport), root.configRoot.displayCountryLabel(safeEntry)];
         if (type === "team") {
-            parts.push(i18nc("@label", "Team"));
+            parts.push(SportScoreSports.usesPlayers(safeEntry.sport) ? i18nc("@label", "Player") : i18nc("@label", "Team"));
             parts.push(i18nc("@label", "All competitions"));
         } else {
             parts.push(i18nc("@label", "Competition"));
@@ -55,6 +81,8 @@ ColumnLayout {
             entryJson: JSON.stringify(safeEntry),
             sourceIndex,
             entryType: type,
+            sportValue: SportVisuals.normalizedSport(safeEntry.sport),
+            sportLabel: SportVisuals.label(safeEntry.sport),
             titleLabel: root.configRoot.displaySavedTitle(safeEntry),
             metaLabel: parts.filter(part => String(part || "").length > 0).join(" · "),
             countryIcon: safeEntry.countryIcon || root.configRoot.countryIconForEntry(safeEntry),
@@ -62,7 +90,10 @@ ColumnLayout {
             includeLive: safeEntry.includeLive !== false,
             includeSchedules: safeEntry.includeSchedules !== false,
             includeRecent: safeEntry.includeRecent !== false,
-            includeTables: safeEntry.includeTables !== false
+            includeTables: safeEntry.includeTables !== false && SportScoreSports.supportsStandings(safeEntry.sport),
+            includePanel: safeEntry.includePanel !== false,
+            includeTooltip: safeEntry.includeTooltip !== false,
+            supportsTables: SportScoreSports.supportsStandings(safeEntry.sport)
         });
 
         if (type === "team" && teamBadge.length === 0)
@@ -150,7 +181,8 @@ ColumnLayout {
             "sports": entry.sport || "football",
             "country": entry.country || "",
             "favoriteTeam": entry.favoriteTeam || "",
-            "teamSlug": entry.teamSlug || ""
+            "teamSlug": entry.teamSlug || "",
+            "teamPath": entry.teamPath || entry.teamUrl || ""
         }, badge => {
             badge = String(badge || "").trim();
             if (badge.length > 0) {
@@ -171,12 +203,21 @@ ColumnLayout {
             return;
 
         const saved = root.configRoot.savedLeagues();
-        saved.forEach((entry, index) => {
-            if (root.entryType(entry) === "team") {
-                root.appendEntry(teamModel, entry, index);
-            } else {
-                root.appendEntry(competitionModel, entry, index);
-            }
+        let sports = [];
+        saved.forEach(entry => {
+            const sport = SportVisuals.normalizedSport(entry && entry.sport);
+            if (sport.length > 0 && sports.indexOf(sport) < 0)
+                sports.push(sport);
+        });
+        sports.forEach(sport => {
+            saved.forEach((entry, index) => {
+                if (SportVisuals.normalizedSport(entry && entry.sport) !== sport)
+                    return;
+                if (root.entryType(entry) === "team")
+                    root.appendEntry(teamModel, entry, index);
+                else
+                    root.appendEntry(competitionModel, entry, index);
+            });
         });
     }
 
@@ -250,6 +291,10 @@ ColumnLayout {
         ignoreUnknownSignals: true
 
         function onCfg_savedLeaguesChanged() {
+            root.rebuildModel();
+        }
+
+        function onCfg_nationalTeamVisualStyleChanged() {
             root.rebuildModel();
         }
     }
@@ -457,6 +502,34 @@ ColumnLayout {
             clip: false
             spacing: Kirigami.Units.smallSpacing
             model: sectionRoot.listModel
+            section.property: "sportLabel"
+            section.criteria: ViewSection.FullString
+            section.delegate: RowLayout {
+                required property string section
+
+                width: savedLeagueList.width
+                height: Kirigami.Units.gridUnit * 1.8
+                spacing: Kirigami.Units.smallSpacing
+
+                Kirigami.Icon {
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                    Layout.preferredHeight: Layout.preferredWidth
+                    source: Qt.resolvedUrl("../../icons/sports/" + SportVisuals.iconName(section))
+                }
+
+                Label {
+                    text: section
+                    font.bold: true
+                    color: Kirigami.Theme.textColor
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Kirigami.Theme.disabledTextColor
+                    opacity: 0.35
+                }
+            }
 
             moveDisplaced: Transition {
                 NumberAnimation {
@@ -483,11 +556,16 @@ ColumnLayout {
                 required property string metaLabel
                 required property string countryIcon
                 required property string entryType
+                required property string sportValue
+                required property string sportLabel
                 required property string teamBadge
                 required property bool includeLive
                 required property bool includeSchedules
                 required property bool includeRecent
                 required property bool includeTables
+                required property bool includePanel
+                required property bool includeTooltip
+                required property bool supportsTables
 
                 width: savedLeagueList.width
                 implicitHeight: savedDelegate.implicitHeight
@@ -581,32 +659,59 @@ ColumnLayout {
                                 font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                             }
 
-                            RowLayout {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
+                                spacing: 0
 
-                                Switch {
-                                    text: i18nc("@label:switch", "Live")
-                                    checked: savedDelegateRoot.includeLive
-                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeLive", checked)
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    Switch {
+                                        text: i18nc("@label:switch", "Live")
+                                        checked: savedDelegateRoot.includeLive
+                                        onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeLive", checked)
+                                    }
+
+                                    Switch {
+                                        text: i18nc("@label:switch", "Schedules")
+                                        checked: savedDelegateRoot.includeSchedules
+                                        onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeSchedules", checked)
+                                    }
+
+                                    Switch {
+                                        text: i18nc("@label:switch", "Recent")
+                                        checked: savedDelegateRoot.includeRecent
+                                        onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeRecent", checked)
+                                    }
+
+                                    Switch {
+                                        text: i18nc("@label:switch", "Tables")
+                                        checked: savedDelegateRoot.includeTables
+                                        enabled: savedDelegateRoot.supportsTables
+                                        onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeTables", checked)
+                                    }
                                 }
 
-                                Switch {
-                                    text: i18nc("@label:switch", "Schedules")
-                                    checked: savedDelegateRoot.includeSchedules
-                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeSchedules", checked)
-                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Kirigami.Units.smallSpacing
 
-                                Switch {
-                                    text: i18nc("@label:switch", "Recent")
-                                    checked: savedDelegateRoot.includeRecent
-                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeRecent", checked)
-                                }
+                                    Switch {
+                                        text: i18nc("@label:switch", "Panel")
+                                        checked: savedDelegateRoot.includePanel
+                                        onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includePanel", checked)
+                                    }
 
-                                Switch {
-                                    text: i18nc("@label:switch", "Tables")
-                                    checked: savedDelegateRoot.includeTables
-                                    onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeTables", checked)
+                                    Switch {
+                                        text: i18nc("@label:switch", "Tooltip")
+                                        checked: savedDelegateRoot.includeTooltip
+                                        onClicked: root.setDelegateInclude(sectionRoot.listModel, savedDelegateRoot.index, savedDelegateRoot.sourceIndex, "includeTooltip", checked)
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                    }
                                 }
                             }
                         }

@@ -19,23 +19,41 @@ SportStepPage {
     property var pendingBadgeTeams: ({})
     property var attemptedBadgeTeams: ({})
     property var discoveredTeams: ({})
+    property var fallbackCountryTeams: []
+    property var featuredFallbackCountryTeams: []
     property var staticTeamOptions: []
     property bool staticTeamOptionsReady: false
     property bool teamDiscoveryRunning: false
     property int teamDiscoveryToken: 0
     property int teamDiscoveryDoneLeagues: 0
     property int teamDiscoveryTotalLeagues: 0
+    property int teamDiscoveryRank: 0
+    property int activeDiscoveryIndex: -1
+    property int activeDiscoveryToken: 0
+    property var activeDiscoveryLeagues: []
+    property bool leagueTableDiscoveryStarted: false
+    readonly property int directTeamDiscoveryLeagueLimit: 8
+    readonly property int directTeamDiscoveryTimeoutMs: 9000
     readonly property int teamDiscoveryLeagueLimit: 8
-    readonly property int teamDiscoveryTargetTeams: 64
+    readonly property int teamDiscoveryTargetTeams: 160
     readonly property int teamDiscoveryMaxRowsPerLeague: 40
-    readonly property int maxDisplayedTeams: 80
     readonly property int badgePrefetchLimit: 20
     readonly property bool pageActive: root.configRoot && root.configRoot.pageIndex === 2
 
-    title: root.configRoot && root.configRoot.cfg_type === "team" ? i18nc("@title:group", "Team") : i18nc("@title:group", "Highlighted Team")
-    subtitle: root.configRoot && root.configRoot.cfg_type === "team" ? root.configRoot.multiSelectEnabled ? i18nc("@info", "Choose one or more teams this widget should follow across competitions.") : i18nc("@info", "Choose the team this saved item should follow across competitions.") : i18nc("@info", "Optional. Choose a team to highlight inside this competition.")
+    readonly property bool playerMode: root.configRoot && root.configRoot.normalizedSport() === "tennis"
+
+    title: root.configRoot && root.configRoot.cfg_type === "team"
+        ? (root.playerMode ? i18nc("@title:group", "Player") : i18nc("@title:group", "Team"))
+        : i18nc("@title:group", "Highlighted Team")
+    subtitle: root.configRoot && root.configRoot.cfg_type === "team"
+        ? (root.playerMode
+            ? i18nc("@info", "Choose one or more tennis players this widget should follow across competitions.")
+            : root.configRoot.multiSelectEnabled
+                ? i18nc("@info", "Choose one or more teams this widget should follow across competitions.")
+                : i18nc("@info", "Choose the team this saved item should follow across competitions."))
+        : i18nc("@info", "Optional. Choose a team to highlight inside this competition.")
     filterText: root.favoriteFilter
-    filterPlaceholder: i18nc("@info:placeholder", "Search teams")
+    filterPlaceholder: root.playerMode ? i18nc("@info:placeholder", "Search players") : i18nc("@info:placeholder", "Search teams")
     onFilterEdited: text => root.favoriteFilter = text
     onDisplayedOptionsChanged: root.scheduleBadgePrefetch()
     Component.onCompleted: root.refreshTeamPool()
@@ -69,6 +87,9 @@ SportStepPage {
             if (!root.pageActive) {
                 root.teamDiscoveryToken += 1;
                 root.teamDiscoveryRunning = false;
+                root.activeDiscoveryIndex = -1;
+                teamDiscoveryStepTimer.stop();
+                directTeamDiscoveryTimer.stop();
                 return;
             }
 
@@ -87,6 +108,28 @@ SportStepPage {
         onTriggered: root.prefetchVisibleBadges()
     }
 
+    Timer {
+        id: teamDiscoveryStepTimer
+
+        interval: 8000
+        repeat: false
+        onTriggered: {
+            if (root.activeDiscoveryToken !== root.teamDiscoveryToken || root.activeDiscoveryIndex < 0)
+                return;
+
+            root.teamDiscoveryDoneLeagues = Math.min(root.teamDiscoveryTotalLeagues, root.activeDiscoveryIndex + 1);
+            root.fetchTeamsFromLeague(root.activeDiscoveryToken, root.activeDiscoveryLeagues, root.activeDiscoveryIndex + 1);
+        }
+    }
+
+    Timer {
+        id: directTeamDiscoveryTimer
+
+        interval: root.directTeamDiscoveryTimeoutMs
+        repeat: false
+        onTriggered: root.startLeagueTableTeamDiscovery(root.activeDiscoveryToken, root.activeDiscoveryLeagues)
+    }
+
     function teamKey(teamName) {
         return String(teamName || "").trim().toLowerCase();
     }
@@ -100,6 +143,22 @@ SportStepPage {
             return [];
 
         return root.configRoot.filtered(root.staticTeamOptions, root.favoriteFilter);
+    }
+
+    function shouldIncludeFallbackTeams(filterText) {
+        const filter = String(filterText || "").trim();
+        return root.fallbackTeamOptions(filterText).length > 0;
+    }
+
+    function fallbackTeamOptions(filterText) {
+        const filter = String(filterText || "").trim();
+        if (filter.length >= 3)
+            return root.fallbackCountryTeams;
+
+        if (!root.teamDiscoveryRunning && root.discoveredTeamCount() === 0)
+            return root.featuredFallbackCountryTeams;
+
+        return [];
     }
 
     function mergedTeamOptions(filterText) {
@@ -119,14 +178,31 @@ SportStepPage {
             seen[key] = true;
             merged.push({
                 label: String(option && option.label || value).trim(),
-                value
+                value,
+                badge: String(option && option.badge || "").trim(),
+                teamSlug: String(option && (option.teamSlug || option.team_slug) || "").trim(),
+                teamPath: String(option && (option.teamPath || option.teamUrl || option.url) || "").trim(),
+                rank: Number(option && option.rank)
             });
         }
 
         (Array.isArray(staticOptions) ? staticOptions : []).forEach(appendOption);
         Object.keys(root.discoveredTeams).forEach(key => appendOption(root.discoveredTeams[key]));
+        if (root.shouldIncludeFallbackTeams(filterText))
+            root.fallbackTeamOptions(filterText).forEach(appendOption);
 
-        merged.sort((left, right) => String(left.label || "").localeCompare(String(right.label || "")));
+        merged.sort((left, right) => {
+            const leftRank = Number(left && left.rank);
+            const rightRank = Number(right && right.rank);
+            const hasLeftRank = Number.isFinite(leftRank);
+            const hasRightRank = Number.isFinite(rightRank);
+            if (hasLeftRank && hasRightRank && leftRank !== rightRank)
+                return leftRank - rightRank;
+            if (hasLeftRank !== hasRightRank)
+                return hasLeftRank ? -1 : 1;
+
+            return String(left.label || "").localeCompare(String(right.label || ""));
+        });
         return root.configRoot ? root.configRoot.filtered(merged, filterText) : merged;
     }
 
@@ -147,7 +223,7 @@ SportStepPage {
             return [];
 
         const options = root.isTeamMode() ? root.mergedTeamOptions(root.favoriteFilter) : root.filteredStaticOptions();
-        return options.slice(0, root.maxDisplayedTeams);
+        return options;
     }
 
     function scheduleBadgePrefetch() {
@@ -170,9 +246,16 @@ SportStepPage {
         root.staticTeamOptions = [];
         root.staticTeamOptionsReady = false;
         root.discoveredTeams = ({});
+        root.fallbackCountryTeams = [];
+        root.featuredFallbackCountryTeams = [];
         root.teamDiscoveryRunning = false;
         root.teamDiscoveryDoneLeagues = 0;
         root.teamDiscoveryTotalLeagues = 0;
+        root.teamDiscoveryRank = 0;
+        root.activeDiscoveryIndex = -1;
+        root.leagueTableDiscoveryStarted = false;
+        teamDiscoveryStepTimer.stop();
+        directTeamDiscoveryTimer.stop();
         root.teamDiscoveryToken += 1;
 
         root.ensureStaticTeamOptions();
@@ -187,8 +270,14 @@ SportStepPage {
             return -200;
 
         let score = 0;
-        if (label.indexOf("premier") >= 0 || label.indexOf("super league") >= 0 || label.indexOf("liga") >= 0 || label.indexOf("division 1") >= 0 || label.indexOf("serie a") >= 0)
+        if (label.indexOf("premier") >= 0 || label.indexOf("super league") >= 0 || label.indexOf("division 1") >= 0 || label.indexOf("serie a") >= 0 || label.indexOf("bundesliga") >= 0 || label.indexOf("la liga") >= 0 || label.indexOf("ligue 1") >= 0 || label.indexOf("eredivisie") >= 0 || label.indexOf("primera") >= 0)
             score += 45;
+
+        if (label.indexOf("championship") >= 0 || label.indexOf("league one") >= 0 || label.indexOf("league two") >= 0 || label.indexOf("division 2") >= 0 || label.indexOf("serie b") >= 0 || label.indexOf("segunda") >= 0 || label.indexOf("ligue 2") >= 0 || label.indexOf("2.liga") >= 0 || label.indexOf("2 liga") >= 0)
+            score += 32;
+
+        if (label.indexOf("league") >= 0 || label.indexOf("liga") >= 0)
+            score += 12;
 
         if (label.indexOf("cup") >= 0 || label.indexOf("playoff") >= 0 || label.indexOf("play-off") >= 0 || label.indexOf("qualif") >= 0)
             score -= 22;
@@ -225,6 +314,7 @@ SportStepPage {
         let nextTeams = Object.assign({}, root.discoveredTeams);
         let nextBadges = Object.assign({}, root.badgeByTeam);
         let nextAttempted = Object.assign({}, root.attemptedBadgeTeams);
+        let nextRank = root.teamDiscoveryRank;
         let teamsChanged = false;
         let badgesChanged = false;
 
@@ -237,8 +327,13 @@ SportStepPage {
             if (!nextTeams[key]) {
                 nextTeams[key] = {
                     label: team,
-                    value: team
+                    value: team,
+                    badge: String(row && (row.crest || row.team_logo) || "").trim(),
+                    teamSlug: String(row && (row.teamSlug || row.team_slug) || "").trim(),
+                    teamPath: String(row && (row.teamPath || row.teamUrl || row.url) || "").trim(),
+                    rank: nextRank
                 };
+                nextRank += 1;
                 teamsChanged = true;
             }
 
@@ -252,14 +347,404 @@ SportStepPage {
 
         if (teamsChanged)
             root.discoveredTeams = nextTeams;
+        root.teamDiscoveryRank = nextRank;
         if (badgesChanged) {
             root.badgeByTeam = nextBadges;
             root.attemptedBadgeTeams = nextAttempted;
         }
     }
 
+    function storeFallbackCountryTeams(options) {
+        const rows = Array.isArray(options) ? options : [];
+        if (rows.length === 0) {
+            root.fallbackCountryTeams = [];
+            root.featuredFallbackCountryTeams = [];
+            return;
+        }
+
+        let seen = {};
+        let nextOptions = [];
+        let nextBadges = Object.assign({}, root.badgeByTeam);
+        let nextAttempted = Object.assign({}, root.attemptedBadgeTeams);
+        let badgesChanged = false;
+
+        rows.forEach(option => {
+            const team = String(option && option.value || option && option.label || "").trim();
+            const key = root.teamKey(team);
+            if (key.length === 0 || seen[key])
+                return;
+
+            seen[key] = true;
+            nextOptions.push({
+                label: String(option && option.label || team).trim(),
+                value: team,
+                badge: String(option && option.badge || "").trim(),
+                teamSlug: String(option && (option.teamSlug || option.team_slug) || "").trim(),
+                teamPath: String(option && (option.teamPath || option.teamUrl || option.url) || "").trim(),
+                leagues: Array.isArray(option && option.leagues) ? option.leagues.slice() : []
+            });
+
+            const badge = String(option && option.badge || "").trim();
+            if (badge.length > 0 && String(nextBadges[key] || "").trim() !== badge) {
+                nextBadges[key] = badge;
+                nextAttempted[key] = true;
+                badgesChanged = true;
+            }
+        });
+
+        root.fallbackCountryTeams = nextOptions;
+        root.featuredFallbackCountryTeams = root.featuredCountryTeams(nextOptions);
+        if (badgesChanged) {
+            root.badgeByTeam = nextBadges;
+            root.attemptedBadgeTeams = nextAttempted;
+        }
+    }
+
+    function mergeDiscoveredOptions(options) {
+        const rows = Array.isArray(options) ? options : [];
+        if (rows.length === 0)
+            return;
+
+        let nextTeams = Object.assign({}, root.discoveredTeams);
+        let nextBadges = Object.assign({}, root.badgeByTeam);
+        let nextAttempted = Object.assign({}, root.attemptedBadgeTeams);
+        let nextRank = root.teamDiscoveryRank;
+        let teamsChanged = false;
+        let badgesChanged = false;
+
+        rows.forEach(option => {
+            const team = String(option && option.value || option && option.label || "").trim();
+            const key = root.teamKey(team);
+            if (key.length === 0)
+                return;
+
+            if (!nextTeams[key]) {
+                nextTeams[key] = {
+                    label: String(option && option.label || team).trim(),
+                    value: team,
+                    badge: String(option && option.badge || "").trim(),
+                    teamSlug: String(option && (option.teamSlug || option.team_slug) || "").trim(),
+                    teamPath: String(option && (option.teamPath || option.teamUrl || option.url) || "").trim(),
+                    rank: nextRank
+                };
+                nextRank += 1;
+                teamsChanged = true;
+            }
+
+            const badge = String(option && option.badge || "").trim();
+            const teamSlug = String(option && (option.teamSlug || option.team_slug) || "").trim();
+            const teamPath = String(option && (option.teamPath || option.teamUrl || option.url) || "").trim();
+            if (badge.length > 0 && String(nextTeams[key].badge || "").trim() !== badge) {
+                nextTeams[key].badge = badge;
+                teamsChanged = true;
+            }
+            if (teamSlug.length > 0 && String(nextTeams[key].teamSlug || "").trim() !== teamSlug) {
+                nextTeams[key].teamSlug = teamSlug;
+                teamsChanged = true;
+            }
+            if (teamPath.length > 0 && String(nextTeams[key].teamPath || "").trim() !== teamPath) {
+                nextTeams[key].teamPath = teamPath;
+                teamsChanged = true;
+            }
+            if (badge.length > 0 && String(nextBadges[key] || "").trim() !== badge) {
+                nextBadges[key] = badge;
+                nextAttempted[key] = true;
+                badgesChanged = true;
+            }
+        });
+
+        if (teamsChanged)
+            root.discoveredTeams = nextTeams;
+        root.teamDiscoveryRank = nextRank;
+        if (badgesChanged) {
+            root.badgeByTeam = nextBadges;
+            root.attemptedBadgeTeams = nextAttempted;
+        }
+    }
+
+    function featuredCountryTeams(options) {
+        const rows = Array.isArray(options) ? options : [];
+        if (rows.length === 0)
+            return [];
+
+        const leagueKeys = root.featuredLeagueKeys();
+        if (leagueKeys.length === 0)
+            return [];
+
+        return rows.filter(option => {
+            const leagues = Array.isArray(option && option.leagues) ? option.leagues : [];
+            for (let leagueIndex = 0; leagueIndex < leagues.length; leagueIndex += 1) {
+                const key = root.leagueMatchKey(leagues[leagueIndex]);
+                if (key.length > 0 && leagueKeys.indexOf(key) >= 0)
+                    return true;
+            }
+            return false;
+        });
+    }
+
+    function featuredLeagueKeys() {
+        const leagues = root.prioritizedLeagues().filter(league => root.leaguePriority(league) > 0).slice(0, 4);
+        let keys = [];
+        leagues.forEach(league => {
+            const label = String(league && league.label || "").trim();
+            const value = String(league && league.value || "").trim();
+            [label, value].forEach(candidate => {
+                const key = root.leagueMatchKey(candidate);
+                if (key.length > 0 && keys.indexOf(key) < 0)
+                    keys.push(key);
+            });
+        });
+        return keys;
+    }
+
+    function leagueMatchKey(value) {
+        let text = String(value || "").trim().toLowerCase();
+        if (text.length === 0)
+            return "";
+
+        text = text.replace(/^english\s+/, "");
+        text = text.replace(/^scottish\s+/, "");
+        text = text.replace(/^welsh\s+/, "");
+        text = text.replace(/^northern ireland\s+/, "");
+        text = text.replace(/^ireland\s+/, "");
+        text = text.replace(/^bulgarian\s+/, "");
+        text = text.replace(/^spanish\s+/, "");
+        text = text.replace(/^italian\s+/, "");
+        text = text.replace(/^french\s+/, "");
+        text = text.replace(/^german\s+/, "");
+        return text.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    }
+
     function discoveredTeamCount() {
         return Object.keys(root.discoveredTeams).length;
+    }
+
+    function teamDiscoveryStatusText() {
+        if (root.activeDiscoveryLeagues.length === 0)
+            return i18nc("@info", "Loading teams from provider...");
+
+        return i18nc("@info", "Loading teams from %1 of %2 competitions...", root.teamDiscoveryDoneLeagues, Math.max(1, root.teamDiscoveryTotalLeagues));
+    }
+
+    function seededCountryTeams() {
+        const country = String(root.configRoot && root.configRoot.cfg_country || "").trim().toLowerCase();
+        const seeds = {
+            "england": [
+                ["Arsenal", "arsenal"],
+                ["Aston Villa", "aston-villa"],
+                ["Bournemouth AFC", "bournemouth-afc"],
+                ["Brentford", "brentford"],
+                ["Brighton Hove Albion", "brighton-hove-albion"],
+                ["Burnley", "burnley"],
+                ["Chelsea", "chelsea"],
+                ["Crystal Palace", "crystal-palace"],
+                ["Everton", "everton"],
+                ["Fulham", "fulham"],
+                ["Leeds United", "leeds-united"],
+                ["Liverpool", "liverpool"],
+                ["Manchester City", "manchester-city"],
+                ["Manchester United", "manchester-united"],
+                ["Newcastle United", "newcastle-united"],
+                ["Nottingham Forest", "nottingham-forest"],
+                ["Sunderland", "sunderland"],
+                ["Tottenham Hotspur", "tottenham-hotspur"],
+                ["West Ham United", "west-ham-united"],
+                ["Wolverhampton Wanderers", "wolverhampton-wanderers"],
+                ["Leicester City", "leicester-city"],
+                ["Ipswich Town", "ipswich-town"],
+                ["Southampton", "southampton"],
+                ["Sheffield United", "sheffield-united"],
+                ["Coventry City", "coventry-city"],
+                ["Middlesbrough", "middlesbrough"],
+                ["West Bromwich Albion", "west-bromwich-albion"],
+                ["Norwich City", "norwich-city"],
+                ["Watford", "watford"],
+                ["Swansea City", "swansea-city"],
+                ["Queens Park Rangers", "queens-park-rangers"],
+                ["Blackburn Rovers", "blackburn-rovers"],
+                ["Preston North End", "preston-north-end"],
+                ["Stoke City", "stoke-city"],
+                ["Millwall", "millwall"],
+                ["Bristol City", "bristol-city"],
+                ["Hull City", "hull-city"],
+                ["Portsmouth", "portsmouth"],
+                ["Derby County", "derby-county"],
+                ["Oxford United", "oxford-united"]
+            ],
+            "spain": [
+                ["Real Madrid", "real-madrid"],
+                ["FC Barcelona", "barcelona"],
+                ["Atletico Madrid", "atletico-madrid"],
+                ["Athletic Bilbao", "athletic-bilbao"],
+                ["Villarreal", "villarreal"],
+                ["Real Betis", "real-betis"],
+                ["Real Sociedad", "real-sociedad"],
+                ["Sevilla", "sevilla"],
+                ["Valencia", "valencia"],
+                ["Celta Vigo", "celta-vigo"],
+                ["Rayo Vallecano", "rayo-vallecano"],
+                ["Osasuna", "osasuna"],
+                ["Mallorca", "mallorca"],
+                ["Getafe", "getafe"],
+                ["Espanyol", "espanyol"],
+                ["Girona", "girona"],
+                ["Alaves", "alaves"],
+                ["Levante", "levante"],
+                ["Elche", "elche"],
+                ["Real Oviedo", "real-oviedo"],
+                ["Deportivo La Coruna", "deportivo-la-coruna"],
+                ["Granada CF", "granada-cf"],
+                ["Las Palmas", "las-palmas"],
+                ["Real Zaragoza", "real-zaragoza"],
+                ["Sporting Gijon", "sporting-gijon"],
+                ["Malaga", "malaga"],
+                ["Eibar", "eibar"],
+                ["Almeria", "almeria"],
+                ["Leganes", "leganes"],
+                ["Cadiz", "cadiz"]
+            ],
+            "italy": [
+                ["Inter Milan", "inter-milan"],
+                ["AC Milan", "ac-milan"],
+                ["Juventus", "juventus"],
+                ["Napoli", "napoli"],
+                ["AS Roma", "as-roma"],
+                ["Lazio", "lazio"],
+                ["Atalanta", "atalanta"],
+                ["Fiorentina", "fiorentina"],
+                ["Bologna", "bologna"],
+                ["Torino", "torino"],
+                ["Genoa", "genoa"],
+                ["Udinese", "udinese"],
+                ["Sassuolo", "sassuolo"],
+                ["Parma", "parma"],
+                ["Cagliari", "cagliari"],
+                ["Lecce", "lecce"],
+                ["Hellas Verona", "hellas-verona"],
+                ["Como", "como"],
+                ["Pisa", "pisa"],
+                ["Cremonese", "cremonese"],
+                ["Palermo", "palermo"],
+                ["Sampdoria", "sampdoria"],
+                ["Bari", "bari"],
+                ["Venezia", "venezia"],
+                ["Empoli", "empoli"],
+                ["Monza", "monza"],
+                ["Frosinone", "frosinone"],
+                ["Spezia", "spezia"],
+                ["Cesena", "cesena"],
+                ["Modena", "modena"]
+            ],
+            "germany": [
+                ["Bayern Munich", "bayern-munich"],
+                ["Borussia Dortmund", "borussia-dortmund"],
+                ["Bayer Leverkusen", "bayer-leverkusen"],
+                ["RB Leipzig", "rb-leipzig"],
+                ["Eintracht Frankfurt", "eintracht-frankfurt"],
+                ["VfB Stuttgart", "vfb-stuttgart"],
+                ["VfL Wolfsburg", "vfl-wolfsburg"],
+                ["SC Freiburg", "sc-freiburg"],
+                ["TSG Hoffenheim", "tsg-hoffenheim"],
+                ["Mainz 05", "mainz-05"],
+                ["Werder Bremen", "werder-bremen"],
+                ["Augsburg", "augsburg"],
+                ["Union Berlin", "union-berlin"],
+                ["Borussia Monchengladbach", "borussia-monchengladbach"],
+                ["Hamburger SV", "hamburger-sv"],
+                ["FC Koln", "fc-koln"],
+                ["St Pauli", "st-pauli"],
+                ["Heidenheim", "heidenheim"],
+                ["Schalke 04", "schalke-04"],
+                ["Hertha Berlin", "hertha-berlin"],
+                ["Hannover 96", "hannover-96"],
+                ["Nurnberg", "nurnberg"],
+                ["Kaiserslautern", "kaiserslautern"],
+                ["Fortuna Dusseldorf", "fortuna-dusseldorf"],
+                ["Darmstadt", "darmstadt"],
+                ["Greuther Furth", "greuther-furth"],
+                ["Paderborn", "paderborn"],
+                ["Holstein Kiel", "holstein-kiel"]
+            ],
+            "france": [
+                ["Paris Saint Germain", "paris-saint-germain"],
+                ["PSG", "psg"],
+                ["Marseille", "marseille"],
+                ["Lyon", "lyon"],
+                ["Monaco", "monaco"],
+                ["Lille", "lille"],
+                ["Lens", "lens"],
+                ["Rennes", "rennes"],
+                ["Nice", "nice"],
+                ["Strasbourg", "strasbourg"],
+                ["Toulouse", "toulouse"],
+                ["Nantes", "nantes"],
+                ["Montpellier", "montpellier"],
+                ["Brest", "brest"],
+                ["Auxerre", "auxerre"],
+                ["Lorient", "lorient"],
+                ["Metz", "metz"],
+                ["Paris FC", "paris-fc"],
+                ["Le Havre", "le-havre"],
+                ["Angers", "angers"],
+                ["Saint Etienne", "saint-etienne"],
+                ["Bordeaux", "bordeaux"],
+                ["Caen", "caen"],
+                ["Guingamp", "guingamp"],
+                ["Nancy", "nancy"],
+                ["Dijon", "dijon"]
+            ],
+            "portugal": [
+                ["Benfica", "benfica"],
+                ["FC Porto", "fc-porto"],
+                ["Sporting CP", "sporting-cp"],
+                ["Braga", "braga"],
+                ["Vitoria Guimaraes", "vitoria-guimaraes"],
+                ["Boavista", "boavista"],
+                ["Rio Ave", "rio-ave"],
+                ["Famalicao", "famalicao"],
+                ["Estoril", "estoril"],
+                ["Casa Pia", "casa-pia"]
+            ],
+            "netherlands": [
+                ["Ajax", "ajax"],
+                ["PSV Eindhoven", "psv-eindhoven"],
+                ["Feyenoord", "feyenoord"],
+                ["AZ Alkmaar", "az-alkmaar"],
+                ["FC Twente", "fc-twente"],
+                ["Utrecht", "utrecht"],
+                ["Heerenveen", "heerenveen"],
+                ["Groningen", "groningen"],
+                ["Sparta Rotterdam", "sparta-rotterdam"],
+                ["Vitesse", "vitesse"]
+            ],
+            "bulgaria": [
+                ["Levski Sofia", "levski-sofia"],
+                ["Ludogorets Razgrad", "ludogorets-razgrad"],
+                ["CSKA 1948 Sofia", "cska-1948-sofia"],
+                ["CSKA Sofia", "cska-sofia"],
+                ["Lokomotiv Plovdiv", "lokomotiv-plovdiv"],
+                ["Cherno More Varna", "cherno-more-varna"],
+                ["Arda", "arda"],
+                ["Botev Plovdiv", "botev-plovdiv"],
+                ["Slavia Sofia", "slavia-sofia"],
+                ["Beroe", "beroe"],
+                ["Lokomotiv Sofia", "lokomotiv-sofia"],
+                ["Botev Vratsa", "botev-vratsa"],
+                ["Spartak Varna", "spartak-varna"],
+                ["Septemvri Sofia", "septemvri-sofia"],
+                ["Dobrudzha", "dobrudzha"],
+                ["Montana", "montana"]
+            ]
+        };
+        const rows = seeds[country] || [];
+        return rows.map(row => {
+            return {
+                label: row[0],
+                value: row[0],
+                teamSlug: row[1],
+                badge: row[2] || ""
+            };
+        });
     }
 
     function startCountryTeamDiscovery() {
@@ -267,24 +752,78 @@ SportStepPage {
             return;
 
         const leagues = root.prioritizedLeagues();
-        if (leagues.length === 0)
-            return;
-
         const token = root.teamDiscoveryToken + 1;
         root.teamDiscoveryToken = token;
         root.teamDiscoveryRunning = true;
         root.teamDiscoveryDoneLeagues = 0;
-        root.teamDiscoveryTotalLeagues = leagues.length;
+        root.leagueTableDiscoveryStarted = false;
+        root.activeDiscoveryToken = token;
+        root.activeDiscoveryLeagues = leagues;
+        root.activeDiscoveryIndex = -1;
+        const directLeagues = leagues.slice(0, Math.min(root.directTeamDiscoveryLeagueLimit, leagues.length));
+        root.teamDiscoveryTotalLeagues = Math.max(1, directLeagues.length);
+        const seededTeams = root.seededCountryTeams();
+        if (seededTeams.length > 0)
+            root.mergeDiscoveredOptions(seededTeams);
 
-        root.fetchTeamsFromLeague(token, leagues, 0);
+        if (directLeagues.length > 0)
+            directTeamDiscoveryTimer.restart();
+
+        SportsApi.fetchCountryTeams({
+            "provider": root.configRoot.currentProvider,
+            "sports": root.configRoot.normalizedSport(),
+            "country": root.configRoot.cfg_country || "",
+            "leagues": directLeagues
+        }, rows => {
+            if (token !== root.teamDiscoveryToken)
+                return;
+
+            directTeamDiscoveryTimer.stop();
+            root.mergeDiscoveredOptions(rows);
+            if (root.discoveredTeamCount() > 0) {
+                root.teamDiscoveryDoneLeagues = root.teamDiscoveryTotalLeagues;
+                root.finishTeamDiscovery(token);
+                return;
+            }
+
+            if (leagues.length > 0) {
+                root.startLeagueTableTeamDiscovery(token, leagues);
+            } else {
+                root.teamDiscoveryDoneLeagues = root.teamDiscoveryTotalLeagues;
+                root.finishTeamDiscovery(token);
+            }
+        }, () => {
+            if (token !== root.teamDiscoveryToken)
+                return;
+
+            directTeamDiscoveryTimer.stop();
+            if (root.discoveredTeamCount() > 0 || leagues.length === 0) {
+                root.teamDiscoveryDoneLeagues = root.teamDiscoveryTotalLeagues;
+                root.finishTeamDiscovery(token);
+            } else {
+                root.startLeagueTableTeamDiscovery(token, leagues);
+            }
+        });
     }
 
     function finishTeamDiscovery(token) {
         if (token !== root.teamDiscoveryToken)
             return;
 
+        directTeamDiscoveryTimer.stop();
         root.teamDiscoveryRunning = false;
         root.prefetchVisibleBadges();
+    }
+
+    function startLeagueTableTeamDiscovery(token, leagues) {
+        if (token !== root.teamDiscoveryToken || root.leagueTableDiscoveryStarted)
+            return;
+
+        root.leagueTableDiscoveryStarted = true;
+        root.teamDiscoveryRunning = true;
+        root.teamDiscoveryDoneLeagues = 0;
+        root.teamDiscoveryTotalLeagues = leagues.length;
+        root.fetchTeamsFromLeague(token, leagues, 0);
     }
 
     function fetchTeamsFromLeague(token, leagues, index) {
@@ -292,6 +831,8 @@ SportStepPage {
             return;
 
         if (index >= leagues.length || root.discoveredTeamCount() >= root.teamDiscoveryTargetTeams) {
+            teamDiscoveryStepTimer.stop();
+            root.activeDiscoveryIndex = -1;
             root.finishTeamDiscovery(token);
             return;
         }
@@ -304,22 +845,29 @@ SportStepPage {
             return;
         }
 
+        root.activeDiscoveryToken = token;
+        root.activeDiscoveryLeagues = leagues;
+        root.activeDiscoveryIndex = index;
+        teamDiscoveryStepTimer.restart();
+
         SportsApi.fetchLeagueTable({
             "sports": root.configRoot.normalizedSport(),
             "country": root.configRoot.cfg_country || "",
             "league": leagueValue,
             "followMode": "league"
         }, rows => {
-            if (token !== root.teamDiscoveryToken)
+            if (token !== root.teamDiscoveryToken || index !== root.activeDiscoveryIndex)
                 return;
 
+            teamDiscoveryStepTimer.stop();
             root.mergeDiscoveredRows(rows);
             root.teamDiscoveryDoneLeagues = Math.min(root.teamDiscoveryTotalLeagues, index + 1);
             root.fetchTeamsFromLeague(token, leagues, index + 1);
         }, () => {
-            if (token !== root.teamDiscoveryToken)
+            if (token !== root.teamDiscoveryToken || index !== root.activeDiscoveryIndex)
                 return;
 
+            teamDiscoveryStepTimer.stop();
             root.teamDiscoveryDoneLeagues = Math.min(root.teamDiscoveryTotalLeagues, index + 1);
             root.fetchTeamsFromLeague(token, leagues, index + 1);
         });
@@ -409,13 +957,15 @@ SportStepPage {
         lookupNextLeague();
     }
 
-    function ensureTeamBadge(teamName, forceRefresh) {
+    function ensureTeamBadge(teamName, forceRefresh, teamSlug) {
         forceRefresh = Boolean(forceRefresh);
+        teamSlug = String(teamSlug || "").trim();
         const key = root.teamKey(teamName);
         if (key.length === 0)
             return;
 
-        if (!forceRefresh && String(root.badgeByTeam[key] || "").trim().length > 0)
+        const existingBadge = String(root.badgeByTeam[key] || "").trim();
+        if (!forceRefresh && existingBadge.length > 0)
             return;
 
         if (!forceRefresh && Boolean(root.attemptedBadgeTeams[key]))
@@ -434,7 +984,8 @@ SportStepPage {
         SportsApi.fetchTeamBadge({
             "sports": root.configRoot ? root.configRoot.normalizedSport() : "football",
             "country": root.configRoot ? root.configRoot.cfg_country : "",
-            "favoriteTeam": teamName
+            "favoriteTeam": teamName,
+            "teamSlug": teamSlug
         }, badge => {
             root.setPendingTeam(teamName, false);
             badge = String(badge || "").trim();
@@ -443,20 +994,19 @@ SportStepPage {
                 return;
             }
 
-            if (forceRefresh) {
-                root.setTeamBadge(teamName, "");
-            } else {
-                root.fetchBadgeFromCountryLeagues(teamName, () => root.setPendingTeam(teamName, false));
+            if (existingBadge.length > 0) {
+                root.setPendingTeam(teamName, false);
                 return;
             }
-            root.setPendingTeam(teamName, false);
+
+            root.fetchBadgeFromCountryLeagues(teamName, () => root.setPendingTeam(teamName, false));
         }, () => {
-            if (forceRefresh) {
-                root.setTeamBadge(teamName, "");
+            if (existingBadge.length > 0) {
                 root.setPendingTeam(teamName, false);
-            } else {
-                root.fetchBadgeFromCountryLeagues(teamName, () => root.setPendingTeam(teamName, false));
+                return;
             }
+
+            root.fetchBadgeFromCountryLeagues(teamName, () => root.setPendingTeam(teamName, false));
         });
     }
 
@@ -480,24 +1030,27 @@ SportStepPage {
         const verifyExistingBadges = root.discoveredTeamCount() > 0;
         root.displayedOptions.slice(0, root.badgePrefetchLimit).forEach(option => {
             const teamName = String(option && option.value || "").trim();
+            const teamSlug = String(option && (option.teamSlug || option.team_slug) || "").trim();
             if (teamName.length > 0)
-                root.ensureTeamBadge(teamName, verifyExistingBadges);
+                root.ensureTeamBadge(teamName, verifyExistingBadges, teamSlug);
         });
     }
 
     Repeater {
-        model: root.displayedOptions
+        model: root.teamDiscoveryRunning ? [] : root.displayedOptions
 
         delegate: SportChoiceCard {
             title: modelData.label
             iconSource: root.teamBadge(modelData.value)
             iconName: modelData.value.length > 0 ? "im-user" : "edit-none"
             selected: root.configRoot && root.configRoot.isFavoriteTeamSelected(modelData.value)
-            onClicked: root.configRoot.selectFavoriteTeam(modelData.value)
+            onClicked: root.configRoot.selectFavoriteTeam(modelData.value, modelData)
         }
     }
 
     RowLayout {
+        Layout.fillWidth: true
+        Layout.columnSpan: root.contentColumns
         Layout.alignment: Qt.AlignHCenter
         visible: root.isTeamMode() && root.teamDiscoveryRunning
         spacing: Kirigami.Units.smallSpacing
@@ -509,16 +1062,20 @@ SportStepPage {
         }
 
         Label {
-            text: i18nc("@info", "Loading teams from %1 of %2 competitions...", root.teamDiscoveryDoneLeagues, Math.max(1, root.teamDiscoveryTotalLeagues))
+            Layout.alignment: Qt.AlignVCenter
+            text: root.teamDiscoveryStatusText()
             color: Kirigami.Theme.disabledTextColor
         }
     }
 
     Label {
         Layout.fillWidth: true
+        Layout.columnSpan: root.contentColumns
         visible: root.displayedOptions.length === 0 && !root.teamDiscoveryRunning
         text: root.configRoot && root.configRoot.cfg_type === "team"
-            ? i18nc("@info", "No teams were found for this country yet. Try another country or competition.")
+            ? (root.playerMode
+                ? i18nc("@info", "No tennis players were found by the provider.")
+                : i18nc("@info", "No teams were found for this country yet. Try another country or competition."))
             : ""
         color: Kirigami.Theme.disabledTextColor
         horizontalAlignment: Text.AlignHCenter
@@ -531,7 +1088,7 @@ SportStepPage {
 
         SportChoiceCard {
             Layout.fillWidth: true
-            visible: root.configRoot && root.configRoot.cfg_type === "team"
+            visible: root.configRoot && root.configRoot.cfg_type === "team" && root.configRoot.normalizedSport() === "football"
             title: i18nc("@title:group", "National Teams")
             subtitle: root.configRoot && root.configRoot.selectedNationalTeamValues().length > 0
                 ? i18nc("@info", "%1 selected", root.configRoot.selectedNationalTeamValues().length)

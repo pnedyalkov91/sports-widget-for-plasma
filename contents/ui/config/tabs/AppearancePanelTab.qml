@@ -74,6 +74,32 @@ Kirigami.FormLayout {
         onActivated: panelTab.configRoot.cfg_panelLayoutMode = currentValue
     }
 
+    Switch {
+        id: panelMatchRotation
+
+        Kirigami.FormData.label: i18nc("@label:checkbox", "Match rotation:")
+        text: checked ? i18nc("@option:check", "Enabled") : i18nc("@option:check", "Disabled")
+        checked: panelTab.configRoot.cfg_panelMatchRotationEnabled
+        onToggled: panelTab.configRoot.cfg_panelMatchRotationEnabled = checked
+    }
+
+    SpinBox {
+        Kirigami.FormData.label: i18nc("@label:spinbox", "Rotation interval:")
+        visible: panelMatchRotation.checked
+        enabled: visible
+        from: 5
+        to: 300
+        stepSize: 5
+        editable: true
+        value: Math.max(5, panelTab.configRoot.cfg_panelMatchRotationInterval || 30)
+        textFromValue: (value) => i18ncp("@item:valuesuffix seconds", "%1 second", "%1 seconds", value)
+        valueFromText: (text) => {
+            const value = parseInt(text, 10);
+            return Number.isFinite(value) ? value : 30;
+        }
+        onValueModified: panelTab.configRoot.cfg_panelMatchRotationInterval = value
+    }
+
     RowLayout {
         Kirigami.FormData.label: i18nc("@label:listbox", "Widget panel area:")
         Layout.fillWidth: true

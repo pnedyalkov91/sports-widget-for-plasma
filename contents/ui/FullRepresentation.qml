@@ -4,6 +4,7 @@
 */
 
 import "../code/SportVisuals.js" as SportVisuals
+import "../code/SportsApi.js" as SportsApi
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -47,8 +48,9 @@ Item {
     property string selectedTableSeasonKey: ""
     property bool teamTableSeasonLoading: false
     property bool tableLoading: false
-    property bool tableFormLoading: false
     property int sportCount: 0
+    property var availableSports: []
+    property string selectedSport: "football"
     property int tableCount: 0
     property int recentResultsCount: 0
     property string widgetTabs: "all"
@@ -56,15 +58,23 @@ Item {
     property int selectedLiveIndex: 0
     property int selectedScoreIndex: 0
     property int selectedRecentResultIndex: 0
-    readonly property color liveColor: Qt.rgba(1, 0.32, 0.32, 1)
+    property bool matchRotationEnabled: true
+    property int matchRotationInterval: 30
+    property int heroRotationPosition: 0
+    property var heroRotationIndexes: []
+    property bool heroRotationRefreshPending: false
+    readonly property color liveColor: Kirigami.Theme.negativeTextColor
     readonly property int liveModelCount: root.modelCount(root.liveModel)
     readonly property int scoreModelCount: root.modelCount(root.scoreModel)
+    readonly property int heroRotationCount: root.heroRotationIndexes.length
+    readonly property var rotatedHeroMatch: root.rotationMatch()
     readonly property int currentHeroCount: root.activeTab === 0 ? root.liveModelCount : root.activeTab === 1 ? root.scoreModelCount : root.activeTab === 2 ? root.recentResultsCount : root.liveModelCount > 0 ? root.liveModelCount : root.scoreModelCount
-    readonly property bool hasMatches: root.currentHeroCount > 0
+    readonly property bool hasMatches: root.heroRotationCount > 0 || root.currentHeroCount > 0
 
     signal refreshRequested()
     signal configureRequested()
     signal leagueSelected(int index)
+    signal sportSelected(string sport)
     signal teamTableSelected(string slug)
     signal teamTableSeasonSelected(string seasonKey)
 
@@ -97,6 +107,10 @@ Item {
     }
 
     function selectedMatchValue(field, fallback) {
+        const rotatedMatch = root.rotatedHeroMatch;
+        if (rotatedMatch && rotatedMatch[field] !== undefined)
+            return rotatedMatch[field];
+
         if (!root.hasMatches)
             return fallback;
 
@@ -130,6 +144,72 @@ Item {
             return 0;
         }
     }
+
+    function normalizedMatchTimestamp(match) {
+        let timestamp = Number(match && match.timestamp || 0);
+        if (!Number.isFinite(timestamp) || timestamp <= 0)
+            return 0;
+        if (timestamp < 100000000000)
+            timestamp *= 1000;
+        return timestamp;
+    }
+
+    function rotationCandidateIndexes() {
+        const indexes = [];
+        if (!root.matchRotationEnabled)
+            return indexes;
+
+        if (root.liveModelCount > 0) {
+            for (let liveIndex = 0; liveIndex < root.liveModelCount; liveIndex += 1)
+                indexes.push(liveIndex);
+            return indexes;
+        }
+
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).getTime();
+        for (let scheduleIndex = 0; scheduleIndex < root.scoreModelCount; scheduleIndex += 1) {
+            const timestamp = root.normalizedMatchTimestamp(root.scoreModel.get(scheduleIndex));
+            if (timestamp >= start && timestamp < end)
+                indexes.push(scheduleIndex);
+        }
+        return indexes;
+    }
+
+    function rotationMatch() {
+        const indexes = root.heroRotationIndexes;
+        if (indexes.length === 0)
+            return null;
+
+        const model = root.liveModelCount > 0 ? root.liveModel : root.scoreModel;
+        return model.get(indexes[Math.max(0, root.heroRotationPosition % indexes.length)]);
+    }
+
+    function advanceHeroRotation() {
+        const count = root.heroRotationCount;
+        root.heroRotationPosition = count > 1 ? (root.heroRotationPosition + 1) % count : 0;
+    }
+
+    function scheduleHeroRotationRefresh() {
+        if (root.heroRotationRefreshPending)
+            return;
+
+        root.heroRotationRefreshPending = true;
+        Qt.callLater(() => {
+            root.heroRotationRefreshPending = false;
+            root.heroRotationIndexes = root.rotationCandidateIndexes();
+            if (root.heroRotationPosition >= root.heroRotationIndexes.length)
+                root.heroRotationPosition = 0;
+        });
+    }
+
+    onLiveModelChanged: scheduleHeroRotationRefresh()
+    onScoreModelChanged: scheduleHeroRotationRefresh()
+    onLiveModelCountChanged: scheduleHeroRotationRefresh()
+    onScoreModelCountChanged: scheduleHeroRotationRefresh()
+    onMatchRotationEnabledChanged: scheduleHeroRotationRefresh()
+
+    Component.onCompleted: scheduleHeroRotationRefresh()
 
     function currentHeroModel() {
         if (root.activeTab === 0)
@@ -168,6 +248,9 @@ Item {
     }
 
     function heroLoading() {
+        if (root.heroRotationCount > 0)
+            return false;
+
         if (root.hasMatches)
             return false;
 
@@ -191,6 +274,37 @@ Item {
             return Qt.rgba(color.r, color.g, color.b, alpha);
         } catch (error) {
             return Qt.rgba(0, 0, 0, 0);
+        }
+    }
+
+    Timer {
+        interval: Math.max(5, root.matchRotationInterval || 30) * 1000
+        repeat: true
+        running: root.visible && root.matchRotationEnabled && root.heroRotationCount > 1
+        onTriggered: heroRotationAnimation.restart()
+    }
+
+    SequentialAnimation {
+        id: heroRotationAnimation
+
+        NumberAnimation {
+            target: matchHero
+            property: "opacity"
+            to: 0
+            duration: Kirigami.Units.longDuration
+            easing.type: Easing.InOutQuad
+        }
+
+        ScriptAction {
+            script: root.advanceHeroRotation()
+        }
+
+        NumberAnimation {
+            target: matchHero
+            property: "opacity"
+            to: 1
+            duration: Kirigami.Units.longDuration
+            easing.type: Easing.InOutQuad
         }
     }
 
@@ -329,12 +443,9 @@ Item {
                     Layout.preferredHeight: headerIconSize
                     Layout.alignment: Qt.AlignVCenter
 
-                    Image {
+                    TeamBadgeImage {
                         anchors.fill: parent
-                        source: root.followTeamMode ? root.activeClubBadge : ""
-                        visible: source.toString().length > 0
-                        fillMode: Image.PreserveAspectFit
-                        asynchronous: true
+                        sourceUrl: root.followTeamMode ? root.activeClubBadge : ""
                     }
 
                     Image {
@@ -366,8 +477,30 @@ Item {
                     font.bold: true
                 }
 
-                Item {
-                    visible: false
+                ToolButton {
+                    visible: Array.isArray(root.availableSports) && root.availableSports.length > 1
+                    icon.name: "arrow-down"
+                    display: AbstractButton.IconOnly
+                    text: i18nc("@action:button", "Switch sport")
+                    onClicked: sportMenu.open()
+
+                    Menu {
+                        id: sportMenu
+
+                        Repeater {
+                            model: Array.isArray(root.availableSports) ? root.availableSports : []
+
+                            delegate: MenuItem {
+                                required property var modelData
+
+                                text: SportVisuals.label(modelData)
+                                icon.source: Qt.resolvedUrl("../icons/sports/" + SportVisuals.iconName(modelData))
+                                checkable: true
+                                checked: String(modelData) === root.selectedSport
+                                onTriggered: root.sportSelected(String(modelData))
+                            }
+                        }
+                    }
                 }
 
             }
@@ -389,6 +522,8 @@ Item {
         }
 
         MatchHero {
+            id: matchHero
+
             Layout.fillWidth: true
             Layout.preferredHeight: Kirigami.Units.gridUnit * 8
             homeTeam: root.selectedMatchValue("homeTeam", i18nc("@info:placeholder", "Home team"))
@@ -401,6 +536,10 @@ Item {
             stadium: root.selectedMatchValue("stadium", "")
             homeBadge: root.selectedMatchValue("homeBadge", "")
             awayBadge: root.selectedMatchValue("awayBadge", "")
+            matchPath: root.selectedMatchValue("matchPath", "")
+            liveUrl: root.selectedMatchValue("liveUrl", "")
+            sport: root.selectedMatchValue("sport", root.sport)
+            league: root.selectedMatchValue("league", "")
             showScore: root.selectedMatchBool("showScore", root.activeTab === 0)
             loading: root.heroLoading()
         }
@@ -500,7 +639,6 @@ Item {
                 tableCount: root.tableCount
                 tableErrorMessage: root.tableErrorMessage
                 tableLoading: root.tableLoading
-                formLoading: root.tableFormLoading
                 league: root.league
                 leagueLabel: root.tableLeagueLabel.length > 0 ? root.tableLeagueLabel : root.activeLeagueLabel
                 sport: root.sport
@@ -541,6 +679,10 @@ Item {
         property string stadium: ""
         property string homeBadge: ""
         property string awayBadge: ""
+        property string matchPath: ""
+        property string liveUrl: ""
+        property string sport: "football"
+        property string league: ""
         property bool showScore: true
         property bool loading: false
 
@@ -571,11 +713,29 @@ Item {
         }
 
         function liveMinuteText() {
-            const value = minute.trim();
-            if (value.length === 0)
-                return "";
+            if (String(sport || "").toLowerCase() === "basketball")
+                return SportsApi.liveStatusText(sport, minute);
 
-            return /^\d+\+?$/.test(value) ? value + "'" : value;
+            const value = SportsApi.normalizedLiveMinute(minute);
+            if (value.length === 0)
+                return minute.trim();
+
+            const minuteMatch = /^(\d+)(?:\+(\d*))?$/.exec(value);
+            if (!minuteMatch)
+                return value;
+
+            if (minuteMatch[2] === undefined)
+                return minuteMatch[1] + "'";
+            return minuteMatch[2].length > 0 ? minuteMatch[1] + "' + " + minuteMatch[2] + "'" : minuteMatch[1] + "' +";
+        }
+
+        function stoppageMinutePart(index) {
+            const match = /^(\d+)\+(\d*)$/.exec(SportsApi.normalizedLiveMinute(minute));
+            return match && match[index].length > 0 ? match[index] + "'" : "";
+        }
+
+        function hasStoppageTime() {
+            return /^\d+\+\d*$/.test(SportsApi.normalizedLiveMinute(minute));
         }
 
         radius: 0
@@ -604,7 +764,7 @@ Item {
                     color: Kirigami.Theme.textColor
                     horizontalAlignment: Text.AlignHCenter
                     font.bold: true
-                    font.pixelSize: Kirigami.Units.gridUnit * 1.25
+                    font.pixelSize: Kirigami.Units.gridUnit * 1.55
                 }
 
                 Item {
@@ -653,14 +813,40 @@ Item {
 
                         PlasmaComponents.Label {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: Math.min(implicitWidth, Math.max(0, heroLiveStatusContainer.width - heroLiveStatusContainer.dotSize - heroLiveStatusRow.spacing))
-                            text: hero.liveMinuteText().length > 0 ? i18nc("@info:live match status", "Live %1", hero.liveMinuteText()) : i18nc("@info:live match status", "Live")
+                            text: i18nc("@info:live match status", "Live")
                             color: root.liveColor
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
                             font.bold: true
                             font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        }
+
+                        PlasmaComponents.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !hero.hasStoppageTime() && hero.liveMinuteText().length > 0
+                            text: hero.liveMinuteText()
+                            color: root.liveColor
+                            font.bold: true
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        }
+
+                        HeroMinuteBadge {
+                            visible: hero.hasStoppageTime()
+                            text: hero.stoppageMinutePart(1)
+                        }
+
+                        PlasmaComponents.Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: hero.hasStoppageTime()
+                            text: "+"
+                            color: root.liveColor
+                            font.bold: true
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        }
+
+                        HeroMinuteBadge {
+                            visible: hero.hasStoppageTime() && hero.stoppageMinutePart(2).length > 0
+                            text: hero.stoppageMinutePart(2)
                         }
                     }
                 }
@@ -734,6 +920,8 @@ Item {
     }
 
     component HeroTeam: ColumnLayout {
+        id: heroTeam
+
         property string name: ""
         property string badge: ""
         readonly property int badgeSize: Kirigami.Units.iconSizes.huge + Kirigami.Units.gridUnit
@@ -746,24 +934,11 @@ Item {
             Layout.preferredWidth: parent.badgeSize
             Layout.preferredHeight: Layout.preferredWidth
 
-            Image {
+            TeamBadgeImage {
                 anchors.fill: parent
-                source: badge
-                visible: badge.length > 0
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-                cache: true
-                smooth: true
-                sourceSize.width: parent.parent.backingSize
-                sourceSize.height: parent.parent.backingSize
-            }
-
-            Kirigami.Icon {
-                anchors.fill: parent
-                source: "applications-games"
-                visible: badge.length === 0
-                color: Kirigami.Theme.disabledTextColor
-                opacity: 0.9
+                sourceUrl: heroTeam.badge
+                fallbackIcon: "applications-games"
+                fallbackOpacity: 0.9
             }
 
         }
@@ -778,6 +953,28 @@ Item {
             font.pixelSize: Math.max(Kirigami.Theme.defaultFont.pixelSize, Kirigami.Theme.smallFont.pixelSize + 2)
         }
 
+    }
+
+    component HeroMinuteBadge: Rectangle {
+        property string text: ""
+
+        anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+        width: Math.max(height, minuteLabel.implicitWidth + Kirigami.Units.smallSpacing)
+        height: Kirigami.Theme.smallFont.pixelSize + Kirigami.Units.smallSpacing
+        radius: 3
+        color: root.withAlpha(root.liveColor, 0.16)
+        border.width: 1
+        border.color: root.withAlpha(root.liveColor, 0.65)
+
+        PlasmaComponents.Label {
+            id: minuteLabel
+
+            anchors.centerIn: parent
+            text: parent.text
+            color: root.liveColor
+            font.bold: true
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
     }
 
     component WeatherStyleTab: Rectangle {
@@ -1004,7 +1201,6 @@ Item {
         property int points: 0
         property int goalDifference: 0
         property string form: ""
-        property var formDetails: []
         property string crest: ""
         property bool favorite: false
 
@@ -1033,13 +1229,10 @@ Item {
                 font.pixelSize: Kirigami.Units.gridUnit
             }
 
-            Image {
+            TeamBadgeImage {
                 Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                 Layout.preferredHeight: Layout.preferredWidth
-                source: crest
-                visible: crest.length > 0
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
+                sourceUrl: crest
             }
 
             PlasmaComponents.Label {
@@ -1097,7 +1290,6 @@ Item {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 6.6
                 Layout.preferredHeight: Kirigami.Units.gridUnit * 1.3
                 form: parent.parent.form
-                details: parent.parent.formDetails
             }
         }
 
@@ -1176,13 +1368,10 @@ Item {
 
         spacing: Kirigami.Units.smallSpacing
 
-        Image {
+        TeamBadgeImage {
             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
             Layout.preferredHeight: Layout.preferredWidth
-            source: badge
-            visible: badge.length > 0
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
+            sourceUrl: badge
         }
 
         PlasmaComponents.Label {
@@ -1202,7 +1391,6 @@ Item {
 
     component FormBadges: Item {
         property string form: ""
-        property var details: []
 
         function results() {
             const text = String(form || "").trim();
@@ -1213,13 +1401,6 @@ Item {
                 return text.split("").slice(-5);
 
             return text.replace(/[^A-Za-z]+/g, ",").split(",").filter(item => item.length > 0).slice(-5);
-        }
-
-        function tooltipFor(index) {
-            if (!details || index < 0 || index >= details.length)
-                return "";
-
-            return String(details[index] || "");
         }
 
         Row {
@@ -1235,12 +1416,6 @@ Item {
                     width: Kirigami.Units.gridUnit * 1.1
                     height: width
                     radius: 2
-                    ToolTip.text: parent.parent.tooltipFor(index)
-                    ToolTip.visible: badgeHover.hovered && ToolTip.text.length > 0
-
-                    HoverHandler {
-                        id: badgeHover
-                    }
 
                     color: {
                         const result = String(modelData).toUpperCase();
