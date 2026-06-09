@@ -39,18 +39,6 @@ KCM.SimpleKCM {
     property bool cfg_prioritizePopular: Plasmoid.configuration.prioritizePopular
     property string cfg_provider: Plasmoid.configuration.provider
     property string cfg_defaultSport: Plasmoid.configuration.defaultSport
-    property string cfg_apiBaseUrl: Plasmoid.configuration.apiBaseUrl
-    property string cfg_apiKey: Plasmoid.configuration.apiKey
-    property string cfg_theSportsDBApiKey: Plasmoid.configuration.theSportsDBApiKey
-    property string cfg_allSportsApiKey: Plasmoid.configuration.allSportsApiKey
-    property string cfg_apiSportsFootballKey: Plasmoid.configuration.apiSportsFootballKey
-    property string cfg_apiSportsBasketballKey: Plasmoid.configuration.apiSportsBasketballKey
-    property string cfg_apiSportsTennisKey: Plasmoid.configuration.apiSportsTennisKey
-    property string cfg_apiSportsCricketKey: Plasmoid.configuration.apiSportsCricketKey
-    property string cfg_apiSportsBaseballKey: Plasmoid.configuration.apiSportsBaseballKey
-    property string cfg_apiSportsHockeyKey: Plasmoid.configuration.apiSportsHockeyKey
-    property string cfg_apiSportsVolleyballKey: Plasmoid.configuration.apiSportsVolleyballKey
-    property string cfg_apiSportsAmericanFootballKey: Plasmoid.configuration.apiSportsAmericanFootballKey
     property string cfg_selectedSports: Plasmoid.configuration.selectedSports
     property string cfg_country: Plasmoid.configuration.country
     property string cfg_league: Plasmoid.configuration.league
@@ -81,18 +69,6 @@ KCM.SimpleKCM {
 
     property string cfg_providerDefault: "sportscore"
     property string cfg_defaultSportDefault: "football"
-    property string cfg_apiBaseUrlDefault: ""
-    property string cfg_apiKeyDefault: ""
-    property string cfg_theSportsDBApiKeyDefault: ""
-    property string cfg_allSportsApiKeyDefault: ""
-    property string cfg_apiSportsFootballKeyDefault: ""
-    property string cfg_apiSportsBasketballKeyDefault: ""
-    property string cfg_apiSportsTennisKeyDefault: ""
-    property string cfg_apiSportsCricketKeyDefault: ""
-    property string cfg_apiSportsBaseballKeyDefault: ""
-    property string cfg_apiSportsHockeyKeyDefault: ""
-    property string cfg_apiSportsVolleyballKeyDefault: ""
-    property string cfg_apiSportsAmericanFootballKeyDefault: ""
     property string cfg_selectedSportsDefault: ""
     property string cfg_countryDefault: ""
     property string cfg_leagueDefault: ""
@@ -496,26 +472,10 @@ KCM.SimpleKCM {
         root.pageIndex = 0;
     }
 
-    function openAddSportWizard(type) {
-        const normalizedType = String(type || "competition").trim() === "team" ? "team" : "competition";
-        root.wizardInitialEntry = {
-            type: normalizedType,
-            sport: "",
-            country: "",
-            league: "",
-            favoriteTeam: "",
-            followMode: normalizedType === "team" ? "team" : "league"
-        };
+    function openAddSportWizard() {
+        root.wizardInitialEntry = {};
         root.wizardEditingIndex = -1;
         root.pageIndex = 1;
-    }
-
-    function openAddCompetitionWizard() {
-        root.openAddSportWizard("competition");
-    }
-
-    function openAddTeamWizard() {
-        root.openAddSportWizard("team");
     }
 
     function openEditSavedLeague(entry, index) {
@@ -604,8 +564,7 @@ KCM.SimpleKCM {
             SavedLeaguesList {
                 Layout.fillWidth: true
                 configRoot: root
-                onAddCompetitionRequested: root.openAddCompetitionWizard()
-                onAddTeamRequested: root.openAddTeamWizard()
+                onAddRequested: root.openAddSportWizard()
             }
 
             Item {

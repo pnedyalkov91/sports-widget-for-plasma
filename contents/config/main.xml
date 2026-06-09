@@ -12,42 +12,6 @@
     <entry name="defaultSport" type="String">
       <default>football</default>
     </entry>
-    <entry name="apiBaseUrl" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="theSportsDBApiKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="allSportsApiKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsFootballKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsBasketballKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsTennisKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsCricketKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsBaseballKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsHockeyKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsVolleyballKey" type="String">
-      <default></default>
-    </entry>
-    <entry name="apiSportsAmericanFootballKey" type="String">
-      <default></default>
-    </entry>
     <entry name="selectedSports" type="String">
       <default></default>
     </entry>

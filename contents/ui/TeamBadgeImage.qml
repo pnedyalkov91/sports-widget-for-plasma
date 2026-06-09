@@ -12,6 +12,7 @@ Item {
     property string sourceUrl: ""
     property string fallbackIcon: ""
     property real fallbackOpacity: 0.5
+    property int fillMode: Image.PreserveAspectFit
     readonly property bool systemL10nFlag: sourceUrl.indexOf("file:///usr/share/locale/l10n/") === 0
     readonly property string flagEmoji: flagEmojiFromSource()
 
@@ -21,7 +22,7 @@ Item {
         anchors.fill: parent
         source: root.systemL10nFlag ? "" : root.sourceUrl
         visible: root.sourceUrl.length > 0 && !root.systemL10nFlag && status !== Image.Error
-        fillMode: Image.PreserveAspectFit
+        fillMode: root.fillMode
         asynchronous: true
         cache: true
         smooth: true

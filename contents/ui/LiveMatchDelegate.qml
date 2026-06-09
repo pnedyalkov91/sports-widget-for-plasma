@@ -177,6 +177,7 @@ Item {
                 errorText: root.detailsError
                 homeTeam: root.homeTeam
                 awayTeam: root.awayTeam
+                sport: root.sport
             }
         }
     }

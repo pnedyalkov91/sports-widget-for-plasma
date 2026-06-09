@@ -14,18 +14,6 @@ import org.kde.plasma.plasmoid
 KCM.SimpleKCM {
     id: root
 
-    property alias cfg_apiBaseUrl: apiBaseUrl.text
-    property alias cfg_apiKey: apiKey.text
-    property alias cfg_theSportsDBApiKey: theSportsDBApiKey.text
-    property alias cfg_allSportsApiKey: allSportsApiKey.text
-    property alias cfg_apiSportsFootballKey: apiSportsFootballKey.text
-    property alias cfg_apiSportsBasketballKey: apiSportsBasketballKey.text
-    property alias cfg_apiSportsTennisKey: apiSportsTennisKey.text
-    property alias cfg_apiSportsCricketKey: apiSportsCricketKey.text
-    property alias cfg_apiSportsBaseballKey: apiSportsBaseballKey.text
-    property alias cfg_apiSportsHockeyKey: apiSportsHockeyKey.text
-    property alias cfg_apiSportsVolleyballKey: apiSportsVolleyballKey.text
-    property alias cfg_apiSportsAmericanFootballKey: apiSportsAmericanFootballKey.text
     property alias cfg_refreshInterval: refreshInterval.value
     property alias cfg_liveRefreshEnabled: liveRefreshEnabled.checked
     property alias cfg_liveRefreshInterval: liveRefreshInterval.value
@@ -60,18 +48,6 @@ KCM.SimpleKCM {
     property bool cfg_prioritizePopular: Plasmoid.configuration.prioritizePopular
     property string cfg_providerDefault: "sportscore"
     property string cfg_defaultSportDefault: "football"
-    property string cfg_apiBaseUrlDefault: ""
-    property string cfg_apiKeyDefault: ""
-    property string cfg_theSportsDBApiKeyDefault: ""
-    property string cfg_allSportsApiKeyDefault: ""
-    property string cfg_apiSportsFootballKeyDefault: ""
-    property string cfg_apiSportsBasketballKeyDefault: ""
-    property string cfg_apiSportsTennisKeyDefault: ""
-    property string cfg_apiSportsCricketKeyDefault: ""
-    property string cfg_apiSportsBaseballKeyDefault: ""
-    property string cfg_apiSportsHockeyKeyDefault: ""
-    property string cfg_apiSportsVolleyballKeyDefault: ""
-    property string cfg_apiSportsAmericanFootballKeyDefault: ""
     property string cfg_selectedSportsDefault: ""
     property string cfg_countryDefault: ""
     property string cfg_leagueDefault: ""
@@ -110,54 +86,8 @@ KCM.SimpleKCM {
         return 0;
     }
 
-    function providerNeedsKey(providerId) {
-        return ProviderCatalog.requiresApiKey(providerId);
-    }
-
-    function providerPlaceholder(providerId) {
-        return ProviderCatalog.defaultBaseUrl(providerId);
-    }
-
-    function apiKeyPlaceholder(providerId) {
-        if (providerId === "thesportsdb-premium")
-            return i18nc("@info:placeholder", "TheSportsDB premium API key");
-        if (providerId === "allsportsapi")
-            return i18nc("@info:placeholder", "AllSportsAPI key");
-        if (providerId === "api-sports")
-            return i18nc("@info:placeholder", "API-Sports key for this sport");
-
-        return i18nc("@info:placeholder", "Optional API key");
-    }
-
-    function providerIs(providerId) {
-        return provider.currentValue === providerId;
-    }
-
-    function providerUsesSportKeys() {
-        return ProviderCatalog.providerUsesSportKeys(provider.currentValue);
-    }
-
-    function providerUsesBuiltInKey() {
-        return ProviderCatalog.providerUsesBuiltInKey(provider.currentValue);
-    }
-
     Kirigami.FormLayout {
         anchors.fill: parent
-
-        ComboBox {
-            id: provider
-
-            Kirigami.FormData.label: i18nc("@label:listbox", "Provider:")
-            Layout.fillWidth: true
-            textRole: "label"
-            valueRole: "value"
-            model: ProviderCatalog.providerOptions()
-            Component.onCompleted: {
-                currentIndex = root.indexFor(model, root.cfg_provider);
-                root.cfg_provider = currentValue;
-            }
-            onActivated: root.cfg_provider = currentValue
-        }
 
         ComboBox {
             id: defaultSport
@@ -166,147 +96,12 @@ KCM.SimpleKCM {
             Layout.fillWidth: true
             textRole: "label"
             valueRole: "value"
-            model: ProviderCatalog.sportOptions(provider.currentValue)
+            model: ProviderCatalog.sportOptions("")
             Component.onCompleted: {
                 currentIndex = root.indexFor(model, root.cfg_defaultSport);
                 root.cfg_defaultSport = currentValue;
             }
             onActivated: root.cfg_defaultSport = currentValue
-        }
-
-        TextField {
-            id: apiBaseUrl
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "API base URL:")
-            Layout.fillWidth: true
-            visible: false
-            placeholderText: root.providerPlaceholder(provider.currentValue)
-        }
-
-        TextField {
-            id: apiKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "API key:")
-            Layout.fillWidth: true
-            visible: false
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder(provider.currentValue)
-        }
-
-        Label {
-            Kirigami.FormData.label: i18nc("@label", "API key:")
-            Layout.fillWidth: true
-            visible: root.providerUsesBuiltInKey()
-            text: i18nc("@info", "TheSportsDB Free uses the public key 123.")
-            wrapMode: Text.WordWrap
-        }
-
-        TextField {
-            id: theSportsDBApiKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "TheSportsDB key:")
-            Layout.fillWidth: true
-            visible: root.providerIs("thesportsdb-premium")
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("thesportsdb-premium")
-        }
-
-        TextField {
-            id: allSportsApiKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "AllSportsAPI key:")
-            Layout.fillWidth: true
-            visible: root.providerIs("allsportsapi")
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("allsportsapi")
-        }
-
-        Label {
-            Kirigami.FormData.label: i18nc("@label", "API-Sports keys:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            text: i18nc("@info", "API-Sports uses a separate key for each sport API.")
-            wrapMode: Text.WordWrap
-        }
-
-        TextField {
-            id: apiSportsFootballKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "Football:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
-        }
-
-        TextField {
-            id: apiSportsBasketballKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "Basketball:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
-        }
-
-        TextField {
-            id: apiSportsTennisKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "Tennis:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
-        }
-
-        TextField {
-            id: apiSportsCricketKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "Cricket:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
-        }
-
-        TextField {
-            id: apiSportsBaseballKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "Baseball:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
-        }
-
-        TextField {
-            id: apiSportsHockeyKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "Hockey:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
-        }
-
-        TextField {
-            id: apiSportsVolleyballKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "Volleyball:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
-        }
-
-        TextField {
-            id: apiSportsAmericanFootballKey
-
-            Kirigami.FormData.label: i18nc("@label:textbox", "American Football:")
-            Layout.fillWidth: true
-            visible: root.providerUsesSportKeys()
-            echoMode: TextInput.Password
-            placeholderText: root.apiKeyPlaceholder("api-sports")
         }
 
         SpinBox {

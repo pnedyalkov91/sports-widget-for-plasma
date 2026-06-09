@@ -40,6 +40,12 @@ function rootPath(sport) {
     return supports(value) ? "/" + value + "/" : "";
 }
 
+function countriesPath(sport) {
+    if (normalizedSport(sport) === "football")
+        return "/football/countries/";
+    return "";
+}
+
 function competitionSourcePath(sport, country) {
     const value = normalizedSport(sport);
     const countrySlug = slug(country);

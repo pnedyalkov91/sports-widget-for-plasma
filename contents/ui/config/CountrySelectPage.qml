@@ -18,7 +18,7 @@ SportStepPage {
     property bool loadingCountries: false
     property string countryLoadError: ""
     property int countryRequestToken: 0
-    readonly property bool pageActive: root.configRoot && root.configRoot.pageIndex === 1
+    readonly property bool pageActive: root.configRoot && !root.configRoot.tennisMode && root.configRoot.pageIndex === 1
     readonly property bool tennisMode: root.configRoot && root.configRoot.normalizedSport() === "tennis"
     readonly property var displayedOptions: root.pageActive && root.configRoot && !root.loadingCountries ? root.configRoot.filtered(root.configRoot.countryOptions(), root.countryFilter) : []
 
@@ -87,8 +87,6 @@ SportStepPage {
                     infoText: String(row && row.infoText || "").trim()
                 };
             }).filter(row => row.value.length > 0);
-            if (root.configRoot.cfg_type === "team" && sport !== "tennis")
-                options = options.filter(option => option.value !== "world");
             root.configRoot.cfg_providerCountrySport = sport;
             root.configRoot.cfg_providerCountryOptions = options;
             if (options.length === 0)

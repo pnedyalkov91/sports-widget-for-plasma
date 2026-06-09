@@ -35,7 +35,6 @@ Rectangle {
     property bool splitLeagueAndTimeLines: false
     property bool splitDateAndTimeLines: false
     readonly property color liveColor: Kirigami.Theme.negativeTextColor
-    readonly property bool isBasketball: String(root.sport || "").toLowerCase() === "basketball"
 
     signal clicked()
     signal doubleClicked()
@@ -188,7 +187,6 @@ Rectangle {
         anchors.fill: parent
         anchors.leftMargin: Kirigami.Units.smallSpacing
         anchors.rightMargin: Kirigami.Units.smallSpacing
-        visible: !root.isBasketball
 
         ColumnLayout {
             id: scoreColumn
@@ -386,7 +384,7 @@ Rectangle {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.leftMargin: Kirigami.Units.smallSpacing
-            spacing: 0
+            spacing: Kirigami.Units.smallSpacing
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -411,24 +409,10 @@ Rectangle {
 
     }
 
-    BasketballScoreDelegate {
-        anchors.fill: parent
-        visible: root.isBasketball
-        homeTeam: root.homeTeam
-        awayTeam: root.awayTeam
-        homeScore: root.homeScore
-        awayScore: root.awayScore
-        minute: root.minute
-        startTime: root.startTime
-        homeBadge: root.homeBadge
-        awayBadge: root.awayBadge
-        live: root.isLiveMatch()
-        showScore: root.showScore
-        selected: root.selected
-    }
-
     component TeamLogo: Item {
         property string sourceUrl: ""
+
+        readonly property bool isTennis: String(root.sport || "").toLowerCase() === "tennis"
 
         Layout.preferredWidth: Kirigami.Units.iconSizes.large
         Layout.preferredHeight: Layout.preferredWidth
@@ -437,6 +421,7 @@ Rectangle {
             anchors.fill: parent
             sourceUrl: parent.sourceUrl
             fallbackIcon: "emblem-favorite"
+            fillMode: parent.isTennis ? Image.PreserveAspectCrop : Image.PreserveAspectFit
         }
 
     }

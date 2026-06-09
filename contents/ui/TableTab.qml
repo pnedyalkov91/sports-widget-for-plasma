@@ -463,7 +463,7 @@ Item {
                     text: tableRow.valueForColumn(modelData)
                     color: root.tablePrimaryTextColor
                     font.bold: Boolean(modelData.emphasized)
-                    font.pixelSize: Boolean(modelData.emphasized) ? Kirigami.Units.gridUnit * 1.25 : Kirigami.Theme.defaultFont.pixelSize
+                    font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
                     Layout.preferredWidth: Kirigami.Units.gridUnit * Number(modelData.width || 2)
                 }
             }

@@ -347,6 +347,16 @@ const FOOTBALL_COUNTRIES = [
         "infoText": ""
     },
     {
+        "label": "Guinea",
+        "value": "guinea",
+        "infoText": ""
+    },
+    {
+        "label": "Guinea-Bissau",
+        "value": "guinea-bissau",
+        "infoText": ""
+    },
+    {
         "label": "Guyana",
         "value": "guyana",
         "infoText": ""
@@ -502,6 +512,11 @@ const FOOTBALL_COUNTRIES = [
         "infoText": ""
     },
     {
+        "label": "Macao, China",
+        "value": "macao-china",
+        "infoText": ""
+    },
+    {
         "label": "Madagascar",
         "value": "madagascar",
         "infoText": ""
@@ -537,6 +552,11 @@ const FOOTBALL_COUNTRIES = [
         "infoText": ""
     },
     {
+        "label": "Mauritius",
+        "value": "mauritius",
+        "infoText": ""
+    },
+    {
         "label": "Mexico",
         "value": "mexico",
         "infoText": ""
@@ -544,6 +564,11 @@ const FOOTBALL_COUNTRIES = [
     {
         "label": "Moldova",
         "value": "moldova",
+        "infoText": ""
+    },
+    {
+        "label": "Monaco",
+        "value": "monaco",
         "infoText": ""
     },
     {
@@ -604,6 +629,11 @@ const FOOTBALL_COUNTRIES = [
     {
         "label": "Nigeria",
         "value": "nigeria",
+        "infoText": ""
+    },
+    {
+        "label": "North Korea",
+        "value": "north-korea",
         "infoText": ""
     },
     {
@@ -762,6 +792,11 @@ const FOOTBALL_COUNTRIES = [
         "infoText": ""
     },
     {
+        "label": "Somalia",
+        "value": "somalia",
+        "infoText": ""
+    },
+    {
         "label": "South Africa",
         "value": "south-africa",
         "infoText": ""
@@ -769,6 +804,11 @@ const FOOTBALL_COUNTRIES = [
     {
         "label": "South Korea",
         "value": "south-korea",
+        "infoText": ""
+    },
+    {
+        "label": "South Sudan",
+        "value": "south-sudan",
         "infoText": ""
     },
     {
@@ -819,6 +859,11 @@ const FOOTBALL_COUNTRIES = [
     {
         "label": "Thailand",
         "value": "thailand",
+        "infoText": ""
+    },
+    {
+        "label": "Timor-Leste",
+        "value": "timor-leste",
         "infoText": ""
     },
     {
@@ -1064,8 +1109,10 @@ const COUNTRY_FLAG_CODES = {
     "slovakia": "sk",
     "slovenia": "si",
     "solomon-islands": "sb",
+    "somalia": "so",
     "south-africa": "za",
     "south-korea": "kr",
+    "south-sudan": "ss",
     "spain": "es",
     "sri-lanka": "lk",
     "sudan": "sd",
@@ -1093,7 +1140,22 @@ const COUNTRY_FLAG_CODES = {
     "wales": "gb",
     "yemen": "ye",
     "zambia": "zm",
-    "zimbabwe": "zw"
+    "zimbabwe": "zw",
+    "bosnia": "ba",
+    "canadian": "ca",
+    "chinese-taipei": "tw",
+    "costa": "cr",
+    "eswatini": "sz",
+    "fyr-macedonia": "mk",
+    "guinea": "gn",
+    "guinea-bissau": "gw",
+    "korea-republic": "kr",
+    "macao-china": "mo",
+    "mauritius": "mu",
+    "monaco": "mc",
+    "north-korea": "kp",
+    "st-vincent-and-the-grenadines": "vc",
+    "timor-leste": "tl"
 };
 
 const NATIONAL_TEAM_ALIASES = {
@@ -1101,14 +1163,148 @@ const NATIONAL_TEAM_ALIASES = {
     "democratic-republic-of-the-congo": ["DR Congo", "Congo DR"],
     "hong-kong-china": ["Hong Kong"],
     "ivory-coast": ["Cote d'Ivoire", "Côte d'Ivoire"],
-    "north-macedonia": ["Macedonia"],
+    "macao-china": ["Macao", "Macau"],
+    "north-korea": ["DPR Korea", "Korea DPR"],
+    "north-macedonia": ["Macedonia", "FYR Macedonia"],
     "south-korea": ["Korea Republic", "Republic of Korea"],
+    "timor-leste": ["East Timor"],
     "turkey": ["Türkiye"],
     "united-states": ["USA", "United States of America"]
 };
 
+const BASKETBALL_COUNTRIES = [
+    { "label": "International Tournaments", "value": "world", "infoText": "NBA\nFIBA World Cup\nOlympic Basketball Tournament\nEuroLeague\nEuroCup\nFIBA Europe Cup\nFIBA Champions League" },
+    { "label": "Albania", "value": "albania", "infoText": "" },
+    { "label": "Algeria", "value": "algeria", "infoText": "" },
+    { "label": "Angola", "value": "angola", "infoText": "" },
+    { "label": "Argentina", "value": "argentina", "infoText": "" },
+    { "label": "Armenia", "value": "armenia", "infoText": "" },
+    { "label": "Australia", "value": "australia", "infoText": "" },
+    { "label": "Austria", "value": "austria", "infoText": "" },
+    { "label": "Azerbaijan", "value": "azerbaijan", "infoText": "" },
+    { "label": "Bahrain", "value": "bahrain", "infoText": "" },
+    { "label": "Belarus", "value": "belarus", "infoText": "" },
+    { "label": "Belgium", "value": "belgium", "infoText": "" },
+    { "label": "Bolivia", "value": "bolivia", "infoText": "" },
+    { "label": "Bosnia and Herzegovina", "value": "bosnia", "infoText": "" },
+    { "label": "Brazil", "value": "brazil", "infoText": "" },
+    { "label": "Bulgaria", "value": "bulgaria", "infoText": "" },
+    { "label": "Cameroon", "value": "cameroon", "infoText": "" },
+    { "label": "Canada", "value": "canada", "infoText": "" },
+    { "label": "Canada", "value": "canadian", "infoText": "" },
+    { "label": "Chile", "value": "chile", "infoText": "" },
+    { "label": "China", "value": "china", "infoText": "" },
+    { "label": "Colombia", "value": "colombia", "infoText": "" },
+    { "label": "Costa Rica", "value": "costa", "infoText": "" },
+    { "label": "Croatia", "value": "croatia", "infoText": "" },
+    { "label": "Cuba", "value": "cuba", "infoText": "" },
+    { "label": "Cyprus", "value": "cyprus", "infoText": "" },
+    { "label": "Czech Republic", "value": "czech-republic", "infoText": "" },
+    { "label": "Denmark", "value": "denmark", "infoText": "" },
+    { "label": "Dominican Republic", "value": "dominican-republic", "infoText": "" },
+    { "label": "Ecuador", "value": "ecuador", "infoText": "" },
+    { "label": "Egypt", "value": "egypt", "infoText": "" },
+    { "label": "El Salvador", "value": "el-salvador", "infoText": "" },
+    { "label": "England", "value": "england", "infoText": "" },
+    { "label": "Estonia", "value": "estonia", "infoText": "" },
+    { "label": "Finland", "value": "finland", "infoText": "" },
+    { "label": "France", "value": "france", "infoText": "" },
+    { "label": "Georgia", "value": "georgia", "infoText": "" },
+    { "label": "Germany", "value": "germany", "infoText": "" },
+    { "label": "Greece", "value": "greece", "infoText": "" },
+    { "label": "Guatemala", "value": "guatemala", "infoText": "" },
+    { "label": "Hungary", "value": "hungary", "infoText": "" },
+    { "label": "Israel", "value": "israel", "infoText": "" },
+    { "label": "Japan", "value": "japan", "infoText": "" },
+    { "label": "South Korea", "value": "korea-republic", "infoText": "" },
+    { "label": "Latvia", "value": "latvia", "infoText": "" },
+    { "label": "Lithuania", "value": "lithuania", "infoText": "" },
+    { "label": "Luxembourg", "value": "luxembourg", "infoText": "" },
+    { "label": "Mexico", "value": "mexico", "infoText": "" },
+    { "label": "Montenegro", "value": "montenegro", "infoText": "" },
+    { "label": "Morocco", "value": "morocco", "infoText": "" },
+    { "label": "Netherlands", "value": "netherlands", "infoText": "" },
+    { "label": "New Zealand", "value": "new-zealand", "infoText": "" },
+    { "label": "Nigeria", "value": "nigeria", "infoText": "" },
+    { "label": "North Macedonia", "value": "fyr-macedonia", "infoText": "" },
+    { "label": "Norway", "value": "norway", "infoText": "" },
+    { "label": "Paraguay", "value": "paraguay", "infoText": "" },
+    { "label": "Peru", "value": "peru", "infoText": "" },
+    { "label": "Philippines", "value": "philippines", "infoText": "" },
+    { "label": "Poland", "value": "poland", "infoText": "" },
+    { "label": "Portugal", "value": "portugal", "infoText": "" },
+    { "label": "Puerto Rico", "value": "puerto-rico", "infoText": "" },
+    { "label": "Romania", "value": "romania", "infoText": "" },
+    { "label": "Russia", "value": "russia", "infoText": "" },
+    { "label": "Senegal", "value": "senegal", "infoText": "" },
+    { "label": "Serbia", "value": "serbia", "infoText": "" },
+    { "label": "Singapore", "value": "singapore", "infoText": "" },
+    { "label": "Slovakia", "value": "slovakia", "infoText": "" },
+    { "label": "Slovenia", "value": "slovenia", "infoText": "" },
+    { "label": "South Africa", "value": "south-africa", "infoText": "" },
+    { "label": "Spain", "value": "spain", "infoText": "" },
+    { "label": "Sweden", "value": "sweden", "infoText": "" },
+    { "label": "Switzerland", "value": "switzerland", "infoText": "" },
+    { "label": "Thailand", "value": "thailand", "infoText": "" },
+    { "label": "Turkey", "value": "turkey", "infoText": "" },
+    { "label": "Ukraine", "value": "ukraine", "infoText": "" },
+    { "label": "United States", "value": "united-states", "infoText": "" },
+    { "label": "Uruguay", "value": "uruguay", "infoText": "" },
+    { "label": "Venezuela", "value": "venezuela", "infoText": "" }
+];
+
+const CRICKET_COUNTRIES = [
+    { "label": "International Tournaments", "value": "world", "infoText": "ICC Cricket World Cup\nICC T20 World Cup\nICC Champions Trophy\nICC World Test Championship\nICC Women's Cricket World Cup" },
+    { "label": "Afghanistan", "value": "afghanistan", "infoText": "" },
+    { "label": "Australia", "value": "australia", "infoText": "" },
+    { "label": "Bangladesh", "value": "bangladesh", "infoText": "" },
+    { "label": "Chinese Taipei", "value": "chinese-taipei", "infoText": "" },
+    { "label": "Cyprus", "value": "cyprus", "infoText": "" },
+    { "label": "Czech Republic", "value": "czech-republic", "infoText": "" },
+    { "label": "England", "value": "england", "infoText": "" },
+    { "label": "Eswatini", "value": "eswatini", "infoText": "" },
+    { "label": "Finland", "value": "finland", "infoText": "" },
+    { "label": "Germany", "value": "germany", "infoText": "" },
+    { "label": "Hong Kong, China", "value": "hong-kong-china", "infoText": "" },
+    { "label": "Iceland", "value": "iceland", "infoText": "" },
+    { "label": "India", "value": "india", "infoText": "" },
+    { "label": "Ireland", "value": "ireland", "infoText": "" },
+    { "label": "Nepal", "value": "nepal", "infoText": "" },
+    { "label": "Netherlands", "value": "netherlands", "infoText": "" },
+    { "label": "New Zealand", "value": "new-zealand", "infoText": "" },
+    { "label": "Pakistan", "value": "pakistan", "infoText": "" },
+    { "label": "Qatar", "value": "qatar", "infoText": "" },
+    { "label": "South Africa", "value": "south-africa", "infoText": "" },
+    { "label": "Spain", "value": "spain", "infoText": "" },
+    { "label": "Sri Lanka", "value": "sri-lanka", "infoText": "" },
+    { "label": "St Vincent and the Grenadines", "value": "st-vincent-and-the-grenadines", "infoText": "" },
+    { "label": "Sweden", "value": "sweden", "infoText": "" },
+    { "label": "Switzerland", "value": "switzerland", "infoText": "" },
+    { "label": "Uganda", "value": "uganda", "infoText": "" },
+    { "label": "United Arab Emirates", "value": "united-arab-emirates", "infoText": "" },
+    { "label": "Vanuatu", "value": "vanuatu", "infoText": "" }
+];
+
 function footballCountryOptions(includeWorld) {
     return FOOTBALL_COUNTRIES.filter(country => includeWorld || country.value !== "world").map(country => ({
+        label: country.label,
+        value: country.value,
+        icon: flagSource(country.value),
+        infoText: country.infoText || ""
+    }));
+}
+
+function basketballCountryOptions() {
+    return BASKETBALL_COUNTRIES.map(country => ({
+        label: country.label,
+        value: country.value,
+        icon: flagSource(country.value),
+        infoText: country.infoText || ""
+    }));
+}
+
+function cricketCountryOptions() {
+    return CRICKET_COUNTRIES.map(country => ({
         label: country.label,
         value: country.value,
         icon: flagSource(country.value),

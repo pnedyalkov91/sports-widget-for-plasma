@@ -90,6 +90,9 @@ Item {
         if (tab === 0 || tab === 1)
             return true;
 
+        if (tab === 3 && String(root.sport || "").toLowerCase() === "tennis")
+            return false;
+
         if (root.widgetTabs === "all")
             return true;
 

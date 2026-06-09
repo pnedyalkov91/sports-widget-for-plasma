@@ -20,8 +20,7 @@ ColumnLayout {
     property int renameIndex: -1
     property int deleteIndex: -1
     property string renameType: "competition"
-    signal addCompetitionRequested()
-    signal addTeamRequested()
+    signal addRequested()
 
     spacing: Kirigami.Units.largeSpacing
 
@@ -310,19 +309,18 @@ ColumnLayout {
     SavedSection {
         Layout.fillWidth: true
         title: i18nc("@title:group", "Saved Competitions")
-        addText: i18nc("@action:button", "Add Competition")
+        addText: i18nc("@action:button", "Add")
         emptyText: i18nc("@info", "Save tournaments, leagues or cups here.")
         listModel: competitionModel
-        onAddRequested: root.addCompetitionRequested()
+        onAddRequested: root.addRequested()
     }
 
     SavedSection {
         Layout.fillWidth: true
         title: i18nc("@title:group", "Saved Teams")
-        addText: i18nc("@action:button", "Add Team")
+        addText: ""
         emptyText: i18nc("@info", "Save teams here to follow them across competitions.")
         listModel: teamModel
-        onAddRequested: root.addTeamRequested()
     }
 
     Dialog {
@@ -478,6 +476,7 @@ ColumnLayout {
             }
 
             Button {
+                visible: sectionRoot.addText.length > 0
                 icon.name: "list-add"
                 text: sectionRoot.addText
                 onClicked: sectionRoot.addRequested()

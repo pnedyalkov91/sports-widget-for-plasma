@@ -16,6 +16,7 @@ Item {
     property string errorText: ""
     property string homeTeam: ""
     property string awayTeam: ""
+    property string sport: ""
     property int activeDetailsTab: 0
     readonly property var summaryRows: details && details.summaryRows ? details.summaryRows : []
     readonly property var statsRows: details && details.statsRows ? details.statsRows : []
@@ -46,7 +47,13 @@ Item {
     readonly property bool hasEvents: eventsRows.length > 0
     readonly property bool hasLineups: homeStarting.length > 0 || awayStarting.length > 0 || homeSubstitutes.length > 0 || awaySubstitutes.length > 0
     readonly property bool hasInformation: matchInfoRows.length > 0 || competitionLogo.length > 0 || competitionName.length > 0 || homeFormation.length > 0 || awayFormation.length > 0 || hasLineups
-    readonly property bool hasAnyDetails: hasInformation || hasEvents || hasStats || hasSummary || halfTimeScore.length > 0
+    readonly property var tennisSets: details && details.tennisSets ? details.tennisSets : null
+    readonly property var tennisPlayerComparison: details && details.tennisPlayerComparison ? details.tennisPlayerComparison : null
+    readonly property bool hasTennisSets: tennisSets !== null && Array.isArray(tennisSets.rows) && tennisSets.rows.length > 0
+    readonly property bool hasTennisComparison: tennisPlayerComparison !== null && Array.isArray(tennisPlayerComparison.rows) && tennisPlayerComparison.rows.length > 0
+    readonly property string trackerUrl: details && details.trackerUrl ? String(details.trackerUrl) : ""
+    readonly property bool hasTracker: trackerUrl.length > 0 && String(root.sport || "").toLowerCase() === "cricket"
+    readonly property bool hasAnyDetails: hasInformation || hasEvents || hasStats || hasSummary || halfTimeScore.length > 0 || hasTennisSets || hasTennisComparison || hasTracker
 
     onDetailsChanged: activeDetailsTab = 0
 
@@ -290,6 +297,42 @@ Item {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
 
+                    // Cricket live tracker
+                    Loader {
+                        id: trackerLoader
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Kirigami.Units.gridUnit * 22
+                        active: root.hasTracker
+                        visible: active
+                        source: active ? Qt.resolvedUrl("TrackerView.qml") : ""
+
+                        Binding {
+                            target: trackerLoader.item
+                            property: "trackerUrl"
+                            value: root.trackerUrl
+                            when: trackerLoader.status === Loader.Ready
+                        }
+                    }
+
+                    // Tennis set-by-set scoreboard
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: root.hasTennisSets
+                        spacing: 2
+
+                        Repeater {
+                            model: root.tennisSets ? root.tennisSets.rows : []
+
+                            delegate: TennisSetRow {
+                                Layout.fillWidth: true
+                                badge: String(modelData.badge || "")
+                                playerName: String(modelData.playerName || "")
+                                setScores: modelData.setScores || []
+                                totalSets: String(modelData.totalSets || "")
+                            }
+                        }
+                    }
+
                     GridLayout {
                         Layout.fillWidth: true
                         visible: root.hasEvents
@@ -339,7 +382,7 @@ Item {
 
                     EmptyTabPlaceholder {
                         Layout.fillWidth: true
-                        visible: !root.hasEvents
+                        visible: !root.hasEvents && !root.hasTennisSets && !root.hasTracker
                         text: i18nc("@info:placeholder", "No match events available")
                     }
                 }
@@ -347,6 +390,32 @@ Item {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
+
+                    // Tennis player comparison
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: root.hasTennisComparison
+                        spacing: 2
+
+                        PlasmaComponents.Label {
+                            Layout.fillWidth: true
+                            text: root.tennisPlayerComparison ? root.tennisPlayerComparison.title : ""
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
+                        Repeater {
+                            model: root.tennisPlayerComparison ? root.tennisPlayerComparison.rows : []
+
+                            delegate: PlayerCompRow {
+                                Layout.fillWidth: true
+                                label: String(modelData.label || "")
+                                homeValue: String(modelData.homeValue || "")
+                                awayValue: String(modelData.awayValue || "")
+                            }
+                        }
+                    }
 
                     SummaryStrip {
                         Layout.fillWidth: true
@@ -374,13 +443,13 @@ Item {
 
                     EmptyTabPlaceholder {
                         Layout.fillWidth: true
-                        visible: !root.hasStats && !root.hasSummary
+                        visible: !root.hasStats && !root.hasSummary && !root.hasTennisComparison
                         text: root.statisticsUnavailableText()
                     }
 
                     PlasmaComponents.Label {
                         Layout.fillWidth: true
-                        visible: !root.hasStats && root.hasSummary
+                        visible: !root.hasStats && root.hasSummary && !root.hasTennisComparison
                         text: root.statisticsUnavailableText()
                         color: Kirigami.Theme.disabledTextColor
                         horizontalAlignment: Text.AlignHCenter
@@ -852,6 +921,97 @@ Item {
                 return label;
 
             return player;
+        }
+    }
+
+    component TennisSetRow: RowLayout {
+        id: tennisSetRow
+
+        property string badge: ""
+        property string playerName: ""
+        property var setScores: []
+        property string totalSets: ""
+
+        spacing: Kirigami.Units.smallSpacing
+
+        Image {
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+            source: tennisSetRow.badge
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            smooth: true
+            visible: tennisSetRow.badge.length > 0
+        }
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            text: tennisSetRow.playerName
+            elide: Text.ElideRight
+            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.1
+        }
+
+        Repeater {
+            model: tennisSetRow.setScores
+
+            PlasmaComponents.Label {
+                required property var modelData
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 1.8
+                text: modelData.score
+                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.1
+                font.bold: modelData.winner
+                color: modelData.winner ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
+
+        PlasmaComponents.Label {
+            text: "·"
+            color: Kirigami.Theme.disabledTextColor
+            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.1
+        }
+
+        PlasmaComponents.Label {
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 1.8
+            text: tennisSetRow.totalSets
+            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize * 1.1
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+        }
+    }
+
+    component PlayerCompRow: RowLayout {
+        id: playerCompRow
+
+        property string label: ""
+        property string homeValue: ""
+        property string awayValue: ""
+
+        spacing: Kirigami.Units.smallSpacing
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            text: playerCompRow.homeValue
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideLeft
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
+
+        PlasmaComponents.Label {
+            text: playerCompRow.label
+            color: Kirigami.Theme.disabledTextColor
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 5
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            text: playerCompRow.awayValue
+            horizontalAlignment: Text.AlignLeft
+            elide: Text.ElideRight
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
         }
     }
 }

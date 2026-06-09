@@ -30,12 +30,14 @@ Item {
     property var cfg_providerLeagueOptions: []
     property string cfg_providerCountrySport: ""
     property var cfg_providerCountryOptions: []
-    property bool showNationalTeamStep: false
-    property string cfg_followMode: "league"
-    property string cfg_type: "competition"
     property var pendingEntries: []
     readonly property bool multiSelectEnabled: root.editingIndex < 0
-    readonly property int pageCount: root.cfg_type === "team" ? (root.showNationalTeamStep ? 4 : 3) : 3
+    readonly property bool tennisMode: {
+        const s = String(root.cfg_selectedSports || "").split(",")[0].trim().toLowerCase();
+        return s === "tennis";
+    }
+    readonly property int pageCount: root.tennisMode ? 2 : 3
+    readonly property int combinedPageIndex: root.tennisMode ? 1 : 2
     readonly property string currentProvider: settingsRoot ? settingsRoot.currentProvider : ""
 
     signal closeRequested()
@@ -69,10 +71,7 @@ Item {
         if (root.cfg_providerCountrySport === root.normalizedSport() && Array.isArray(root.cfg_providerCountryOptions) && root.cfg_providerCountryOptions.length > 0)
             return root.cfg_providerCountryOptions;
 
-        const options = ProviderCatalog.countryOptions(root.currentProvider, root.normalizedSport());
-        return root.cfg_type === "team" && root.normalizedSport() !== "tennis"
-            ? options.filter(option => option.value !== "world")
-            : options;
+        return ProviderCatalog.countryOptions(root.currentProvider, root.normalizedSport());
     }
 
     function leagueOptions() {
@@ -95,28 +94,7 @@ Item {
     }
 
     function favoriteOptions() {
-        if (root.cfg_type === "team")
-            return ProviderCatalog.countryTeamOptions(root.currentProvider, root.normalizedSport(), root.cfg_country);
-
-        return [];
-    }
-
-    function normalizedFollowMode(value, favoriteTeam) {
-        const favorite = String(favoriteTeam || "").trim();
-        return String(value || "").trim() === "team" && favorite.length > 0 ? "team" : "league";
-    }
-
-    function canUseTeamFollowMode() {
-        return root.cfg_favoriteTeam.length > 0;
-    }
-
-    function setFollowMode(value) {
-        if (root.cfg_type === "team") {
-            root.cfg_followMode = "team";
-            return;
-        }
-
-        root.cfg_followMode = root.normalizedFollowMode(value, root.cfg_favoriteTeam);
+        return ProviderCatalog.countryTeamOptions(root.currentProvider, root.normalizedSport(), root.cfg_country);
     }
 
     function countryLabel() {
@@ -199,13 +177,9 @@ Item {
         if (root.pageIndex === 1)
             return root.cfg_country.length > 0;
 
-        if (root.cfg_type === "team" && root.pageIndex === 2)
-            return root.showNationalTeamStep || root.selectedFavoriteTeamValues().length > 0 || root.selectedNationalTeamValues().length > 0;
-
-        if (root.cfg_type === "team")
-            return root.selectedNationalTeamValues().length > 0 || root.selectedFavoriteTeamValues().length > 0;
-
-        return root.selectedLeagueValues().length > 0;
+        return root.selectedLeagueValues().length > 0
+            || root.selectedFavoriteTeamValues().length > 0
+            || root.selectedNationalTeamValues().length > 0;
     }
 
     function selectSport(value) {
@@ -221,8 +195,6 @@ Item {
         root.cfg_providerLeagueOptions = [];
         root.cfg_providerCountrySport = "";
         root.cfg_providerCountryOptions = [];
-        root.showNationalTeamStep = false;
-        root.cfg_followMode = root.cfg_type === "team" ? "team" : "league";
     }
 
     function selectCountry(value) {
@@ -235,8 +207,6 @@ Item {
         root.cfg_selectedFavoriteTeamMeta = ({});
         root.cfg_providerLeagueCountry = "";
         root.cfg_providerLeagueOptions = [];
-        root.showNationalTeamStep = false;
-        root.cfg_followMode = root.cfg_type === "team" ? "team" : "league";
     }
 
     function selectLeague(value) {
@@ -247,10 +217,9 @@ Item {
         if (!root.multiSelectEnabled) {
             root.cfg_selectedLeagues = [league];
             root.cfg_league = league;
-            root.cfg_favoriteTeam = "";
             root.cfg_selectedFavoriteTeams = [];
-            root.cfg_selectedFavoriteTeamMeta = ({});
-            root.cfg_followMode = root.cfg_type === "team" ? "team" : "league";
+            root.cfg_selectedNationalTeams = [];
+            root.cfg_favoriteTeam = "";
             return;
         }
 
@@ -264,10 +233,6 @@ Item {
 
         root.cfg_selectedLeagues = next;
         root.cfg_league = next.length > 0 ? next[0] : "";
-        root.cfg_favoriteTeam = "";
-        root.cfg_selectedFavoriteTeams = [];
-        root.cfg_selectedFavoriteTeamMeta = ({});
-        root.cfg_followMode = root.cfg_type === "team" ? "team" : "league";
     }
 
     function selectFavoriteTeam(value, option) {
@@ -286,7 +251,9 @@ Item {
         if (!root.multiSelectEnabled) {
             root.cfg_selectedFavoriteTeams = [team];
             root.cfg_favoriteTeam = team;
-            root.setFollowMode("team");
+            root.cfg_selectedLeagues = [];
+            root.cfg_selectedNationalTeams = [];
+            root.cfg_league = "";
             return;
         }
 
@@ -300,7 +267,6 @@ Item {
 
         root.cfg_selectedFavoriteTeams = next;
         root.cfg_favoriteTeam = next.length > 0 ? next[0] : "";
-        root.cfg_followMode = root.cfg_type === "team" ? "team" : "league";
     }
 
     function selectNationalTeam(value) {
@@ -308,11 +274,11 @@ Item {
         if (team.length === 0)
             return;
 
-        root.showNationalTeamStep = true;
-
         if (!root.multiSelectEnabled) {
             root.cfg_selectedNationalTeams = [team];
-            root.cfg_followMode = "team";
+            root.cfg_selectedLeagues = [];
+            root.cfg_selectedFavoriteTeams = [];
+            root.cfg_league = "";
             return;
         }
 
@@ -325,13 +291,6 @@ Item {
         }
 
         root.cfg_selectedNationalTeams = next;
-        root.cfg_followMode = "team";
-    }
-
-    function openNationalTeamsStep() {
-        if (root.cfg_type !== "team")
-            return;
-        root.showNationalTeamStep = true;
     }
 
     function currentEntry() {
@@ -347,46 +306,48 @@ Item {
             country,
             countryLabel: root.countryLabel(),
             countryIcon: root.countryIcon(root.cfg_country),
-            followMode: root.cfg_type === "team" ? "team" : "league",
-            type: root.cfg_type === "team" ? "team" : "competition",
             includeTables: SportScoreSports.supportsStandings(sport)
         };
 
-        if (root.cfg_type === "team") {
-            const nationalTeams = root.selectedNationalTeamValues();
-            const mergedTeams = nationalTeams.concat(root.selectedFavoriteTeamValues())
-                .filter((value, index, array) => array.indexOf(value) === index);
-            return mergedTeams.map(team => {
-                let item = Object.assign({}, base);
-                item.league = "";
-                item.leagueLabel = i18nc("@label", "All competitions");
-                item.favoriteTeam = team;
-                item.isNationalTeam = nationalTeams.indexOf(team) >= 0;
-                if (item.isNationalTeam)
-                    item.teamFlag = base.countryIcon;
-                const meta = root.cfg_selectedFavoriteTeamMeta[String(team || "").trim().toLowerCase()] || {};
-                const teamSlug = String(meta && meta.teamSlug || "").trim();
-                const teamPath = String(meta && meta.teamPath || "").trim();
-                const badge = String(meta && meta.badge || "").trim();
-                if (teamSlug.length > 0)
-                    item.teamSlug = teamSlug;
-                if (teamPath.length > 0)
-                    item.teamPath = teamPath;
-                if (badge.length > 0)
-                    item.teamBadge = badge;
-                return item;
-            });
-        }
+        let entries = [];
 
-        return root.selectedLeagueValues().map(league => {
+        root.selectedLeagueValues().forEach(league => {
             let item = Object.assign({}, base);
             const option = root.leagueOption(league);
             item.league = league;
             item.leagueLabel = String(option.label || "").trim() || ProviderCatalog.leagueLabel(league) || league;
             item.competitionPath = String(option.path || option.url || "").trim();
             item.favoriteTeam = "";
-            return item;
+            item.followMode = "league";
+            item.type = "competition";
+            entries.push(item);
         });
+
+        const nationalTeams = root.selectedNationalTeamValues();
+        const allTeams = nationalTeams.concat(root.selectedFavoriteTeamValues())
+            .filter((value, index, array) => array.indexOf(value) === index);
+
+        allTeams.forEach(team => {
+            let item = Object.assign({}, base);
+            item.league = "";
+            item.leagueLabel = i18nc("@label", "All competitions");
+            item.favoriteTeam = team;
+            item.followMode = "team";
+            item.type = "team";
+            item.isNationalTeam = nationalTeams.indexOf(team) >= 0;
+            if (item.isNationalTeam)
+                item.teamFlag = base.countryIcon;
+            const meta = root.cfg_selectedFavoriteTeamMeta[String(team || "").trim().toLowerCase()] || {};
+            if (String(meta.teamSlug || "").trim().length > 0)
+                item.teamSlug = meta.teamSlug;
+            if (String(meta.teamPath || "").trim().length > 0)
+                item.teamPath = meta.teamPath;
+            if (String(meta.badge || "").trim().length > 0)
+                item.teamBadge = meta.badge;
+            entries.push(item);
+        });
+
+        return entries;
     }
 
     function entryType(entry) {
@@ -457,28 +418,36 @@ Item {
     }
 
     function selectedItems() {
-        if (root.cfg_type === "team")
-            return root.selectedNationalTeamValues().concat(root.selectedFavoriteTeamValues())
-                .filter((value, index, array) => array.indexOf(value) === index);
-
         const leagues = root.selectedLeagueValues();
-        return leagues.map(value => ProviderCatalog.leagueLabel(value) || root.optionLabel(root.leagueOptions(), value) || value);
+        const leagueLabels = leagues.map(value => ProviderCatalog.leagueLabel(value) || root.optionLabel(root.leagueOptions(), value) || value);
+        const teamValues = root.selectedNationalTeamValues().concat(root.selectedFavoriteTeamValues())
+            .filter((value, index, array) => array.indexOf(value) === index);
+        return leagueLabels.concat(teamValues);
     }
 
     function selectedItemsSummaryText() {
-        const items = root.selectedItems();
-        if (items.length === 0)
-            return "";
+        const leagues = root.selectedLeagueValues();
+        const teamValues = root.selectedNationalTeamValues().concat(root.selectedFavoriteTeamValues())
+            .filter((value, index, array) => array.indexOf(value) === index);
+        const parts = [];
 
-        const preview = items.slice(0, 5).join(", ");
-        const suffix = items.length > 5 ? i18nc("@label", " and %1 more", items.length - 5) : "";
-        if (root.cfg_type === "team") {
-            return SportScoreSports.usesPlayers(root.normalizedSport())
-                ? i18nc("@info", "Selected players (%1): %2%3", items.length, preview, suffix)
-                : i18nc("@info", "Selected teams (%1): %2%3", items.length, preview, suffix);
+        if (leagues.length > 0) {
+            const leagueNames = leagues.map(value => ProviderCatalog.leagueLabel(value) || root.optionLabel(root.leagueOptions(), value) || value);
+            const preview = leagueNames.slice(0, 3).join(", ");
+            const suffix = leagueNames.length > 3 ? i18nc("@label", " and %1 more", leagueNames.length - 3) : "";
+            parts.push(i18nc("@info", "Competitions (%1): %2%3", leagues.length, preview, suffix));
         }
 
-        return i18nc("@info", "Selected competitions (%1): %2%3", items.length, preview, suffix);
+        if (teamValues.length > 0) {
+            const preview = teamValues.slice(0, 3).join(", ");
+            const suffix = teamValues.length > 3 ? i18nc("@label", " and %1 more", teamValues.length - 3) : "";
+            const usesPlayers = SportScoreSports.usesPlayers(root.normalizedSport());
+            parts.push(usesPlayers
+                ? i18nc("@info", "Players (%1): %2%3", teamValues.length, preview, suffix)
+                : i18nc("@info", "Teams (%1): %2%3", teamValues.length, preview, suffix));
+        }
+
+        return parts.join(" | ");
     }
 
     function isNationalTeamLabel(teamName, countryLabel) {
@@ -493,23 +462,21 @@ Item {
     function initializeDraft() {
         const entry = root.initialEntry || {};
         if (Object.keys(entry).length > 0) {
-            root.cfg_type = String(entry.type || "").trim() === "team"
-                    || (String(entry.followMode || "").trim() === "team" && String(entry.favoriteTeam || "").trim().length > 0) ? "team" : "competition";
+            const isTeam = String(entry.type || "").trim() === "team"
+                || (String(entry.followMode || "").trim() === "team" && String(entry.favoriteTeam || "").trim().length > 0);
             root.cfg_selectedSports = entry.sport || "";
             root.cfg_country = entry.country || "";
-            root.cfg_league = root.cfg_type === "team" ? "" : entry.league || "";
-            root.cfg_favoriteTeam = entry.favoriteTeam || "";
+            root.cfg_league = isTeam ? "" : entry.league || "";
+            root.cfg_favoriteTeam = isTeam ? entry.favoriteTeam || "" : "";
             const entryCountryLabel = root.optionLabel(root.countryOptions(), root.cfg_country);
-            root.cfg_selectedNationalTeams = root.cfg_type === "team" && root.isNationalTeamLabel(root.cfg_favoriteTeam, entryCountryLabel)
+            root.cfg_selectedNationalTeams = isTeam && root.isNationalTeamLabel(root.cfg_favoriteTeam, entryCountryLabel)
                 ? [root.cfg_favoriteTeam]
                 : [];
-            root.cfg_selectedLeagues = root.cfg_type === "team" ? [] : (root.cfg_league.length > 0 ? [root.cfg_league] : []);
-            root.cfg_selectedFavoriteTeams = root.cfg_type === "team"
-                ? (root.cfg_favoriteTeam.length > 0 && root.cfg_selectedNationalTeams.length === 0 ? [root.cfg_favoriteTeam] : [])
+            root.cfg_selectedLeagues = !isTeam && root.cfg_league.length > 0 ? [root.cfg_league] : [];
+            root.cfg_selectedFavoriteTeams = isTeam && root.cfg_favoriteTeam.length > 0 && root.cfg_selectedNationalTeams.length === 0
+                ? [root.cfg_favoriteTeam]
                 : [];
             root.cfg_selectedFavoriteTeamMeta = ({});
-            root.showNationalTeamStep = root.cfg_type === "team" && root.cfg_selectedNationalTeams.length > 0;
-            root.cfg_followMode = root.cfg_type === "team" ? "team" : root.normalizedFollowMode(entry.followMode, root.cfg_favoriteTeam);
             return;
         }
 
@@ -517,26 +484,16 @@ Item {
             return;
         root.cfg_selectedSports = root.settingsRoot.cfg_selectedSports || "";
         root.cfg_country = root.settingsRoot.cfg_country || "";
-        root.cfg_league = root.cfg_type === "team" ? "" : root.settingsRoot.cfg_league || "";
-        root.cfg_favoriteTeam = root.cfg_type === "team" ? "" : root.settingsRoot.cfg_favoriteTeam || "";
-        root.cfg_selectedNationalTeams = root.cfg_type === "team" ? [] : [];
-        root.cfg_selectedLeagues = root.cfg_type === "team" ? [] : (root.cfg_league.length > 0 ? [root.cfg_league] : []);
-        root.cfg_selectedFavoriteTeams = root.cfg_type === "team" ? (root.cfg_favoriteTeam.length > 0 ? [root.cfg_favoriteTeam] : []) : [];
+        root.cfg_league = root.settingsRoot.cfg_league || "";
+        root.cfg_favoriteTeam = root.settingsRoot.cfg_favoriteTeam || "";
+        root.cfg_selectedNationalTeams = [];
+        root.cfg_selectedLeagues = root.cfg_league.length > 0 ? [root.cfg_league] : [];
+        root.cfg_selectedFavoriteTeams = root.cfg_favoriteTeam.length > 0 ? [root.cfg_favoriteTeam] : [];
         root.cfg_selectedFavoriteTeamMeta = ({});
-        root.showNationalTeamStep = false;
-        root.cfg_followMode = root.cfg_type === "team" ? "team" : "league";
     }
 
     function stackIndexForPage(page) {
-        if (root.cfg_type === "team") {
-            if (page === 2)
-                return 4;
-            if (page === 3)
-                return 2;
-            return page;
-        }
-
-        return page === 2 ? 3 : page;
+        return page;
     }
 
     Component.onCompleted: initializeDraft()
@@ -558,7 +515,7 @@ Item {
             Kirigami.Heading {
                 id: chooseSportHeading
 
-                text: root.cfg_type === "team" ? i18nc("@title:group", "Add Team") : i18nc("@title:group", "Add Competition")
+                text: i18nc("@title:group", "Add Sport")
                 level: 2
                 visible: root.pageIndex === 0
                 Layout.fillWidth: true
@@ -584,6 +541,8 @@ Item {
                 onClicked: {
                     if (root.pageIndex > 0) {
                         root.pageIndex -= 1;
+                        if (root.tennisMode && root.pageIndex === 0)
+                            root.cfg_country = "";
                     } else if (root.hasDraftSelections()) {
                         discardSelectionsDialog.open();
                     } else {
@@ -629,6 +588,8 @@ Item {
                         root.pendingEntries = root.currentEntries();
                         reviewDialog.open();
                     } else {
+                        if (root.tennisMode && root.pageIndex === 0)
+                            root.cfg_country = "world";
                         root.pageIndex += 1;
                     }
                 }
@@ -673,9 +634,7 @@ Item {
 
             Label {
                 Layout.fillWidth: true
-                text: root.cfg_type === "team"
-                    ? i18nc("@info", "If you go back now, your selected teams will be lost.")
-                    : i18nc("@info", "If you go back now, your selected competitions will be lost.")
+                text: i18nc("@info", "If you go back now, your selected competitions and teams will be lost.")
                 wrapMode: Text.WordWrap
             }
 
@@ -705,7 +664,7 @@ Item {
         id: reviewDialog
 
         modal: true
-        title: root.cfg_type === "team" ? i18nc("@title:window", "Review Teams") : i18nc("@title:window", "Review Competitions")
+        title: i18nc("@title:window", "Review Selections")
         standardButtons: Dialog.NoButton
 
         contentItem: Item {
@@ -721,9 +680,7 @@ Item {
 
                 Label {
                     Layout.fillWidth: true
-                    text: root.cfg_type === "team"
-                        ? i18nc("@info", "You selected the teams below. If you click Save, they will be added to the Sports list. If you missed something, go back and add the missing teams.")
-                        : i18nc("@info", "You selected the competitions below. If you click Save, they will be added to the Sports list. If you missed something, go back and add the missing tournaments/leagues.")
+                    text: i18nc("@info", "You selected the competitions and teams below. If you click Save, they will be added to the Sports list. If you missed something, go back and add the missing items.")
                     wrapMode: Text.WordWrap
                 }
 
@@ -795,7 +752,7 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        currentIndex: root.stackIndexForPage(root.pageIndex)
+        currentIndex: root.tennisMode && root.pageIndex >= 1 ? root.pageIndex + 1 : root.pageIndex
 
         SportSelectPage {
             configRoot: root
@@ -805,15 +762,7 @@ Item {
             configRoot: root
         }
 
-        NationalTeamSelectPage {
-            configRoot: root
-        }
-
-        LeagueSelectPage {
-            configRoot: root
-        }
-
-        FavoriteTeamSelectPage {
+        CombinedSelectPage {
             configRoot: root
         }
     }

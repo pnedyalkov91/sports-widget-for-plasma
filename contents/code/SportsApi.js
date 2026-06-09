@@ -91,9 +91,6 @@ function fetchLeagueSeasons(options, onSuccess, onError) {
     }, error => finish(onError, error));
 }
 
-function fetchLeagueTableForSeason(options, onSuccess, onError) {
-    fetchSportScoreLeagueTable(options, onSuccess, onError);
-}
 
 function fetchTeamCompetitions(options, onSuccess, onError) {
     if (!canUseSportScore(options) || !isTeamRequest(options)) {
@@ -125,9 +122,36 @@ function fetchCountryCompetitions(options, onSuccess, onError) {
         finish(onSuccess, []);
         return;
     }
-    requestText(cacheBustedUrl(url), html => {
-        finish(onSuccess, sportScoreCompetitionLinks(html, country, sport));
-    }, error => finish(onError, error || "Unable to load SportScore competitions"));
+
+    const rootPath = SPORTSCORE_BASE_URL + SportScoreSports.rootPath(sport);
+    const needsRootSupplement = sport === "tennis" && country === "world" && rootPath !== url;
+    if (!needsRootSupplement) {
+        requestText(cacheBustedUrl(url), html => {
+            finish(onSuccess, sportScoreCompetitionLinks(html, country, sport));
+        }, error => finish(onError, error || "Unable to load SportScore competitions"));
+        return;
+    }
+
+    // Tennis/world: fetch both the competitions overview and the live root page so
+    // ATP Challengers / WTA 125K events (only listed on the live page) are included.
+    let pending = 2;
+    let merged = [];
+    let seen = {};
+    function combine(rows) {
+        (Array.isArray(rows) ? rows : []).forEach(row => {
+            const key = String(row && row.path || "").trim();
+            if (key.length > 0 && !seen[key]) { seen[key] = true; merged.push(row); }
+        });
+        pending -= 1;
+        if (pending > 0) return;
+        merged.sort((a, b) => {
+            if ((b.priority || 0) !== (a.priority || 0)) return (b.priority || 0) - (a.priority || 0);
+            return String(a.label || "").localeCompare(String(b.label || ""));
+        });
+        finish(onSuccess, merged);
+    }
+    requestText(cacheBustedUrl(url), html => combine(sportScoreCompetitionLinks(html, country, sport)), () => combine([]));
+    requestText(cacheBustedUrl(rootPath), html => combine(sportScoreCompetitionLinks(html, country, sport)), () => combine([]));
 }
 
 function fetchSportCountries(options, onSuccess, onError) {
@@ -143,7 +167,8 @@ function fetchSportCountries(options, onSuccess, onError) {
         return;
     }
 
-    requestText(cacheBustedUrl(SPORTSCORE_BASE_URL + SportScoreSports.rootPath(sport)), html => {
+    const fetchPath = SportScoreSports.countriesPath(sport) || SportScoreSports.rootPath(sport);
+    requestText(cacheBustedUrl(SPORTSCORE_BASE_URL + fetchPath), html => {
         finish(onSuccess, sportScoreCountryOptions(html, sport));
     }, error => finish(onError, error || "Unable to load SportScore countries"));
 }
@@ -194,7 +219,106 @@ function fetchLiveMatchDetails(options, onSuccess, onError) {
         return;
     }
 
+    const sport = normalizedSport(options && (options.sports || options.sport));
+    if (sport === "tennis") {
+        fetchSportScoreWidgetMatchDetailsByUrls(urls, 0, options, apiDetails => {
+            fetchTennisMatchPage(options, html => {
+                finish(onSuccess, Object.assign({}, apiDetails, {
+                    tennisSets: sportScoreTennisSets(html),
+                    tennisPlayerComparison: sportScorePlayerComparison(html)
+                }));
+            });
+        }, onError);
+        return;
+    }
+
     fetchSportScoreWidgetMatchDetailsByUrls(urls, 0, options, onSuccess, onError);
+}
+
+function fetchTennisMatchPage(options, onSuccess) {
+    const path = sportScorePathFromUrl(options && options.matchPath);
+    if (path.length === 0 || !/\/tennis\/match\//.test(path)) {
+        finish(onSuccess, "");
+        return;
+    }
+    requestText(absoluteSportScoreUrl(path), text => finish(onSuccess, text), () => finish(onSuccess, ""));
+}
+
+function sportScoreTennisSets(html) {
+    const str = stringValue(html);
+    const setsMatch = /<div\b[^>]*(?:id=["']sets["']|class=["'][^"']*\bsets-card\b[^"']*["'])[^>]*>([\s\S]*?)<\/table>/i.exec(str);
+    if (!setsMatch) return null;
+    const block = setsMatch[0];
+
+    const titleMatch = /<h2[^>]*>([\s\S]*?)<\/h2>/i.exec(block);
+    const title = titleMatch ? htmlText(titleMatch[1]).replace(/\s+/g, " ").trim() : "Set-by-set scoreboard";
+    const bestOfMatch = /Best of (\d+)/i.exec(title);
+    const bestOf = bestOfMatch ? Number(bestOfMatch[1]) : 0;
+
+    const theadMatch = /<thead[^>]*>([\s\S]*?)<\/thead>/i.exec(block);
+    const setLabels = [];
+    if (theadMatch) {
+        const thPat = /<th\b[^>]*>([\s\S]*?)<\/th>/gi;
+        let thM;
+        let skip = true;
+        while ((thM = thPat.exec(theadMatch[1])) !== null) {
+            if (skip) { skip = false; continue; }
+            const label = htmlText(thM[1]).trim();
+            if (label.toLowerCase() !== "sets") setLabels.push(label);
+        }
+    }
+
+    const tbodyMatch = /<tbody[^>]*>([\s\S]*?)<\/tbody>/i.exec(block);
+    const rows = [];
+    if (tbodyMatch) {
+        const trPat = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+        let trM;
+        while ((trM = trPat.exec(tbodyMatch[1])) !== null) {
+            const tr = trM[1];
+            const playerColM = /<td\b[^>]*class=["'][^"']*\bplayer-col\b[^"']*["'][^>]*>([\s\S]*?)<\/td>/i.exec(tr);
+            if (!playerColM) continue;
+            const imgM = /<img\b[^>]*src=["']([^"']+)["'][^>]*>/i.exec(playerColM[1]);
+            const badge = imgM ? absoluteSportScoreUrl(imgM[1]) : "";
+            const playerName = htmlText(playerColM[1]).replace(/\s+/g, " ").trim();
+            const setScores = [];
+            const setPat = /<td\b[^>]*class=["']([^"']*\bset-score\b[^"']*)["'][^>]*>([\s\S]*?)<\/td>/gi;
+            let setM;
+            while ((setM = setPat.exec(tr)) !== null)
+                setScores.push({ score: htmlText(setM[2]).trim(), winner: /\bwinner\b/.test(setM[1]) });
+            const totalM = /<td\b[^>]*class=["'][^"']*\bsets-total\b[^"']*["'][^>]*>([\s\S]*?)<\/td>/i.exec(tr);
+            const totalSets = totalM ? htmlText(totalM[1]).trim() : "";
+            if (playerName.length > 0)
+                rows.push({ playerName, badge, setScores, totalSets });
+        }
+    }
+    return rows.length > 0 ? { title, bestOf, setLabels, rows } : null;
+}
+
+function sportScorePlayerComparison(html) {
+    const str = stringValue(html);
+    const compareIdx = str.indexOf("player-compare");
+    if (compareIdx < 0) return null;
+    const headM = /<div\b[^>]*class=["'][^"']*\bcard-head\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i.exec(str.slice(compareIdx));
+    const title = headM ? htmlText(headM[1]).trim() : "Player Comparison";
+    const gridIdx = str.indexOf("compare-grid", compareIdx);
+    if (gridIdx < 0) return null;
+    const gridStart = str.indexOf(">", gridIdx) + 1;
+    const gridSection = str.slice(gridStart, gridStart + 6000);
+    const cellPat = /<div\b[^>]*class=["'][^"']*\bp-(?:cell|label)\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/g;
+    const cells = [];
+    let cellM;
+    while ((cellM = cellPat.exec(gridSection)) !== null)
+        cells.push(htmlText(cellM[1]).replace(/\s+/g, " ").trim());
+    const rows = [];
+    for (let i = 0; i + 2 < cells.length; i += 3) {
+        const homeValue = cells[i];
+        const label = cells[i + 1];
+        const awayValue = cells[i + 2];
+        const empty = v => v.length === 0 || v === "N/A" || v === "—" || v.toLowerCase() === "unknown";
+        if (label.length > 0 && (!empty(homeValue) || !empty(awayValue)))
+            rows.push({ label, homeValue, awayValue });
+    }
+    return rows.length > 0 ? { title, rows } : null;
 }
 
 function fetchSportScoreWidgetMatchDetailsByUrls(urls, index, options, onSuccess, onError) {
@@ -254,7 +378,8 @@ function emptyLiveMatchDetails() {
         statsRows: [],
         homeEvents: [],
         awayEvents: [],
-        events: []
+        events: [],
+        trackerUrl: ""
     };
 }
 
@@ -283,8 +408,16 @@ function normalizeSportScoreWidgetMatchDetails(payload, options) {
         statsRows: sportScoreWidgetStatsRows(match && match.stats, swapSides),
         homeEvents: events.filter(row => row.side === "home"),
         awayEvents: events.filter(row => row.side === "away"),
-        events
+        events,
+        trackerUrl: sportScoreTrackerUrl(match)
     };
+}
+
+function sportScoreTrackerUrl(match) {
+    const tracker = match && match.tracker;
+    if (!tracker || !tracker.id || !tracker.sport)
+        return "";
+    return "https://sportscore.com/api/widget/tracker/?sport=" + encodeURIComponent(tracker.sport) + "&id=" + encodeURIComponent(tracker.id);
 }
 
 function sportScoreWidgetSidesSwapped(match, options) {
@@ -1108,6 +1241,9 @@ function normalizeSportScoreMatchPage(html, leagueLabel, options) {
 
     if (sport === "cricket") {
         rows = rows.concat(sportScoreCricketMatchRows(page, leagueLabel, options));
+        // Cricket global live page uses football-class containers (shared class across sports on sportscore)
+        appendPattern(/<div class="football-match-table-container w-100 nostyle sc-row-stretched">([\s\S]*?)(?=<div class="d-flex d-md-none|<div class="football-match-table-container w-100 nostyle sc-row-stretched">|<\/section>|$)/g);
+        appendPattern(/<a\b[^>]*class="[^"]*\bfootball-match-table-container\b[^"]*\bnostyle\b[^"]*"[^>]*>[\s\S]*?<\/a>/g);
     } else if (sport === "tennis") {
         rows = rows.concat(sportScoreTennisMatchRows(page, leagueLabel, options));
     } else {
@@ -1120,10 +1256,14 @@ function normalizeSportScoreMatchPage(html, leagueLabel, options) {
 
 function sportScoreTennisMatchRows(page, leagueLabel, options) {
     let rows = [];
-    const pattern = /<a\b[^>]*href=["'](\/tennis\/match\/[^"']+\/?)["'][^>]*class=["'][^"']*\bfootball-match-table-container\b[^"']*\bnostyle\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/g;
+    // Use lookahead to avoid being cut short by nested </a> tags (e.g. player profile links inside match blocks)
+    const pattern = /<a\b[^>]*class=["'][^"']*\bfootball-match-table-container\b[^"']*\bnostyle\b[^"']*["'][^>]*>[\s\S]*?(?=<a\b[^>]*class=["'][^"']*\bfootball-match-table-container\b|<div\b[^>]*class=["'][^"']*\bmatch-state-header\b|<\/section>|$)/g;
     let match;
     while ((match = pattern.exec(stringValue(page))) !== null) {
         const block = match[0];
+        const hrefMatch = /href=["'](\/tennis\/match\/[^"']+\/?)["']/.exec(block);
+        if (!hrefMatch)
+            continue;
         const context = stringValue(page).slice(Math.max(0, match.index - 900), match.index);
         const players = sportScoreTennisPlayers(block);
         if (players.length < 2)
@@ -1136,7 +1276,7 @@ function sportScoreTennisMatchRows(page, leagueLabel, options) {
         const rawStatus = liveSection ? "Live" : statusText;
         const status = sportScoreMatchStatus(rawStatus, scoreMatch && scoreMatch[1], scoreMatch && scoreMatch[2]);
         const timestamp = Date.parse(firstDataUtc(block));
-        const path = sportScorePathFromUrl(match[1]);
+        const path = sportScorePathFromUrl(hrefMatch[1]);
         rows.push({
             id: "sportscore-" + path,
             sport: "tennis",
@@ -1171,7 +1311,10 @@ function sportScoreTennisPlayers(block) {
     const imagePattern = /<img\b[^>]*>/g;
     let imageMatch;
     while ((imageMatch = imagePattern.exec(stringValue(block))) !== null) {
-        const name = htmlAttribute(imageMatch[0], "alt").replace(/\s+headshot$/i, "").trim();
+        const altText = htmlAttribute(imageMatch[0], "alt");
+        if (!/headshot/i.test(altText))
+            continue;
+        const name = altText.replace(/\s+headshot$/i, "").trim();
         const badge = absoluteSportScoreUrl(htmlAttribute(imageMatch[0], "src"));
         if (name.length === 0 || players.some(player => normalizedTeamName(player.name) === normalizedTeamName(name)))
             continue;
@@ -1180,6 +1323,13 @@ function sportScoreTennisPlayers(block) {
             break;
     }
     return players;
+}
+
+function isCricketLiveStatus(rawStatus) {
+    const lower = stringValue(rawStatus).toLowerCase().replace(/\s+/g, " ").trim();
+    return /\binn(?:ing(?:s)?)?\b/.test(lower) || /\bovers?\b/.test(lower) ||
+           lower === "toss" || lower === "lunch" || lower === "tea" || lower === "drinks" ||
+           lower === "innings break";
 }
 
 function sportScoreCricketMatchRows(page, leagueLabel, options) {
@@ -1194,8 +1344,12 @@ function sportScoreCricketMatchRows(page, leagueLabel, options) {
             continue;
 
         const scores = sportScoreCricketScores(block);
-        const rawStatus = sportScoreCricketStatus(block);
-        const status = sportScoreMatchStatus(rawStatus, scores[0], scores[1]);
+        const rawStatusFromBlock = sportScoreCricketStatus(block);
+        const liveSection = /match-state-header[^>]*\bis-live\b/i.test(context.slice(context.lastIndexOf("match-state-header")));
+        const rawStatus = liveSection ? "Live" : rawStatusFromBlock;
+        const isLive = isLiveStatus(rawStatus) || isCricketLiveStatus(rawStatusFromBlock);
+        const status = isLive ? "Live" : sportScoreMatchStatus(rawStatus, scores[0], scores[1]);
+        const minuteDisplay = rawStatusFromBlock.length > 0 && !isLiveStatus(rawStatusFromBlock) ? rawStatusFromBlock : "";
         const timestamp = Date.parse(firstDataUtc(block));
         const path = sportScorePathFromUrl(match[1]);
         rows.push({
@@ -1207,7 +1361,7 @@ function sportScoreCricketMatchRows(page, leagueLabel, options) {
             homeScore: status === "Upcoming" ? "" : stringValue(scores[0]),
             awayScore: status === "Upcoming" ? "" : stringValue(scores[1]),
             status,
-            minute: isLiveStatus(status) ? rawStatus : "",
+            minute: isLive ? minuteDisplay : "",
             startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
             timestamp: Number.isFinite(timestamp) ? timestamp : 0,
             matchday: "",
@@ -1232,9 +1386,15 @@ function sportScoreCricketTeams(block) {
     const imagePattern = /<img\b[^>]*>/g;
     let imageMatch;
     while ((imageMatch = imagePattern.exec(stringValue(block))) !== null) {
-        const name = htmlAttribute(imageMatch[0], "alt").replace(/\s+logo$/i, "").trim();
-        const badge = absoluteSportScoreUrl(htmlAttribute(imageMatch[0], "src"));
-        if (name.length === 0 || teams.some(team => normalizedTeamName(team.name) === normalizedTeamName(name)))
+        const tag = imageMatch[0];
+        const name = htmlAttribute(tag, "alt").replace(/\s+(?:logo|flag)$/i, "").trim();
+        if (name.length === 0 || name.toLowerCase() === "live")
+            continue;
+        const dataSrc = htmlAttribute(tag, "data-src");
+        const srcAttr = htmlAttribute(tag, "src");
+        const raw = dataSrc.length > 0 && dataSrc.indexOf("data:") !== 0 ? dataSrc : srcAttr;
+        const badge = raw.indexOf("data:") === 0 ? "" : absoluteSportScoreUrl(raw);
+        if (teams.some(team => normalizedTeamName(team.name) === normalizedTeamName(name)))
             continue;
         teams.push({ name, badge });
         if (teams.length === 2)
@@ -1261,9 +1421,6 @@ function sportScoreCricketStatus(block) {
     return statusMatch ? htmlText(statusMatch[1]) : "";
 }
 
-function normalizeSportScoreRecentResultPage(html, leagueLabel, options) {
-    return filterSportScoreMatchesForMode(normalizeSportScoreMatchPage(html, leagueLabel, options), "recent");
-}
 
 function normalizeSportScoreMatchRow(block, context, leagueLabel, options) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
@@ -1277,7 +1434,8 @@ function normalizeSportScoreMatchRow(block, context, leagueLabel, options) {
     const awayScore = htmlText(sportScoreLiveValue(block, "away-score"));
     const path = sportScoreMatchPath(block, sport);
     const logos = sportScoreLiveLogos(block);
-    const status = sportScoreMatchStatus(rawStatus, homeScore, awayScore);
+    const liveSection = /match-state-header[^>]*\bis-live\b/i.test(context.slice(context.lastIndexOf("match-state-header")));
+    const status = sportScoreMatchStatus(rawStatus, homeScore, awayScore, liveSection ? "live" : "");
     const liveStatus = sport === "basketball" ? basketballPeriodLabel(rawStatus) : rawStatus;
 
     return {
@@ -1424,10 +1582,6 @@ function sportScoreMatchPath(block, sport) {
     return match ? htmlDecode(match[1]) : "";
 }
 
-function sportScoreWidgetMatchUrl(options) {
-    const urls = sportScoreWidgetMatchUrls(options);
-    return urls.length > 0 ? urls[0] : "";
-}
 
 function sportScoreWidgetMatchUrls(options) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
@@ -1477,8 +1631,11 @@ function sportScoreLiveLogos(block) {
         const alt = htmlAttribute(tag, "alt").toLowerCase();
         if (alt.indexOf("logo") < 0)
             continue;
-        const source = absoluteSportScoreUrl(htmlAttribute(tag, "src"));
-        if (source.length > 0 && rows.indexOf(source) < 0)
+        const dataSrc = htmlAttribute(tag, "data-src");
+        const srcAttr = htmlAttribute(tag, "src");
+        const raw = dataSrc.length > 0 && dataSrc.indexOf("data:") !== 0 ? dataSrc : srcAttr;
+        const source = absoluteSportScoreUrl(raw);
+        if (source.length > 0 && source.indexOf("data:") !== 0 && rows.indexOf(source) < 0)
             rows.push(source);
         if (rows.length >= 2)
             break;
@@ -1856,30 +2013,50 @@ function sportScoreCountryOptions(html, sport) {
     if (!SportScoreSports.supports(sportValue))
         return [];
 
-    let countries = {};
-    const pattern = new RegExp("\\/" + escapeRegExp(sportValue) + "\\/competition\\/([^\\/\"']+)\\/", "g");
-    let match;
-    while ((match = pattern.exec(stringValue(html))) !== null) {
-        const value = ProviderCatalog.slugForValue(match[1]);
-        if (value.length === 0)
-            continue;
-        countries[value] = true;
+    const page = stringValue(html);
+    const seen = {};
+    const values = [];
+
+    function addValue(value) {
+        const v = ProviderCatalog.slugForValue(value);
+        if (v.length === 0 || v === "world" || seen[v])
+            return;
+        seen[v] = true;
+        values.push(v);
     }
 
-    return Object.keys(countries)
+    // Primary: parse /sport/country/{slug}/ links (dedicated countries page)
+    const countryLinkPattern = new RegExp("\\/" + escapeRegExp(sportValue) + "\\/country\\/([^\\/\"'?#\\s]+)\\/", "g");
+    let match;
+    while ((match = countryLinkPattern.exec(page)) !== null)
+        addValue(match[1]);
+
+    // Fallback: extract country slugs from competition links
+    if (values.length === 0) {
+        const competitionPattern = new RegExp("\\/" + escapeRegExp(sportValue) + "\\/competition\\/([^\\/\"']+)\\/", "g");
+        while ((match = competitionPattern.exec(page)) !== null)
+            addValue(match[1]);
+    }
+
+    const rows = values
         .map(value => ({
-            label: value === "world" ? "International Tournaments" : ProviderCatalog.leagueLabel(value),
+            label: ProviderCatalog.leagueLabel(value),
             value,
-            icon: value === "world" ? "globe" : "",
-            infoText: value === "world" ? "Worldwide competitions" : ""
+            icon: "",
+            infoText: ""
         }))
-        .sort((left, right) => {
-            if (left.value === "world")
-                return -1;
-            if (right.value === "world")
-                return 1;
-            return stringValue(left.label).localeCompare(stringValue(right.label));
+        .sort((left, right) => stringValue(left.label).localeCompare(stringValue(right.label)));
+
+    if (SportScoreSports.hasCountryCompetitions(sportValue)) {
+        rows.unshift({
+            label: "International Tournaments",
+            value: "world",
+            icon: "globe",
+            infoText: ""
         });
+    }
+
+    return rows;
 }
 
 function sportScoreSportFromPath(path) {
@@ -1955,8 +2132,10 @@ function sportScoreCompetitionLinks(html, country, sport) {
     let seen = {};
     const expression = new RegExp("<a\\b[^>]*href=[\"'](\\/" + escapeRegExp(sportValue) + "\\/competition\\/([^\\/\"']+)\\/([^\\/\"']+)\\/[^\"']+\\/)[\"'][^>]*(?:title=[\"']([^\"']*)[\"'])?[^>]*>([\\s\\S]*?)<\\/a>", "g");
     let match;
+    const wantedCountry = ProviderCatalog.slugForValue(country);
     while ((match = expression.exec(page)) !== null) {
-        if (country !== "world" && ProviderCatalog.slugForValue(match[2]) !== country)
+        const rowCountry = ProviderCatalog.slugForValue(match[2]);
+        if (wantedCountry !== "world" && rowCountry !== wantedCountry)
             continue;
 
         const path = htmlDecode(match[1]);
@@ -2242,13 +2421,22 @@ function boundedHtmlBlock(source, startNeedle, endNeedle) {
 }
 
 function firstImageSource(html) {
-    const matches = stringValue(html).match(/<img\b[^>]*src="([^"]+)"/g) || [];
-    if (matches.length === 0)
+    const page = stringValue(html);
+    const imgTagPattern = /<img\b[^>]+>/gi;
+    const imgTags = [];
+    let m;
+    while ((m = imgTagPattern.exec(page)) !== null)
+        imgTags.push(m[0]);
+    if (imgTags.length === 0)
         return "";
-
-    const last = matches[matches.length - 1];
-    const source = htmlAttribute(last, "src");
-    return absoluteSportScoreUrl(source);
+    const last = imgTags[imgTags.length - 1];
+    const dataSrc = htmlAttribute(last, "data-src");
+    if (dataSrc.length > 0 && dataSrc.indexOf("data:") !== 0)
+        return absoluteSportScoreUrl(dataSrc);
+    const src = htmlAttribute(last, "src");
+    if (src.length > 0 && src.indexOf("data:") !== 0)
+        return absoluteSportScoreUrl(src);
+    return "";
 }
 
 function htmlAttribute(tag, name) {

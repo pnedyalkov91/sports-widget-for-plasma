@@ -56,7 +56,7 @@ PlasmoidItem {
     property string favoriteTeam: String(activeLeagueEntry.favoriteTeam || "").trim()
     property string followMode: normalizedFollowMode(activeLeagueEntry)
     property bool followTeamMode: followMode === "team"
-    property string providerLabel: providerDisplayName(effectiveProvider())
+    property string providerLabel: "SportScore"
     property string sourceText: i18nc("@info:status", "No API key required")
     property int panelRotationIndex: 0
     readonly property int panelRotationCount: panelMatchRotationCount()
@@ -551,16 +551,6 @@ PlasmoidItem {
         return "";
     }
 
-    function titleFromSlug(slug) {
-        return String(slug || "")
-            .replace(/[-_]+/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .split(" ")
-            .filter(part => part.length > 0)
-            .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-            .join(" ");
-    }
 
     function normalizedFollowMode(entry) {
         return SavedSportsModel.normalizedFollowMode(entry);
@@ -1242,7 +1232,7 @@ PlasmoidItem {
         root.schedulesLoading = true;
         emptySchedulesTimer.stop();
 
-        SportsApi.fetchScoresFixtures(Object.assign({}, root.matchScopeOptions(options), {
+        SportsApi.fetchScoresFixtures(Object.assign({}, options, {
             "tableRows": rows
         }), (fixtures) => {
             if (!root.isCurrentRefresh(options.refreshToken))
@@ -1291,7 +1281,7 @@ PlasmoidItem {
         root.recentResultsTableFallbackStarted = true;
         root.recentResultsLoading = recentResultsListModel.count === 0;
 
-        SportsApi.fetchRecentResults(Object.assign({}, root.matchScopeOptions(options), {
+        SportsApi.fetchRecentResults(Object.assign({}, options, {
             "tableRows": rows,
             "preferTeamRecentResults": true,
             "recentResultsLimit": 80,
@@ -1393,7 +1383,7 @@ PlasmoidItem {
             return label;
 
         if (root.watchedTeamNames().length > 0)
-            return slug.length > 0 ? root.titleFromSlug(slug) : i18nc("@label", "All competitions");
+            return slug.length > 0 ? ProviderCatalog.titleFromSlug(slug) : i18nc("@label", "All competitions");
 
         return root.selectedLeagueLabel;
     }
@@ -1424,7 +1414,7 @@ PlasmoidItem {
         if (normalizedSlug.length === 0 || seen[normalizedSlug])
             return;
 
-        const normalizedLabel = String(label || ProviderCatalog.leagueLabel(normalizedSlug) || root.titleFromSlug(normalizedSlug)).trim();
+        const normalizedLabel = String(label || ProviderCatalog.leagueLabel(normalizedSlug) || ProviderCatalog.titleFromSlug(normalizedSlug)).trim();
         if (!root.isTableCompetitionEligible(normalizedSlug, normalizedLabel))
             return;
 
@@ -1753,9 +1743,6 @@ PlasmoidItem {
         };
     }
 
-    function matchScopeOptions(options) {
-        return Object.assign({}, options);
-    }
 
     function refreshDisplayTableForSelection() {
         root.pendingSeasonTableRefresh = false;
@@ -1825,7 +1812,7 @@ PlasmoidItem {
             "followMode": "league",
             "refreshToken": root.refreshToken
         };
-        const requestFn = useSeasonRequest ? SportsApi.fetchLeagueTableForSeason : SportsApi.fetchLeagueTable;
+        const requestFn = SportsApi.fetchLeagueTable;
         requestFn(requestOptions, (table) => {
             if (token !== root.teamTableRequestToken)
                 return;
@@ -1889,8 +1876,6 @@ PlasmoidItem {
         promoteLiveMatches(root.latestScheduleMatches);
         syncTeamTableOptions();
         matches = scheduledMatches(root.latestScheduleMatches);
-        matches = filterFavoriteMatches(matches);
-        matches = filterCurrentCompetitionMatches(matches);
         matches = prioritizeFavorite(matches);
         if (Plasmoid.configuration.prioritizePopular) {
             matches = matches.slice().sort((left, right) => {
@@ -1996,9 +1981,7 @@ PlasmoidItem {
         liveMatchesModel.clear();
         root.latestLiveMatches = sourceMatches;
         syncTeamTableOptions();
-        matches = filterFavoriteMatches(sourceMatches);
-        matches = filterCurrentCompetitionMatches(matches);
-        matches = prioritizeFavorite(matches);
+        matches = prioritizeFavorite(sourceMatches);
         matches = sortLiveMatches(matches);
         matches.forEach((match) => {
             const row = matchForModel(liveMatchForModel(match));
@@ -2014,9 +1997,7 @@ PlasmoidItem {
         const sourceMatches = Array.isArray(matches) ? matches.slice() : [];
         root.latestRecentMatches = sourceMatches;
         syncTeamTableOptions();
-        matches = filterFavoriteMatches(sourceMatches);
-        matches = filterCurrentCompetitionMatches(matches);
-        matches = sortRecentResultsByDate(matches);
+        matches = sortRecentResultsByDate(sourceMatches);
         matches.forEach((match) => {
             const row = matchForModel(match);
             row.leagueGroup = root.liveLeagueGroupLabel(row);
@@ -2247,13 +2228,6 @@ PlasmoidItem {
         }).map(item => item.match);
     }
 
-    function filterFavoriteMatches(items) {
-        return items;
-    }
-
-    function filterCurrentCompetitionMatches(items) {
-        return items;
-    }
 
     function isFavoriteMatch(match) {
         if (root.watchedTeamNames().length === 0)
@@ -2274,10 +2248,6 @@ PlasmoidItem {
                 return true;
         }
         return false;
-    }
-
-    function providerDisplayName(provider) {
-        return ProviderCatalog.displayName(provider);
     }
 
     function effectiveProvider() {
@@ -2498,14 +2468,6 @@ PlasmoidItem {
         target: Plasmoid.configuration
         ignoreUnknownSignals: true
 
-        function onApiBaseUrlChanged() {
-            root.scheduleConfigRefresh();
-        }
-
-        function onApiKeyChanged() {
-            root.scheduleConfigRefresh();
-        }
-
         function onFavoriteTeamChanged() {
             root.scheduleConfigRefresh();
         }
@@ -2519,10 +2481,6 @@ PlasmoidItem {
         }
 
         function onPrioritizePopularChanged() {
-            root.scheduleConfigRefresh();
-        }
-
-        function onProviderChanged() {
             root.scheduleConfigRefresh();
         }
 
