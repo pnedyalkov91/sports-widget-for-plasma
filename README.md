@@ -1,5 +1,7 @@
 # Sports Widget for KDE Plasma 6
 
+> ⚠️ **Beta software:** This widget is still in beta. Features, settings and configuration options may still change before the stable release.
+
 Sports widget for KDE Plasma desktop environment. Provides live scores, results, schedules and tables for various sports.
 
 ### Why this widget?
@@ -19,6 +21,9 @@ Sports widget for KDE Plasma desktop environment. Provides live scores, results,
 - [🐛 Bug Reports & Feedback](#-bug-reports--feedback)
 - [❤️ Support](#-support-the-project)
 - [📜 License](#-license)
+- [™️ Trademark Notice](#-trademark-notice)
+
+---
 
 ---
 
@@ -163,3 +168,9 @@ If you enjoy using it, you can support the project:
 ## 📜 License
 
 This project is licensed under the **GNU General Public License v2.0 or later**.
+
+---
+
+## ™️ Trademark Notice
+
+All product names, logos, trademarks and registered trademarks referenced in this project are the property of their respective owners and are used solely for identification purposes. Reasonable care has been taken to spell, capitalize and attribute these names accurately. Use of these names does not imply any affiliation with or endorsement by their respective owners. This project is not affiliated with, endorsed by, or sponsored by SportScore, or any of the sports leagues, federations, clubs or organizations referenced within it.
