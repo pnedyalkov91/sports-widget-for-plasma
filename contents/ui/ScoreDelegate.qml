@@ -417,13 +417,14 @@ Rectangle {
                 visible: root.stadium.length > 0
                 spacing: Kirigami.Units.smallSpacing
 
-                Kirigami.Icon {
+                PlasmaComponents.Label {
                     Layout.alignment: Qt.AlignVCenter
                     Layout.preferredWidth: Math.round(Kirigami.Units.iconSizes.smallMedium * 0.85)
                     Layout.preferredHeight: Layout.preferredWidth
-                    source: Qt.resolvedUrl("../icons/sports/stadium.svg")
-                    isMask: true
-                    color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.disabledTextColor
+                    text: "🏟️"
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    font.pixelSize: Math.round(Kirigami.Units.iconSizes.smallMedium * 0.85 * 0.8)
                 }
 
                 PlasmaComponents.Label {

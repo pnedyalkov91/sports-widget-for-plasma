@@ -40,9 +40,20 @@ function normalizedSport(value) {
     return "football";
 }
 
-function iconName(value) {
+function emoji(value) {
     const sport = normalizedSport(value);
-    return (sport.length > 0 ? sport : "sports") + ".svg";
+    const emojis = {
+        "american-football": "🏈",
+        "baseball": "⚾",
+        "basketball": "🏀",
+        "cricket": "🏏",
+        "football": "⚽",
+        "hockey": "🏒",
+        "snooker": "🎱",
+        "tennis": "🎾",
+        "volleyball": "🏐"
+    };
+    return emojis[sport] || "🏆";
 }
 
 function label(value) {

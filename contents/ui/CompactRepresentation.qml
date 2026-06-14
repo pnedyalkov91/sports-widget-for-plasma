@@ -481,12 +481,13 @@ Control {
             visible: parent.loading
         }
 
-        Kirigami.Icon {
+        Label {
             anchors.fill: parent
-            source: Qt.resolvedUrl("../icons/sports/" + SportVisuals.iconName(parent.sport))
             visible: !parent.loading
-            isMask: true
-            color: Kirigami.Theme.textColor
+            text: SportVisuals.emoji(parent.sport)
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: Math.round(Math.min(width, height) * 0.8)
         }
 
     }

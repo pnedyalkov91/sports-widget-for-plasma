@@ -17,7 +17,6 @@
 
 import "../../code/SportVisuals.js" as SportVisuals
 import "../../code/SportsApi.js" as SportsApi
-import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
 import "../../code/providers/ProviderCountries.js" as ProviderCountries
 import "../../code/providers/SportScoreSports.js" as SportScoreSports
 import QtQuick
@@ -131,60 +130,6 @@ ColumnLayout {
         }
     }
 
-    function fetchTeamBadgeFromCountryLeagues(model, entry, sourceIndex) {
-        if (!root.configRoot)
-            return;
-
-        const favoriteTeam = String(entry.favoriteTeam || "").trim();
-        if (favoriteTeam.length === 0)
-            return;
-
-        const leagues = ProviderCatalog.leagueOptions(root.configRoot.currentProvider, entry.sport || "football", entry.country || "");
-        if (!Array.isArray(leagues) || leagues.length === 0)
-            return;
-
-        const maxLookups = Math.min(6, leagues.length);
-        let leagueIndex = 0;
-
-        function lookupNextLeague() {
-            if (leagueIndex >= maxLookups)
-                return;
-
-            const leagueValue = String(leagues[leagueIndex] && leagues[leagueIndex].value || "").trim();
-            leagueIndex += 1;
-            if (leagueValue.length === 0) {
-                lookupNextLeague();
-                return;
-            }
-
-            SportsApi.fetchLeagueTable({
-                "sports": entry.sport || "football",
-                "country": entry.country || "",
-                "league": leagueValue,
-                "favoriteTeam": favoriteTeam,
-                "followMode": "league"
-            }, rows => {
-                const tableRows = Array.isArray(rows) ? rows : [];
-                for (let rowIndex = 0; rowIndex < tableRows.length; rowIndex += 1) {
-                    const row = tableRows[rowIndex] || {};
-                    if (SportsApi.sameTeamName(row.team, favoriteTeam)) {
-                        const crest = String(row.crest || row.team_logo || "").trim();
-                        if (crest.length > 0) {
-                            root.setModelTeamBadge(model, sourceIndex, crest);
-                            return;
-                        }
-                    }
-                }
-
-                lookupNextLeague();
-            }, () => {
-                lookupNextLeague();
-            });
-        }
-
-        lookupNextLeague();
-    }
-
     function fetchTeamBadge(model, entry, sourceIndex) {
         SportsApi.fetchTeamBadge({
             "sports": entry.sport || "football",
@@ -194,14 +139,8 @@ ColumnLayout {
             "teamPath": entry.teamPath || entry.teamUrl || ""
         }, badge => {
             badge = String(badge || "").trim();
-            if (badge.length > 0) {
+            if (badge.length > 0)
                 root.setModelTeamBadge(model, sourceIndex, badge);
-                return;
-            }
-
-            root.fetchTeamBadgeFromCountryLeagues(model, entry, sourceIndex);
-        }, () => {
-            root.fetchTeamBadgeFromCountryLeagues(model, entry, sourceIndex);
         });
     }
 
@@ -461,12 +400,13 @@ ColumnLayout {
                 height: Kirigami.Units.gridUnit * 1.8
                 spacing: Kirigami.Units.smallSpacing
 
-                Kirigami.Icon {
+                Label {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.small
                     Layout.preferredHeight: Layout.preferredWidth
-                    source: Qt.resolvedUrl("../../icons/sports/" + SportVisuals.iconName(section))
-                    isMask: true
-                    color: Kirigami.Theme.textColor
+                    text: SportVisuals.emoji(section)
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    font.pixelSize: Math.round(Kirigami.Units.iconSizes.small * 0.8)
                 }
 
                 Label {

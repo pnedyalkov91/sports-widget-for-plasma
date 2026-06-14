@@ -58,7 +58,7 @@ ColumnLayout {
 
             delegate: SportChoiceCard {
                 title: modelData.label
-                iconSource: Qt.resolvedUrl("../../icons/sports/" + SportVisuals.iconName(modelData.value))
+                iconEmoji: SportVisuals.emoji(modelData.value)
                 selected: root.configRoot && root.configRoot.normalizedSport() === modelData.value
                 onClicked: root.configRoot.selectSport(modelData.value)
             }

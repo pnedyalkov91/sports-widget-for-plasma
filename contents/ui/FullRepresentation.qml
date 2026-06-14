@@ -325,52 +325,6 @@ Item {
         return String(value || "").replace(/^[★*]\s*/, "").trim();
     }
 
-    function savedLeagueMenuText(entry) {
-        entry = entry || {};
-        const league = root.savedEntryType(entry) === "team"
-            ? root.stripLegacyTeamPrefix(entry.customFavoriteTeamLabel || entry.favoriteTeam || entry.customLeagueLabel || entry.leagueLabel || entry.league || "")
-            : String(entry.customLeagueLabel || entry.leagueLabel || entry.league || "").trim();
-        const country = String(entry.customCountryLabel || entry.countryLabel || entry.country || "").trim();
-        const sport = SportVisuals.label(entry.sport);
-        const meta = [sport, country].filter(part => String(part || "").length > 0).join(" · ");
-        return meta.length > 0 ? league + " - " + meta : league;
-    }
-
-    function savedEntryType(entry) {
-        entry = entry || {};
-        const explicit = String(entry.type || "").trim();
-        const followMode = String(entry.followMode || "").trim();
-        const favoriteTeam = String(entry.favoriteTeam || "").trim();
-        const league = String(entry.league || "").trim();
-        const legacyLabel = String(entry.customLeagueLabel || entry.leagueLabel || "").trim();
-        const legacyStarredLabel = /^[★*]\s*/.test(legacyLabel);
-        const looksLikeTeam = followMode === "team" || legacyStarredLabel || (favoriteTeam.length > 0 && league.length === 0);
-        if (explicit === "team")
-            return "team";
-        if (explicit === "competition")
-            return looksLikeTeam ? "team" : "competition";
-
-        return looksLikeTeam ? "team" : "competition";
-    }
-
-    function savedEntriesOfType(type) {
-        let entries = [];
-        const saved = Array.isArray(root.savedLeagues) ? root.savedLeagues : [];
-        saved.forEach((entry, index) => {
-            if (root.savedEntryType(entry) === type) {
-                entries.push({
-                    entry,
-                    sourceIndex: index
-                });
-            }
-        });
-        return entries;
-    }
-
-    function savedEntryTypeCount(type) {
-        return root.savedEntriesOfType(type).length;
-    }
-
     function selectedTableLabel() {
         const selected = String(root.selectedTableSlug || "").trim();
         const options = Array.isArray(root.teamTableOptions) ? root.teamTableOptions : [];
@@ -400,13 +354,14 @@ Item {
             width: Math.min(parent.width, Kirigami.Units.gridUnit * 18)
             spacing: Kirigami.Units.largeSpacing
 
-            Kirigami.Icon {
+            PlasmaComponents.Label {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Kirigami.Units.iconSizes.huge
                 Layout.preferredHeight: Layout.preferredWidth
-                source: Qt.resolvedUrl("../icons/sports/sports.svg")
-                isMask: true
-                color: Kirigami.Theme.disabledTextColor
+                text: SportVisuals.emoji("")
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                font.pixelSize: Math.round(Kirigami.Units.iconSizes.huge * 0.8)
             }
 
             PlasmaComponents.Label {
@@ -449,13 +404,14 @@ Item {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
-                Kirigami.Icon {
+                PlasmaComponents.Label {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                     Layout.preferredHeight: Layout.preferredWidth
                     Layout.alignment: Qt.AlignVCenter
-                    source: Qt.resolvedUrl("../icons/sports/" + SportVisuals.iconName(root.sport))
-                    isMask: true
-                    color: Kirigami.Theme.textColor
+                    text: SportVisuals.emoji(root.sport)
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    font.pixelSize: Math.round(Kirigami.Units.iconSizes.medium * 0.8)
                 }
 
                 PlasmaComponents.Label {
@@ -508,12 +464,13 @@ Item {
                                 contentItem: RowLayout {
                                     spacing: Kirigami.Units.smallSpacing
 
-                                    Kirigami.Icon {
+                                    PlasmaComponents.Label {
                                         Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                                         Layout.preferredHeight: Layout.preferredWidth
-                                        source: Qt.resolvedUrl("../icons/sports/" + SportVisuals.iconName(sportMenuItem.modelData))
-                                        isMask: true
-                                        color: Kirigami.Theme.textColor
+                                        text: SportVisuals.emoji(sportMenuItem.modelData)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.pixelSize: Math.round(Kirigami.Units.iconSizes.smallMedium * 0.8)
                                     }
 
                                     PlasmaComponents.Label {
@@ -922,13 +879,14 @@ Item {
                     visible: hero.stadium.length > 0 && !hero.loading
                     spacing: Kirigami.Units.smallSpacing
 
-                    Kirigami.Icon {
+                    PlasmaComponents.Label {
                         Layout.alignment: Qt.AlignVCenter
                         Layout.preferredWidth: parent.stadiumIconSize
                         Layout.preferredHeight: Layout.preferredWidth
-                        source: Qt.resolvedUrl("../icons/sports/stadium.svg")
-                        isMask: true
-                        color: Kirigami.Theme.disabledTextColor
+                        text: "🏟️"
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        font.pixelSize: Math.round(parent.stadiumIconSize * 0.8)
                     }
 
                     PlasmaComponents.Label {

@@ -100,11 +100,7 @@ Item {
             });
         }
 
-        return ProviderCatalog.leagueOptions(root.currentProvider, root.normalizedSport(), root.cfg_country || "").map(option => {
-            const copy = Object.assign({}, option || {});
-            copy.label = ProviderCatalog.normalizedCompetitionLabel(copy.label, copy.slug || copy.value);
-            return copy;
-        });
+        return [];
     }
 
     function leagueOptions() {
@@ -112,7 +108,7 @@ Item {
     }
 
     function favoriteOptions() {
-        return ProviderCatalog.countryTeamOptions(root.currentProvider, root.normalizedSport(), root.cfg_country);
+        return [];
     }
 
     // Shown above the page-progress dots so the user can see which sport/country
@@ -455,14 +451,6 @@ Item {
         return root.pendingEntries.concat(root.currentEntries());
     }
 
-    function selectedItems() {
-        const leagues = root.selectedLeagueValues();
-        const leagueLabels = leagues.map(value => ProviderCatalog.leagueLabel(value) || root.optionLabel(root.leagueOptions(), value) || value);
-        const teamValues = root.selectedNationalTeamValues().concat(root.selectedFavoriteTeamValues())
-            .filter((value, index, array) => array.indexOf(value) === index);
-        return leagueLabels.concat(teamValues);
-    }
-
     function selectedItemsSummaryText() {
         const leagues = root.selectedLeagueValues();
         const teamValues = root.selectedNationalTeamValues().concat(root.selectedFavoriteTeamValues())
@@ -558,10 +546,6 @@ Item {
         root.cfg_selectedLeagues = [];
         root.cfg_selectedFavoriteTeams = [];
         root.cfg_selectedFavoriteTeamMeta = ({});
-    }
-
-    function stackIndexForPage(page) {
-        return page;
     }
 
     Component.onCompleted: initializeDraft()

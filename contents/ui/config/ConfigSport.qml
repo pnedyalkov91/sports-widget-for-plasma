@@ -148,14 +148,14 @@ KCM.SimpleKCM {
         if (root.normalizedSport().length === 0)
             return [];
 
-        return ProviderCatalog.leagueOptions(root.currentProvider, root.normalizedSport(), root.cfg_country || "");
+        return [];
     }
 
     function favoriteOptions() {
         if (!root.cfg_league || root.cfg_league.length === 0)
             return [{ label: i18nc("@label", "No favorite team"), value: "" }];
 
-        return ProviderCatalog.favoriteTeamOptions(root.cfg_league || "");
+        return [];
     }
 
     function sportLabel() {
@@ -197,25 +197,17 @@ KCM.SimpleKCM {
         return ProviderCatalog.leagueLabel(root.cfg_league) || root.optionLabel(root.leagueOptions(), root.cfg_league) || root.cfg_league;
     }
 
-    function favoriteLabel() {
-        return root.cfg_favoriteTeam && root.cfg_favoriteTeam.length > 0 ? root.cfg_favoriteTeam : i18nc("@label", "No favorite team");
-    }
-
     function normalizedFollowMode(value, favoriteTeam) {
         const favorite = String(favoriteTeam || "").trim();
         return String(value || "").trim() === "team" && favorite.length > 0 ? "team" : "league";
     }
 
-    function optionValues(options) {
-        return (Array.isArray(options) ? options : []).map(option => String(option && option.value || "").trim().toLowerCase()).filter(value => value.length > 0);
-    }
-
     function knownLeagueValues(sport, country) {
-        return root.optionValues(ProviderCatalog.leagueOptions(root.currentProvider, String(sport || "football").trim(), String(country || "").trim()));
+        return [];
     }
 
     function knownCountryTeamValues(sport, country) {
-        return root.optionValues(ProviderCatalog.countryTeamOptions(root.currentProvider, String(sport || "football").trim(), String(country || "").trim()));
+        return [];
     }
 
     function isLikelyLegacyTeamEntry(entry) {
@@ -249,10 +241,6 @@ KCM.SimpleKCM {
             return looksLikeTeam ? "team" : "competition";
 
         return looksLikeTeam ? "team" : "competition";
-    }
-
-    function followModeLabel(entry) {
-        return root.entryType(entry) === "team" ? i18nc("@label", "Team · All competitions") : i18nc("@label", "Competition");
     }
 
     function displayLeagueLabel(entry) {

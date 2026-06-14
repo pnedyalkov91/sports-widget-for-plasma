@@ -278,15 +278,11 @@ function isLikelyLegacyTeamEntry(entry) {
 }
 
 function knownLeagueValues(sport, country) {
-    return optionValues(ProviderCatalog.leagueOptions("", stringValue(sport || "football").trim(), stringValue(country).trim()));
+    return [];
 }
 
 function knownCountryTeamValues(sport, country) {
-    return optionValues(ProviderCatalog.countryTeamOptions("", stringValue(sport || "football").trim(), stringValue(country).trim()));
-}
-
-function optionValues(options) {
-    return (Array.isArray(options) ? options : []).map(option => stringValue(option && option.value).trim().toLowerCase()).filter(value => value.length > 0);
+    return [];
 }
 
 function stripLegacyTeamPrefix(value) {

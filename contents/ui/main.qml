@@ -20,7 +20,6 @@ import "../code/SavedSportsModel.js" as SavedSportsModel
 import "../code/SportVisuals.js" as SportVisuals
 import "../code/providers/ProviderCatalog.js" as ProviderCatalog
 import "../code/providers/ProviderCountries.js" as ProviderCountries
-import "../code/providers/ProviderRuntime.js" as ProviderRuntime
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -353,20 +352,6 @@ PlasmoidItem {
         return SavedSportsModel.isLikelyLegacyTeamEntry(entry);
     }
 
-    function saveSavedLeagues(items) {
-        const normalizedItems = Array.isArray(items) ? items.map(entry => root.normalizedSavedEntry(entry)) : [];
-        Plasmoid.configuration.savedLeagues = JSON.stringify(normalizedItems);
-        Plasmoid.configuration.selectionRevision = Number(Plasmoid.configuration.selectionRevision || 0) + 1;
-    }
-
-    function normalizedActiveSavedLeagueIndex() {
-        return root.savedSportsModel.activeIndex;
-    }
-
-    function activeSavedLeague() {
-        return root.savedSportsModel.activeEntry;
-    }
-
     function teamWatchMode() {
         return root.savedSportsModel.teamWatchMode(root.activeSport);
     }
@@ -398,15 +383,6 @@ PlasmoidItem {
         return names;
     }
 
-    function watchedTeamPriorityMap() {
-        let order = {};
-        const names = root.watchedTeamNames();
-        for (let index = 0; index < names.length; index += 1)
-            order[names[index].toLowerCase()] = index;
-
-        return order;
-    }
-
     function watchedTeamPriorityForName(teamName) {
         const names = root.watchedTeamNames();
         if (names.length === 0)
@@ -435,14 +411,6 @@ PlasmoidItem {
     function effectiveFavoriteTeamName() {
         const names = root.watchedTeamNames();
         return names.length > 0 ? names[0] : root.favoriteTeam;
-    }
-
-    function effectiveRequestLeague() {
-        return root.selectedLeague;
-    }
-
-    function effectiveFollowMode() {
-        return root.teamWatchMode() ? "team" : root.followMode;
     }
 
     function watchedTeamsLabel() {
@@ -1381,10 +1349,6 @@ PlasmoidItem {
                 return country;
         }
 
-        const inferred = String(ProviderCatalog.countryCodeForLeague(slug) || "").trim();
-        if (inferred.length > 0)
-            return inferred;
-
         return root.selectedCountry;
     }
 
@@ -1399,7 +1363,7 @@ PlasmoidItem {
         if (!root.isTableCompetitionEligible(normalizedSlug, normalizedLabel))
             return;
 
-        const normalizedCountry = String(resolvedCountry || ProviderCatalog.countryCodeForLeague(normalizedSlug) || "").trim();
+        const normalizedCountry = String(resolvedCountry || "").trim();
         seen[normalizedSlug] = true;
         options.push({
             "slug": normalizedSlug,
@@ -1458,7 +1422,7 @@ PlasmoidItem {
             if (label.length === 0)
                 return;
 
-            root.addTeamTableOption(options, seen, label, label, ProviderCatalog.countryCodeForLeague(label));
+            root.addTeamTableOption(options, seen, label, label, "");
         });
     }
 
@@ -1466,7 +1430,7 @@ PlasmoidItem {
         (Array.isArray(competitions) ? competitions : []).forEach(competition => {
             const label = String(competition && competition.label || "").trim();
             const slug = String(competition && competition.slug || label).trim();
-            root.addTeamTableOption(options, seen, label, slug, String(competition && competition.country || "").trim() || ProviderCatalog.countryCodeForLeague(slug));
+            root.addTeamTableOption(options, seen, label, slug, String(competition && competition.country || "").trim());
         });
     }
 
@@ -2210,37 +2174,17 @@ PlasmoidItem {
     }
 
 
-    function isFavoriteMatch(match) {
-        if (root.watchedTeamNames().length === 0)
-            return false;
-
-        return root.isFavoriteTeamName(match.homeTeam) || root.isFavoriteTeamName(match.awayTeam) || root.isFavoriteTeamName(match.team);
-    }
-
-    function isFavoriteTeamName(teamName) {
-        const names = root.watchedTeamNames();
-        if (names.length === 0)
-            return false;
-
-        const normalizedTeam = String(teamName || "").toLowerCase();
-        for (let index = 0; index < names.length; index += 1) {
-            const favorite = names[index];
-            if (SportsApi.sameTeamName(teamName, favorite) || normalizedTeam.indexOf(favorite.toLowerCase()) >= 0)
-                return true;
-        }
-        return false;
-    }
 
     function effectiveProvider() {
-        return ProviderRuntime.providerId(Plasmoid.configuration);
+        return "sportscore";
     }
 
     function effectiveBaseUrl(sport) {
-        return ProviderRuntime.baseUrl(Plasmoid.configuration, sport || root.selectedSport || "football");
+        return "https://sportscore.com";
     }
 
     function effectiveApiKey(sport) {
-        return ProviderRuntime.apiKey(Plasmoid.configuration, sport || root.selectedSport || "football");
+        return "";
     }
 
     function scheduleConfigRefresh() {

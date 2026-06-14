@@ -933,12 +933,14 @@ Item {
             font.pixelSize: Kirigami.Theme.smallFont.pixelSize
         }
 
-        Kirigami.Icon {
-            anchors.fill: parent
+        PlasmaComponents.Label {
+            anchors.centerIn: parent
             visible: !parent.isCard && !parent.isTextIcon
-            source: parent.normalizedKind.indexOf("corner") >= 0 ? "flag" : Qt.resolvedUrl("../icons/sports/football.svg")
-            isMask: true
+            text: parent.normalizedKind.indexOf("corner") >= 0 ? "🚩" : "⚽"
             color: Kirigami.Theme.disabledTextColor
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
         }
     }
 

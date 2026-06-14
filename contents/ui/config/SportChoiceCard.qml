@@ -27,6 +27,7 @@ ItemDelegate {
     property string subtitle: ""
     property string iconName: ""
     property url iconSource: ""
+    property string iconEmoji: ""
     property string flagSource: ""
     property string infoText: ""
     property string cardToolTipText: root.title
@@ -65,7 +66,7 @@ ItemDelegate {
         Image {
             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
             Layout.preferredHeight: Layout.preferredWidth
-            visible: root.flagSource.length === 0 && root.remoteIconSource
+            visible: root.flagSource.length === 0 && root.iconEmoji.length === 0 && root.remoteIconSource
             source: root.iconSource
             fillMode: Image.PreserveAspectFit
             asynchronous: true
@@ -76,10 +77,20 @@ ItemDelegate {
         Kirigami.Icon {
             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
             Layout.preferredHeight: Layout.preferredWidth
-            visible: root.flagSource.length === 0 && !root.remoteIconSource
+            visible: root.flagSource.length === 0 && root.iconEmoji.length === 0 && !root.remoteIconSource
             source: root.iconSource.toString().length > 0 ? root.iconSource : root.iconName
             isMask: root.iconSource.toString().length > 0 && !root.remoteIconSource
             color: root.selected ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor
+        }
+
+        Label {
+            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+            Layout.preferredHeight: Layout.preferredWidth
+            visible: root.flagSource.length === 0 && root.iconEmoji.length > 0
+            text: root.iconEmoji
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: Math.round(Kirigami.Units.iconSizes.smallMedium * 0.8)
         }
 
         ColumnLayout {

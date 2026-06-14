@@ -38,26 +38,6 @@ function countryOptions(providerId, sport) {
 }
 
 
-function leagueOptions(providerId, sport, country) {
-    return [];
-}
-
-function favoriteTeamOptions(leagueCode) {
-    return [];
-}
-
-function countryTeamOptions(providerId, sport, countryCode) {
-    return [];
-}
-
-function participantLabel(sport, plural) {
-    return SportScoreSports.participantLabel(sport, Boolean(plural));
-}
-
-function sportSupportsParticipants(sport) {
-    return SportScoreSports.supports(sport);
-}
-
 function resolveFootballLeagueCode(countryCode, labelOrCode) {
     return slug(labelOrCode);
 }
@@ -79,11 +59,6 @@ function normalizedCompetitionLabel(value, leagueCode) {
 
     return label.replace(/[™®]/g, "").trim();
 }
-
-function countryCodeForLeague(leagueCode) {
-    return "";
-}
-
 
 function slugForValue(code) {
     return slug(code);

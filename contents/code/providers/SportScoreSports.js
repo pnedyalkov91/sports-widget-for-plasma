@@ -41,12 +41,6 @@ function hasCountryCompetitions(sport) {
     return normalizedSport(sport) !== "tennis";
 }
 
-function participantLabel(sport, plural) {
-    if (usesPlayers(sport))
-        return plural ? "Players" : "Player";
-    return plural ? "Teams" : "Team";
-}
-
 function rootPath(sport) {
     const value = normalizedSport(sport);
     return supports(value) ? "/" + value + "/" : "";
@@ -80,11 +74,6 @@ function participantPrefix(sport) {
     if (!supports(value))
         return "";
     return "/" + value + "/" + (usesPlayers(value) ? "player" : "team") + "/";
-}
-
-function matchPrefix(sport) {
-    const value = normalizedSport(sport);
-    return supports(value) ? "/" + value + "/match/" : "";
 }
 
 function isCompetitionPath(path, sport) {

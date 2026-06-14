@@ -151,8 +151,6 @@ If you encounter any issues or have suggestions, please open a [GitHub Issue](ht
 
 - Live scores, schedules, results and standings are sourced from [SportScore](https://sportscore.com/).
 
-- The widget uses material symbols is licensed under Apache-2.0 - https://icon-sets.iconify.design/material-symbols/
-
 ## ❤️ Support the project
 
 Sports Widget for Plasma is developed in my free time.

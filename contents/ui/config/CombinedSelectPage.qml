@@ -48,8 +48,6 @@ ColumnLayout {
     property var attemptedBadgeTeams: ({})
     property var discoveredTeams: ({})
     property int discoveredTeamRevision: 0
-    property var fallbackCountryTeams: []
-    property var featuredFallbackCountryTeams: []
     property var staticTeamOptions: []
     property bool staticTeamOptionsReady: false
     property bool teamDiscoveryRunning: false
@@ -273,14 +271,7 @@ ColumnLayout {
     }
 
     function loadVariantLeagues() {
-        const worldLeagues = ProviderCatalog.leagueOptions(root.configRoot ? root.configRoot.currentProvider : "", "football", "world");
-        return (Array.isArray(worldLeagues) ? worldLeagues : []).filter(league => {
-            const label = String(league && league.label || "").toLowerCase();
-            return label.indexOf("world cup") >= 0 || label.indexOf("nations league") >= 0
-                || label.indexOf("european championship") >= 0 || label.indexOf("gold cup") >= 0
-                || label.indexOf("asian cup") >= 0 || label.indexOf("africa cup") >= 0
-                || label.indexOf("copa america") >= 0;
-        }).slice(0, 6);
+        return [];
     }
 
     function refreshNationalVariants() {
@@ -349,19 +340,6 @@ ColumnLayout {
         return String(teamName || "").trim().toLowerCase();
     }
 
-    function fallbackTeamOptions(filterText) {
-        const filter = String(filterText || "").trim();
-        if (filter.length >= 3)
-            return root.fallbackCountryTeams;
-        if (!root.teamDiscoveryRunning && root.discoveredTeamCount() === 0)
-            return root.featuredFallbackCountryTeams;
-        return [];
-    }
-
-    function shouldIncludeFallbackTeams(filterText) {
-        return root.fallbackTeamOptions(filterText).length > 0;
-    }
-
     function mergedTeamOptions(filterText) {
         const staticOptions = root.staticTeamOptionsReady ? root.staticTeamOptions : [];
         let merged = [];
@@ -385,8 +363,6 @@ ColumnLayout {
 
         (Array.isArray(staticOptions) ? staticOptions : []).forEach(appendOption);
         Object.keys(root.discoveredTeams).forEach(key => appendOption(root.discoveredTeams[key]));
-        if (root.shouldIncludeFallbackTeams(filterText))
-            root.fallbackTeamOptions(filterText).forEach(appendOption);
 
         merged.sort((left, right) => {
             const leftRank = Number(left && left.rank);
@@ -430,8 +406,6 @@ ColumnLayout {
         root.discoveredTeams = ({});
         discoveredTeamsRevisionTimer.stop();
         root.discoveredTeamRevision += 1;
-        root.fallbackCountryTeams = [];
-        root.featuredFallbackCountryTeams = [];
         root.teamDiscoveryRunning = false;
         root.teamDiscoveryDoneLeagues = 0;
         root.teamDiscoveryTotalLeagues = 0;
@@ -525,61 +499,9 @@ ColumnLayout {
         if (badgesChanged) { root.badgeByTeam = nextBadges; root.attemptedBadgeTeams = nextAttempted; }
     }
 
-    function leagueMatchKey(value) {
-        let text = String(value || "").trim().toLowerCase();
-        if (text.length === 0) return "";
-        text = text.replace(/^english\s+/, "").replace(/^scottish\s+/, "").replace(/^welsh\s+/, "").replace(/^northern ireland\s+/, "").replace(/^ireland\s+/, "").replace(/^bulgarian\s+/, "").replace(/^spanish\s+/, "").replace(/^italian\s+/, "").replace(/^french\s+/, "").replace(/^german\s+/, "");
-        return text.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    }
 
-    function featuredLeagueKeys() {
-        const leagues = root.prioritizedLeagues().filter(l => root.leaguePriority(l) > 0).slice(0, 4);
-        let keys = [];
-        leagues.forEach(league => {
-            [String(league && league.label || "").trim(), String(league && league.value || "").trim()].forEach(candidate => {
-                const key = root.leagueMatchKey(candidate);
-                if (key.length > 0 && keys.indexOf(key) < 0) keys.push(key);
-            });
-        });
-        return keys;
-    }
 
-    function featuredCountryTeams(options) {
-        const rows = Array.isArray(options) ? options : [];
-        if (rows.length === 0) return [];
-        const leagueKeys = root.featuredLeagueKeys();
-        if (leagueKeys.length === 0) return [];
-        return rows.filter(option => {
-            const leagues = Array.isArray(option && option.leagues) ? option.leagues : [];
-            for (let i = 0; i < leagues.length; i += 1) {
-                const key = root.leagueMatchKey(leagues[i]);
-                if (key.length > 0 && leagueKeys.indexOf(key) >= 0) return true;
-            }
-            return false;
-        });
-    }
 
-    function storeFallbackCountryTeams(options) {
-        const rows = Array.isArray(options) ? options : [];
-        if (rows.length === 0) { root.fallbackCountryTeams = []; root.featuredFallbackCountryTeams = []; return; }
-        let seen = {};
-        let nextOptions = [];
-        let nextBadges = Object.assign({}, root.badgeByTeam);
-        let nextAttempted = Object.assign({}, root.attemptedBadgeTeams);
-        let badgesChanged = false;
-        rows.forEach(option => {
-            const team = String(option && option.value || option && option.label || "").trim();
-            const key = root.teamKey(team);
-            if (key.length === 0 || seen[key]) return;
-            seen[key] = true;
-            nextOptions.push({ label: String(option && option.label || team).trim(), value: team, badge: String(option && option.badge || "").trim(), teamSlug: String(option && (option.teamSlug || option.team_slug) || "").trim(), teamPath: String(option && (option.teamPath || option.teamUrl || option.url) || "").trim(), leagues: Array.isArray(option && option.leagues) ? option.leagues.slice() : [] });
-            const badge = String(option && option.badge || "").trim();
-            if (badge.length > 0 && String(nextBadges[key] || "").trim() !== badge) { nextBadges[key] = badge; nextAttempted[key] = true; badgesChanged = true; }
-        });
-        root.fallbackCountryTeams = nextOptions;
-        root.featuredFallbackCountryTeams = root.featuredCountryTeams(nextOptions);
-        if (badgesChanged) { root.badgeByTeam = nextBadges; root.attemptedBadgeTeams = nextAttempted; }
-    }
 
     function discoveredTeamCount() {
         return Object.keys(root.discoveredTeams).length;

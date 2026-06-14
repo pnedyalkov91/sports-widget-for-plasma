@@ -213,17 +213,6 @@ function fetchCountryTeams(options, onSuccess, onError) {
     fetchSportScoreCountryTeams(sport, country, onSuccess, onError);
 }
 
-function fetchTeamProfile(options, onSuccess, onError) {
-    if (!canUseSportScore(options) || !isTeamRequest(options)) {
-        finish(onSuccess, {});
-        return;
-    }
-
-    fetchSportScoreTeamPage(options, page => {
-        finish(onSuccess, sportScoreTeamProfile(page.html, options));
-    }, error => finish(onError, error));
-}
-
 function fetchTeamBadge(options, onSuccess, onError) {
     if (!canUseSportScore(options) || !isTeamRequest(options)) {
         finish(onSuccess, "");
