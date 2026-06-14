@@ -42,6 +42,7 @@ KCM.SimpleKCM {
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
     property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+    property string cfg_widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
     property string cfg_nationalTeamVisualStyle: Plasmoid.configuration.nationalTeamVisualStyle
     property string cfg_provider: Plasmoid.configuration.provider
     readonly property bool isVerticalPanel: Plasmoid.formFactor === PlasmaCore.Types.Vertical

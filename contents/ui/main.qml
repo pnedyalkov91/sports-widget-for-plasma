@@ -2546,6 +2546,7 @@ PlasmoidItem {
         tableCount: root.tableCount
         recentResultsCount: root.recentResultsCount
         widgetTabs: Plasmoid.configuration.widgetTabs
+        widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
         matchRotationEnabled: Plasmoid.configuration.widgetMatchRotationEnabled
         matchRotationInterval: Plasmoid.configuration.widgetMatchRotationInterval
         favoriteTeam: root.teamWatchMode() && root.watchedTeamNames().length === 1 ? root.effectiveFavoriteTeamName() : ""

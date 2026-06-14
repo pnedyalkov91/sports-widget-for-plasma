@@ -78,6 +78,7 @@ KCM.SimpleKCM {
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
     property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+    property string cfg_widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
 
     property string cfg_providerDefault: "sportscore"
     property string cfg_defaultSportDefault: "football"
@@ -108,6 +109,7 @@ KCM.SimpleKCM {
     property string cfg_matchDateFormatDefault: "dd.MM"
     property string cfg_matchTimeFormatDefault: "HH:mm"
     property string cfg_widgetTabsDefault: "all"
+    property string cfg_widgetLayoutModeDefault: "detailed"
     property bool cfg_prioritizePopularDefault: false
     readonly property string currentProvider: String(root.cfg_provider || "").trim()
     property string currentFollowMode: "league"

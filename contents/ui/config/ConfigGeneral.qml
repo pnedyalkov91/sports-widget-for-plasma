@@ -58,6 +58,7 @@ KCM.SimpleKCM {
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
     property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+    property string cfg_widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
     property bool cfg_prioritizePopular: Plasmoid.configuration.prioritizePopular
     property string cfg_providerDefault: "sportscore"
     property string cfg_defaultSportDefault: "football"
@@ -89,6 +90,7 @@ KCM.SimpleKCM {
     property string cfg_matchDateFormatDefault: "dd.MM"
     property string cfg_matchTimeFormatDefault: "HH:mm"
     property string cfg_widgetTabsDefault: "all"
+    property string cfg_widgetLayoutModeDefault: "detailed"
     property bool cfg_prioritizePopularDefault: false
 
     function indexFor(model, value) {
@@ -102,6 +104,34 @@ KCM.SimpleKCM {
 
     Kirigami.FormLayout {
         anchors.fill: parent
+
+        ComboBox {
+            id: layoutMode
+
+            Kirigami.FormData.label: i18nc("@label:listbox", "Layout:")
+            Layout.fillWidth: true
+            textRole: "label"
+            valueRole: "value"
+            model: [
+                { "value": "detailed", "label": i18nc("@item:inlistbox widget layout", "Detailed") },
+                { "value": "simple", "label": i18nc("@item:inlistbox widget layout", "Simple") }
+            ]
+            Component.onCompleted: currentIndex = root.indexFor(model, root.cfg_widgetLayoutMode)
+            onActivated: root.cfg_widgetLayoutMode = currentValue
+        }
+
+        Label {
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            text: i18nc("@info", "Detailed shows a featured match, tabs, standings and recent results. Simple shows only live and scheduled matches in a single scrolling list.")
+            wrapMode: Text.WordWrap
+            font: Kirigami.Theme.smallFont
+            color: Kirigami.Theme.disabledTextColor
+        }
+
+        Item {
+            Kirigami.FormData.isSection: true
+        }
 
         ComboBox {
             id: defaultSport

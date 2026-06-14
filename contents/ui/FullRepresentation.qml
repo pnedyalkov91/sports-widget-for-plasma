@@ -64,6 +64,10 @@ Item {
     property int tableCount: 0
     property int recentResultsCount: 0
     property string widgetTabs: "all"
+    property string widgetLayoutMode: "detailed"
+    readonly property bool simpleMode: root.widgetLayoutMode === "simple"
+    property bool simpleRebuildPending: false
+    property var simpleCollapsedGroups: ({})
     property int activeTab: 0
     property int selectedLiveIndex: 0
     property int selectedScoreIndex: 0
@@ -216,13 +220,124 @@ Item {
         });
     }
 
-    onLiveModelChanged: scheduleHeroRotationRefresh()
-    onScoreModelChanged: scheduleHeroRotationRefresh()
-    onLiveModelCountChanged: scheduleHeroRotationRefresh()
-    onScoreModelCountChanged: scheduleHeroRotationRefresh()
-    onMatchRotationEnabledChanged: scheduleHeroRotationRefresh()
+    function simpleMatchEntry(match) {
+        return {
+            "sport": String(match.sport || ""),
+            "league": String(match.league || ""),
+            "leagueGroup": String(match.leagueGroup || match.league || ""),
+            "homeTeam": String(match.homeTeam || ""),
+            "awayTeam": String(match.awayTeam || ""),
+            "homeScore": String(match.homeScore || ""),
+            "awayScore": String(match.awayScore || ""),
+            "homePenaltyScore": String(match.homePenaltyScore || ""),
+            "awayPenaltyScore": String(match.awayPenaltyScore || ""),
+            "status": String(match.status || ""),
+            "minute": String(match.minute || ""),
+            "startTime": String(match.startTime || ""),
+            "matchday": String(match.matchday || ""),
+            "stadium": String(match.stadium || ""),
+            "homeBadge": String(match.homeBadge || ""),
+            "awayBadge": String(match.awayBadge || ""),
+            "poster": String(match.poster || ""),
+            "popular": Boolean(match.popular),
+            "showScore": match.showScore !== false
+        };
+    }
 
-    Component.onCompleted: scheduleHeroRotationRefresh()
+    // Builds a single league-grouped list that merges live and scheduled
+    // matches for the "Simple" layout. Live matches are placed before
+    // scheduled ones within each competition, and duplicates between the two
+    // source models are collapsed (the live entry wins).
+    function rebuildSimpleModel() {
+        simpleCombinedModel.clear();
+        if (!root.simpleMode)
+            return;
+
+        const order = [];
+        const grouped = {};
+        const seen = {};
+
+        function collect(model, isLive) {
+            const count = root.modelCount(model);
+            for (let index = 0; index < count; index += 1) {
+                const match = model.get(index);
+                if (!match)
+                    continue;
+
+                const group = String(match.leagueGroup || match.league || "");
+                const key = (String(match.homeTeam || "") + "|" + String(match.awayTeam || "") + "|" + group).toLowerCase();
+                if (seen[key])
+                    continue;
+                seen[key] = true;
+
+                if (!grouped[group]) {
+                    grouped[group] = { "live": [], "scheduled": [] };
+                    order.push(group);
+                }
+                grouped[group][isLive ? "live" : "scheduled"].push(root.simpleMatchEntry(match));
+            }
+        }
+
+        collect(root.liveModel, true);
+        collect(root.scoreModel, false);
+
+        order.forEach(group => {
+            grouped[group].live.forEach(entry => simpleCombinedModel.append(entry));
+            grouped[group].scheduled.forEach(entry => simpleCombinedModel.append(entry));
+        });
+    }
+
+    function isSimpleGroupCollapsed(group) {
+        return Boolean(root.simpleCollapsedGroups[String(group || "")]);
+    }
+
+    function toggleSimpleGroup(group) {
+        const key = String(group || "");
+        const next = {};
+        for (let existingKey in root.simpleCollapsedGroups)
+            next[existingKey] = root.simpleCollapsedGroups[existingKey];
+        next[key] = !root.isSimpleGroupCollapsed(key);
+        root.simpleCollapsedGroups = next;
+    }
+
+    function scheduleSimpleRebuild() {
+        if (root.simpleRebuildPending)
+            return;
+
+        root.simpleRebuildPending = true;
+        Qt.callLater(() => {
+            root.simpleRebuildPending = false;
+            root.rebuildSimpleModel();
+        });
+    }
+
+    ListModel {
+        id: simpleCombinedModel
+    }
+
+    onLiveModelChanged: {
+        scheduleHeroRotationRefresh();
+        scheduleSimpleRebuild();
+    }
+    onScoreModelChanged: {
+        scheduleHeroRotationRefresh();
+        scheduleSimpleRebuild();
+    }
+    onLiveModelCountChanged: {
+        scheduleHeroRotationRefresh();
+        scheduleSimpleRebuild();
+    }
+    onScoreModelCountChanged: {
+        scheduleHeroRotationRefresh();
+        scheduleSimpleRebuild();
+    }
+    onMatchRotationEnabledChanged: scheduleHeroRotationRefresh()
+    onSimpleModeChanged: scheduleSimpleRebuild()
+
+    Component.onCompleted: {
+        scheduleHeroRotationRefresh();
+        scheduleSimpleRebuild();
+    }
 
     function currentHeroModel() {
         if (root.activeTab === 0)
@@ -293,7 +408,7 @@ Item {
     Timer {
         interval: Math.max(5, root.matchRotationInterval || 30) * 1000
         repeat: true
-        running: root.visible && root.matchRotationEnabled && root.heroRotationCount > 1
+        running: root.visible && !root.simpleMode && root.matchRotationEnabled && root.heroRotationCount > 1
         onTriggered: heroRotationAnimation.restart()
     }
 
@@ -339,10 +454,23 @@ Item {
 
     onWidgetTabsChanged: activateTab(activeTab)
     onFollowTeamModeChanged: activateTab(activeTab)
-    Layout.minimumWidth: root.hasSavedLeagues ? Kirigami.Units.gridUnit * 30 : Kirigami.Units.gridUnit * 18
-    Layout.minimumHeight: root.hasSavedLeagues ? Kirigami.Units.gridUnit * 30 : Kirigami.Units.gridUnit * 14
-    Layout.preferredWidth: root.hasSavedLeagues ? Kirigami.Units.gridUnit * 40 : Kirigami.Units.gridUnit * 22
-    Layout.preferredHeight: root.hasSavedLeagues ? Kirigami.Units.gridUnit * 43 : Kirigami.Units.gridUnit * 16
+
+    // In Simple mode the popup follows its content: header + the combined
+    // match list + footer, clamped between a small floor and a sensible cap
+    // (beyond which the list scrolls instead of growing further).
+    readonly property int simpleContentHeight: Kirigami.Units.largeSpacing * 2
+        + headerRow.height + Kirigami.Units.smallSpacing
+        + Math.max(Kirigami.Units.gridUnit * 4, simpleList.contentHeight)
+        + Kirigami.Units.smallSpacing + footerLabel.height
+
+    Layout.minimumWidth: root.simpleMode ? Kirigami.Units.gridUnit * 18 : root.hasSavedLeagues ? Kirigami.Units.gridUnit * 30 : Kirigami.Units.gridUnit * 18
+    Layout.minimumHeight: root.simpleMode ? Kirigami.Units.gridUnit * 8 : root.hasSavedLeagues ? Kirigami.Units.gridUnit * 30 : Kirigami.Units.gridUnit * 14
+    Layout.preferredWidth: root.simpleMode ? Kirigami.Units.gridUnit * 26 : root.hasSavedLeagues ? Kirigami.Units.gridUnit * 40 : Kirigami.Units.gridUnit * 22
+    Layout.preferredHeight: !root.hasSavedLeagues
+        ? Kirigami.Units.gridUnit * 16
+        : root.simpleMode
+            ? Math.min(Kirigami.Units.gridUnit * 44, Math.max(root.Layout.minimumHeight, root.simpleContentHeight))
+            : Kirigami.Units.gridUnit * 43
 
     Item {
         anchors.fill: parent
@@ -397,6 +525,8 @@ Item {
         visible: root.hasSavedLeagues
 
         RowLayout {
+            id: headerRow
+
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
 
@@ -514,6 +644,7 @@ Item {
         MatchHero {
             id: matchHero
 
+            visible: !root.simpleMode
             Layout.fillWidth: true
             Layout.preferredHeight: Kirigami.Units.gridUnit * 8
             homeTeam: root.selectedMatchValue("homeTeam", i18nc("@info:placeholder", "Home team"))
@@ -535,6 +666,7 @@ Item {
         }
 
         Rectangle {
+            visible: !root.simpleMode
             Layout.fillWidth: true
             Layout.preferredHeight: 34
             Layout.leftMargin: -Kirigami.Units.largeSpacing
@@ -581,12 +713,13 @@ Item {
 
         Kirigami.InlineMessage {
             Layout.fillWidth: true
-            visible: root.activeTab === 1 && root.errorMessage.length > 0 && !root.loading && !root.schedulesLoading
+            visible: !root.simpleMode && root.activeTab === 1 && root.errorMessage.length > 0 && !root.loading && !root.schedulesLoading
             type: Kirigami.MessageType.Information
             text: root.errorMessage
         }
 
         StackLayout {
+            visible: !root.simpleMode
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: root.activeTab
@@ -645,7 +778,101 @@ Item {
 
         }
 
+        Item {
+            id: simpleView
+
+            visible: root.simpleMode
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            readonly property bool loading: root.liveLoading || root.schedulesLoading || root.loading
+
+            ListView {
+                id: simpleList
+
+                anchors.fill: parent
+                clip: true
+                spacing: 0
+                model: simpleCombinedModel
+                boundsBehavior: Flickable.StopAtBounds
+
+                readonly property int contentColumnWidth: Math.max(0, width - Kirigami.Units.gridUnit)
+
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
+
+                section.property: "leagueGroup"
+                section.criteria: ViewSection.FullString
+                section.delegate: RoundSectionHeader {
+                    width: simpleList.contentColumnWidth
+                    text: section
+                    collapsible: true
+                    collapsed: root.isSimpleGroupCollapsed(section)
+                    onToggled: root.toggleSimpleGroup(section)
+                }
+
+                delegate: ScoreDelegate {
+                    width: simpleList.contentColumnWidth
+                    visible: !root.isSimpleGroupCollapsed(model.leagueGroup)
+                    height: visible ? implicitHeight : 0
+                    enabled: visible
+                    sport: model.sport
+                    league: model.league
+                    homeTeam: model.homeTeam
+                    awayTeam: model.awayTeam
+                    homeScore: model.homeScore
+                    awayScore: model.awayScore
+                    homePenaltyScore: model.homePenaltyScore
+                    awayPenaltyScore: model.awayPenaltyScore
+                    status: model.status
+                    minute: model.minute
+                    startTime: model.startTime
+                    matchday: model.matchday || ""
+                    stadium: model.stadium || ""
+                    homeBadge: model.homeBadge
+                    awayBadge: model.awayBadge
+                    poster: model.poster
+                    popular: model.popular
+                    showScore: model.showScore !== false
+                    splitLeagueAndTimeLines: true
+                    splitDateAndTimeLines: true
+                    favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
+                }
+            }
+
+            EmptyState {
+                anchors.fill: parent
+                visible: simpleList.count === 0 && !simpleView.loading
+                text: i18nc("@info:placeholder", "No live or scheduled matches")
+            }
+
+            ColumnLayout {
+                anchors.centerIn: parent
+                width: Math.max(0, parent.width - Kirigami.Units.gridUnit * 2)
+                visible: simpleList.count === 0 && simpleView.loading
+                spacing: Kirigami.Units.smallSpacing
+
+                PlasmaComponents.BusyIndicator {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.large
+                    Layout.preferredHeight: Layout.preferredWidth
+                    running: simpleView.loading
+                }
+
+                PlasmaComponents.Label {
+                    Layout.fillWidth: true
+                    text: i18nc("@info:status", "Loading matches")
+                    color: Kirigami.Theme.disabledTextColor
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
         PlasmaComponents.Label {
+            id: footerLabel
+
             Layout.fillWidth: true
             text: (root.lastUpdatedText.length > 0 ? root.lastUpdatedText : i18nc("@info:status", "Waiting for update"))
                 + " · " + i18nc("@info", "Powered by <a href=\"https://sportscore.com/\">SportScore</a>")

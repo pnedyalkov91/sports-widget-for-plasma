@@ -107,6 +107,9 @@
     <entry name="matchTimeFormat" type="String">
       <default>HH:mm</default>
     </entry>
+    <entry name="widgetLayoutMode" type="String">
+      <default>detailed</default>
+    </entry>
     <entry name="widgetTabs" type="String">
       <default>all</default>
     </entry>
