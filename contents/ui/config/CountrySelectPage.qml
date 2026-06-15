@@ -56,6 +56,10 @@ SportStepPage {
         }
     }
 
+    WizardCache {
+        id: wizardCache
+    }
+
     function staticCountryOption(value) {
         const options = ProviderCatalog.countryOptions(root.configRoot ? root.configRoot.currentProvider : "", root.configRoot ? root.configRoot.normalizedSport() : "");
         for (let index = 0; index < options.length; index += 1) {
@@ -63,6 +67,22 @@ SportStepPage {
                 return options[index] || {};
         }
         return {};
+    }
+
+    function applyCountryRows(sport, rows) {
+        const options = (Array.isArray(rows) ? rows : []).map(row => {
+            const value = String(row && row.value || "").trim();
+            const fallback = root.staticCountryOption(value);
+            return {
+                label: String(row && row.label || fallback.label || ProviderCatalog.leagueLabel(value)).trim(),
+                value,
+                icon: String(row && row.icon || fallback.icon || "").trim(),
+                infoText: String(row && row.infoText || "").trim()
+            };
+        }).filter(row => row.value.length > 0);
+        root.configRoot.cfg_providerCountrySport = sport;
+        root.configRoot.cfg_providerCountryOptions = options;
+        return options.length;
     }
 
     function loadCountries() {
@@ -81,6 +101,19 @@ SportStepPage {
         root.countryLoadError = "";
         root.configRoot.cfg_providerCountrySport = "";
         root.configRoot.cfg_providerCountryOptions = [];
+
+        // Render instantly from the local cache; only hit the network when the
+        // cache is missing or stale, and keep the cached list if the fetch fails.
+        const cacheKey = "countries|" + sport;
+        const cached = wizardCache.read(cacheKey);
+        const hasCache = cached && Array.isArray(cached.value) && cached.value.length > 0;
+        if (hasCache) {
+            root.applyCountryRows(sport, cached.value);
+            root.loadingCountries = false;
+            if (cached.fresh)
+                return;
+        }
+
         SportsApi.fetchSportCountries({
             "provider": root.configRoot.currentProvider,
             "sports": sport
@@ -89,26 +122,18 @@ SportStepPage {
                 return;
 
             root.loadingCountries = false;
-            let options = (Array.isArray(rows) ? rows : []).map(row => {
-                const value = String(row && row.value || "").trim();
-                const fallback = root.staticCountryOption(value);
-                return {
-                    label: String(row && row.label || fallback.label || ProviderCatalog.leagueLabel(value)).trim(),
-                    value,
-                    icon: String(row && row.icon || fallback.icon || "").trim(),
-                    infoText: String(row && row.infoText || "").trim()
-                };
-            }).filter(row => row.value.length > 0);
-            root.configRoot.cfg_providerCountrySport = sport;
-            root.configRoot.cfg_providerCountryOptions = options;
-            if (options.length === 0)
+            if (Array.isArray(rows) && rows.length > 0)
+                wizardCache.write(cacheKey, rows);
+            const count = root.applyCountryRows(sport, rows);
+            if (count === 0 && !hasCache)
                 root.countryLoadError = i18nc("@info", "No countries were found for this sport.");
         }, message => {
             if (token !== root.countryRequestToken)
                 return;
 
             root.loadingCountries = false;
-            root.countryLoadError = String(message || i18nc("@info", "Unable to load countries from provider.")).trim();
+            if (!hasCache)
+                root.countryLoadError = String(message || i18nc("@info", "Unable to load countries from provider.")).trim();
         });
     }
 

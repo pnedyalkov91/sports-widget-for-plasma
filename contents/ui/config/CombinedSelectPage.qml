@@ -180,6 +180,32 @@ ColumnLayout {
 
     // ── League loading ────────────────────────────────────────────────────────
 
+    WizardCache {
+        id: wizardCache
+    }
+
+    function applyLeagueRows(country, rows) {
+        const options = (Array.isArray(rows) ? rows : []).map(row => ({
+            "label": ProviderCatalog.normalizedCompetitionLabel(
+                String(row && row.label || "").trim(),
+                String(row && (row.slug || row.value) || "").trim()
+            ),
+            "value": String(row && (row.value || row.slug || row.label) || "").trim(),
+            "slug": String(row && (row.slug || row.value) || "").trim(),
+            "country": String(row && row.country || country).trim(),
+            "path": String(row && row.path || "").trim(),
+            "url": String(row && row.url || "").trim()
+        })).filter(row => row.label.length > 0 && row.value.length > 0);
+        root.configRoot.cfg_providerLeagueCountry = country;
+        root.configRoot.cfg_providerLeagueOptions = options;
+        return options.length;
+    }
+
+    function maybeStartTeamDiscovery() {
+        if (root.pageActive && !root.playerMode && !root.teamDiscoveryRunning && root.teamDiscoveryTotalLeagues === 0)
+            root.startCountryTeamDiscovery();
+    }
+
     function loadLeagues() {
         if (!root.configRoot || !root.pageActive)
             return;
@@ -197,6 +223,20 @@ ColumnLayout {
         root.leagueLoadError = "";
         root.configRoot.cfg_providerLeagueCountry = "";
         root.configRoot.cfg_providerLeagueOptions = [];
+
+        // Render instantly from the local cache; refresh from the network only
+        // when the cache is missing or stale, and keep it if the fetch fails.
+        const cacheKey = "competitions|" + sport + "|" + country;
+        const cached = wizardCache.read(cacheKey);
+        const hasCache = cached && Array.isArray(cached.value) && cached.value.length > 0;
+        if (hasCache) {
+            root.applyLeagueRows(country, cached.value);
+            root.loadingLeagues = false;
+            root.maybeStartTeamDiscovery();
+            if (cached.fresh)
+                return;
+        }
+
         SportsApi.fetchCountryCompetitions({
             "provider": root.configRoot.currentProvider,
             "sports": sport,
@@ -205,30 +245,21 @@ ColumnLayout {
             if (token !== root.leagueRequestToken)
                 return;
             root.loadingLeagues = false;
-            const options = (Array.isArray(rows) ? rows : []).map(row => ({
-                "label": ProviderCatalog.normalizedCompetitionLabel(
-                    String(row && row.label || "").trim(),
-                    String(row && (row.slug || row.value) || "").trim()
-                ),
-                "value": String(row && (row.value || row.slug || row.label) || "").trim(),
-                "slug": String(row && (row.slug || row.value) || "").trim(),
-                "country": String(row && row.country || country).trim(),
-                "path": String(row && row.path || "").trim(),
-                "url": String(row && row.url || "").trim()
-            })).filter(row => row.label.length > 0 && row.value.length > 0);
-            root.configRoot.cfg_providerLeagueCountry = country;
-            root.configRoot.cfg_providerLeagueOptions = options;
-            if (options.length === 0)
+            if (Array.isArray(rows) && rows.length > 0)
+                wizardCache.write(cacheKey, rows);
+            const count = root.applyLeagueRows(country, rows);
+            if (count === 0 && !hasCache)
                 root.leagueLoadError = i18nc("@info", "No leagues or cups were found for this country.");
-            if (root.pageActive && !root.playerMode && !root.teamDiscoveryRunning && root.teamDiscoveryTotalLeagues === 0)
-                root.startCountryTeamDiscovery();
+            root.maybeStartTeamDiscovery();
         }, message => {
             if (token !== root.leagueRequestToken)
                 return;
             root.loadingLeagues = false;
-            root.configRoot.cfg_providerLeagueCountry = country;
-            root.configRoot.cfg_providerLeagueOptions = [];
-            root.leagueLoadError = String(message || i18nc("@info", "Unable to load leagues from provider.")).trim();
+            if (!hasCache) {
+                root.configRoot.cfg_providerLeagueCountry = country;
+                root.configRoot.cfg_providerLeagueOptions = [];
+                root.leagueLoadError = String(message || i18nc("@info", "Unable to load leagues from provider.")).trim();
+            }
         });
     }
 
@@ -558,8 +589,24 @@ ColumnLayout {
 
         if (root.isInternationalCountry) {
             root.teamDiscoveryRunning = false;
-            root.finishTeamDiscovery(token);
+            root.finishTeamDiscovery(token, false);
             return;
+        }
+
+        // Cache-first: show locally-saved teams instantly. When the cache is
+        // fresh, skip the slow per-league discovery entirely; when stale, show
+        // the cached teams and refresh in the background.
+        const cacheKey = root.teamCacheKey();
+        const cachedTeams = cacheKey.length > 0 ? wizardCache.read(cacheKey) : null;
+        if (cachedTeams && cachedTeams.value && typeof cachedTeams.value === "object"
+                && Object.keys(cachedTeams.value).length > 0) {
+            root.discoveredTeams = cachedTeams.value;
+            root.discoveredTeamRevision += 1;
+            if (cachedTeams.fresh) {
+                root.teamDiscoveryRunning = false;
+                root.finishTeamDiscovery(token, false);
+                return;
+            }
         }
 
         root.teamDiscoveryRunning = true;
@@ -619,13 +666,34 @@ ColumnLayout {
         });
     }
 
-    function finishTeamDiscovery(token) {
+    function teamCacheKey() {
+        if (!root.configRoot)
+            return "";
+        const sport = String(root.configRoot.normalizedSport() || "").trim();
+        const country = String(root.configRoot.cfg_country || "").trim();
+        if (sport.length === 0 || country.length === 0)
+            return "";
+        return "teams|" + sport + "|" + country;
+    }
+
+    function persistDiscoveredTeams() {
+        const key = root.teamCacheKey();
+        if (key.length === 0)
+            return;
+        const teams = root.discoveredTeams;
+        if (teams && Object.keys(teams).length > 0)
+            wizardCache.write(key, teams);
+    }
+
+    function finishTeamDiscovery(token, persist) {
         if (token !== root.teamDiscoveryToken) return;
         root.teamDiscoveryRunning = false;
         if (discoveredTeamsRevisionTimer.running) {
             discoveredTeamsRevisionTimer.stop();
             root.discoveredTeamRevision += 1;
         }
+        if (persist !== false)
+            root.persistDiscoveredTeams();
         root.prefetchVisibleBadges();
     }
 
