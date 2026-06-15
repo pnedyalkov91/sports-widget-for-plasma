@@ -15,8 +15,8 @@
             }
         ],
         "Version": "0.8.0",
-        "Website": "https://github.com/pnedyalkov/sports-widget-for-plasma",
-        "BugReportUrl": "https://github.com/pnedyalkov/sports-widget-for-plasma/issues"
+        "Website": "https://github.com/pnedyalkov91/sports-widget-for-plasma",
+        "BugReportUrl": "https://github.com/pnedyalkov91/sports-widget-for-plasma/issues"
     },
     "X-Plasma-API-Minimum-Version": "6.0",
     "X-Plasma-MainScript": "ui/main.qml",
