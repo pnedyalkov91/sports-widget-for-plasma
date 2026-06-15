@@ -130,7 +130,21 @@ ColumnLayout {
         }
     }
 
+    WizardCache {
+        id: badgeCache
+    }
+
     function fetchTeamBadge(model, entry, sourceIndex) {
+        // Team badges are static, so serve a cached one and skip the (team-page)
+        // request entirely.
+        const cacheKey = "badge|" + (entry.sport || "football") + "|"
+            + (entry.teamSlug || entry.favoriteTeam || "") + "|" + (entry.country || "");
+        const cached = badgeCache.read(cacheKey);
+        if (cached && typeof cached.value === "string" && cached.value.length > 0) {
+            root.setModelTeamBadge(model, sourceIndex, cached.value);
+            return;
+        }
+
         SportsApi.fetchTeamBadge({
             "sports": entry.sport || "football",
             "country": entry.country || "",
@@ -139,8 +153,10 @@ ColumnLayout {
             "teamPath": entry.teamPath || entry.teamUrl || ""
         }, badge => {
             badge = String(badge || "").trim();
-            if (badge.length > 0)
+            if (badge.length > 0) {
+                badgeCache.write(cacheKey, badge);
                 root.setModelTeamBadge(model, sourceIndex, badge);
+            }
         });
     }
 

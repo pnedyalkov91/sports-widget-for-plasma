@@ -18,12 +18,16 @@
 import "../code/SportsApi.js" as SportsApi
 import "../code/SavedSportsModel.js" as SavedSportsModel
 import "../code/SportVisuals.js" as SportVisuals
+import "../code/MatchNotifications.js" as MatchNotifications
+import "../code/CalendarSync.js" as CalendarSync
 import "../code/providers/ProviderCatalog.js" as ProviderCatalog
 import "../code/providers/ProviderCountries.js" as ProviderCountries
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import org.kde.notification
 import org.kde.plasma.core as PlasmaCore
+import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.plasma.plasmoid
 
 PlasmoidItem {
@@ -98,6 +102,13 @@ PlasmoidItem {
     property var primaryTableRows: []
     property var latestLiveMatches: []
     property var latestScheduleMatches: []
+    property var notifyLiveSnapshot: ({})
+    property bool notifyHasBaseline: false
+    property var startsSoonAnnounced: ({})
+    property bool calendarResourceEnsured: false
+    property string lastCalendarIcs: ""
+    property var pendingCalendarRows: []
+    property bool calendarHadData: false
     property var latestRecentMatches: []
     property var discoveredTeamCompetitions: []
     property var teamTableOptions: []
@@ -1500,6 +1511,9 @@ PlasmoidItem {
         return options;
     }
 
+    readonly property int teamCompetitionsTtlMs: 24 * 60 * 60 * 1000
+    readonly property int seasonsTtlMs: 7 * 24 * 60 * 60 * 1000
+
     function refreshTeamCompetitionOptions(options) {
         const teamEntries = root.watchedTeamEntriesForScope("includeTables");
         if (teamEntries.length === 0) {
@@ -1511,32 +1525,51 @@ PlasmoidItem {
         const requestToken = options.refreshToken;
         let pending = teamEntries.length;
         let competitions = [];
+
+        function appendRows(entry, sourceOrder, rows) {
+            const entryKey = root.savedEntryKey(entry);
+            const sourceTeam = root.displayFavoriteTeam(entry);
+            competitions = competitions.concat((Array.isArray(rows) ? rows : []).map(row => Object.assign({}, row || {}, {
+                "scopeOrder": sourceOrder,
+                "sourceEntryKey": entryKey,
+                "sourceTeam": sourceTeam
+            })));
+        }
+
+        function complete() {
+            pending -= 1;
+            if (pending > 0 || !root.isCurrentRefresh(requestToken))
+                return;
+
+            root.discoveredTeamCompetitions = competitions;
+            syncTeamTableOptions();
+            if (root.currentDisplayTableSlug().length > 0)
+                root.refreshDisplayTableForSelection();
+        }
+
         teamEntries.forEach((entry, sourceOrder) => {
+            // A team's set of competitions changes ~once a season, yet this fires
+            // for every followed team on every refresh — so serve it from the
+            // persistent cache and only re-fetch once the cache is stale.
+            const cacheKey = "teamcomps|" + root.savedEntryKey(entry);
+            const cached = matchCache.read(cacheKey);
+            const hasFreshCache = cached && Array.isArray(cached.value)
+                && (Date.now() - cached.ts) < root.teamCompetitionsTtlMs;
+            if (hasFreshCache) {
+                appendRows(entry, sourceOrder, cached.value);
+                complete();
+                return;
+            }
+
             SportsApi.fetchTeamCompetitions(root.requestOptionsForEntry(entry, requestToken, false), (rows) => {
-                const entryKey = root.savedEntryKey(entry);
-                const sourceTeam = root.displayFavoriteTeam(entry);
-                competitions = competitions.concat((Array.isArray(rows) ? rows : []).map(row => Object.assign({}, row || {}, {
-                    "scopeOrder": sourceOrder,
-                    "sourceEntryKey": entryKey,
-                    "sourceTeam": sourceTeam
-                })));
-                pending -= 1;
-                if (pending > 0 || !root.isCurrentRefresh(requestToken))
-                    return;
-
-                root.discoveredTeamCompetitions = competitions;
-                syncTeamTableOptions();
-                if (root.currentDisplayTableSlug().length > 0)
-                    root.refreshDisplayTableForSelection();
+                if (Array.isArray(rows) && rows.length > 0)
+                    matchCache.write(cacheKey, rows);
+                appendRows(entry, sourceOrder, rows);
+                complete();
             }, () => {
-                pending -= 1;
-                if (pending > 0 || !root.isCurrentRefresh(requestToken))
-                    return;
-
-                root.discoveredTeamCompetitions = competitions;
-                syncTeamTableOptions();
-                if (root.currentDisplayTableSlug().length > 0)
-                    root.refreshDisplayTableForSelection();
+                if (cached && Array.isArray(cached.value))
+                    appendRows(entry, sourceOrder, cached.value);
+                complete();
             });
         });
     }
@@ -1613,11 +1646,23 @@ PlasmoidItem {
             return;
 
         root.teamTableSeasonScopeKey = scopeKey;
+        const previousKey = String(root.selectedTeamTableSeasonKey || "").trim();
+
+        // A competition's season list is static; serve it from the persistent
+        // cache and only re-fetch once the cache is stale.
+        const cacheKey = "seasons|" + scopeKey;
+        const cached = matchCache.read(cacheKey);
+        if (cached && Array.isArray(cached.value) && cached.value.length > 0
+                && (Date.now() - cached.ts) < root.seasonsTtlMs) {
+            root.teamTableSeasonLoading = false;
+            root.applyTeamTableSeasons(cached.value, previousKey);
+            return;
+        }
+
         root.teamTableSeasonLoading = true;
         teamTableSeasonWatchdogTimer.restart();
         root.teamTableSeasonRequestToken += 1;
         const token = root.teamTableSeasonRequestToken;
-        const previousKey = String(root.selectedTeamTableSeasonKey || "").trim();
         SportsApi.fetchLeagueSeasons({
             "provider": effectiveProvider(),
             "baseUrl": effectiveBaseUrl(root.selectedSport),
@@ -1630,33 +1675,16 @@ PlasmoidItem {
         }, (seasons) => {
             if (token !== root.teamTableSeasonRequestToken)
                 return;
-
-            const options = Array.isArray(seasons) ? seasons.filter(row => String(row && row.key || "").trim().length > 0) : [];
-            root.teamTableSeasonOptions = options;
-            let nextKey = "";
-            if (options.some(option => String(option.key || "").trim() === previousKey)) {
-                nextKey = previousKey;
-            } else {
-                const preferred = options.find(option => Boolean(option && option.isDefault));
-                nextKey = String(preferred && preferred.key || options[0] && options[0].key || "").trim();
-            }
-
-            root.selectedTeamTableSeasonKey = nextKey;
-            root.teamTableSeasonLoading = false;
-            teamTableSeasonWatchdogTimer.stop();
-            const canRefreshNow = root.tableRequestCompleted
-                && !root.teamTableLoading
-                && root.currentDisplayTableSlug().length > 0
-                && nextKey.length > 0;
-            if (canRefreshNow) {
-                root.pendingSeasonTableRefresh = false;
-                root.refreshDisplayTableForSelection();
-            } else if (nextKey.length > 0 && root.currentDisplayTableSlug().length > 0) {
-                root.pendingSeasonTableRefresh = true;
-            }
+            if (Array.isArray(seasons) && seasons.length > 0)
+                matchCache.write(cacheKey, seasons);
+            root.applyTeamTableSeasons(seasons, previousKey);
         }, () => {
             if (token !== root.teamTableSeasonRequestToken)
                 return;
+            if (cached && Array.isArray(cached.value) && cached.value.length > 0) {
+                root.applyTeamTableSeasons(cached.value, previousKey);
+                return;
+            }
 
             root.teamTableSeasonOptions = [];
             root.teamTableSeasonLoading = false;
@@ -1667,6 +1695,32 @@ PlasmoidItem {
             if (hadSelection && root.tableRequestCompleted && !root.teamTableLoading && root.currentDisplayTableSlug().length > 0)
                 root.refreshDisplayTableForSelection();
         });
+    }
+
+    function applyTeamTableSeasons(seasons, previousKey) {
+        const options = Array.isArray(seasons) ? seasons.filter(row => String(row && row.key || "").trim().length > 0) : [];
+        root.teamTableSeasonOptions = options;
+        let nextKey = "";
+        if (options.some(option => String(option.key || "").trim() === previousKey)) {
+            nextKey = previousKey;
+        } else {
+            const preferred = options.find(option => Boolean(option && option.isDefault));
+            nextKey = String(preferred && preferred.key || options[0] && options[0].key || "").trim();
+        }
+
+        root.selectedTeamTableSeasonKey = nextKey;
+        root.teamTableSeasonLoading = false;
+        teamTableSeasonWatchdogTimer.stop();
+        const canRefreshNow = root.tableRequestCompleted
+            && !root.teamTableLoading
+            && root.currentDisplayTableSlug().length > 0
+            && nextKey.length > 0;
+        if (canRefreshNow) {
+            root.pendingSeasonTableRefresh = false;
+            root.refreshDisplayTableForSelection();
+        } else if (nextKey.length > 0 && root.currentDisplayTableSlug().length > 0) {
+            root.pendingSeasonTableRefresh = true;
+        }
     }
 
     function currentRequestOptions() {
@@ -1815,9 +1869,75 @@ PlasmoidItem {
         }
     }
 
+    MatchDataCache {
+        id: matchCache
+    }
+
+    // A stable signature of the followed competitions/teams, so cached live data
+    // is restored only for the selection it was captured under.
+    function dataScopeSignature() {
+        const entries = Array.isArray(root.savedLeagueEntries) ? root.savedLeagueEntries : [];
+        return JSON.stringify(entries.map(entry => ({
+            "s": String(entry && entry.sport || ""),
+            "c": String(entry && entry.country || ""),
+            "l": String(entry && entry.league || ""),
+            "t": String(entry && entry.favoriteTeam || "")
+        })));
+    }
+
+    // Cached "upcoming" matches that are still in the future (or in progress),
+    // so finished matches from an old cache are never shown as upcoming.
+    function futureMatches(matches) {
+        const now = Date.now();
+        return (Array.isArray(matches) ? matches : []).filter(match => {
+            let timestamp = Number(match && match.timestamp || 0);
+            if (!Number.isFinite(timestamp) || timestamp <= 0)
+                return true;
+            if (timestamp < 100000000000)
+                timestamp *= 1000;
+            return timestamp >= now - 3 * 60 * 60 * 1000;
+        });
+    }
+
+    function tableCacheKey() {
+        return "table|" + root.dataScopeSignature() + "|" + String(root.selectedTeamTableSlug || "") + "|" + String(root.selectedTeamTableSeasonKey || "");
+    }
+
+    // Restore the last-known views from disk so the widget is not blank while the
+    // first (possibly slow) refresh runs, or when SportScore is unreachable.
+    function seedFromCache() {
+        if (!root.hasSportSelection())
+            return;
+
+        const scheduleCache = matchCache.read("schedule|" + root.dataScopeSignature());
+        if (scheduleCache && Array.isArray(scheduleCache.value)) {
+            const future = root.futureMatches(scheduleCache.value);
+            if (future.length > 0)
+                root.applySchedules(future, root.lastUpdatedText);
+        }
+
+        const recentCache = matchCache.read("recent|" + root.dataScopeSignature());
+        if (recentCache && Array.isArray(recentCache.value) && recentCache.value.length > 0)
+            root.applyRecentResults(recentCache.value);
+
+        const tableCache = matchCache.read(root.tableCacheKey());
+        if (tableCache && Array.isArray(tableCache.value) && tableCache.value.length > 0)
+            root.applyTable(tableCache.value, true);
+    }
+
     function applySchedules(matches, updateText) {
+        matches = Array.isArray(matches) ? matches : [];
+        const cacheKey = "schedule|" + root.dataScopeSignature();
+        if (matches.length > 0) {
+            matchCache.write(cacheKey, matches);
+        } else {
+            const cached = matchCache.read(cacheKey);
+            const restored = cached && Array.isArray(cached.value) ? root.futureMatches(cached.value) : [];
+            if (restored.length > 0)
+                matches = restored;
+        }
         scoresModel.clear();
-        root.latestScheduleMatches = Array.isArray(matches) ? matches.slice() : [];
+        root.latestScheduleMatches = matches.slice();
         promoteLiveMatches(root.latestScheduleMatches);
         syncTeamTableOptions();
         matches = scheduledMatches(root.latestScheduleMatches);
@@ -1841,6 +1961,8 @@ PlasmoidItem {
 
         root.lastUpdatedText = updateText;
         root.refreshAuxiliaryMatchModels();
+        root.requestCalendarSync();
+        root.checkStartsSoon();
         return matches.length;
     }
 
@@ -1912,6 +2034,237 @@ PlasmoidItem {
         });
     }
 
+    function postNotification(title, text, iconName) {
+        const notification = notificationComponent.createObject(root, {
+            "title": title,
+            "text": text,
+            "iconName": iconName || "appointment-soon"
+        });
+        if (!notification)
+            return;
+
+        notification.closed.connect(() => notification.destroy());
+        notification.sendEvent();
+    }
+
+    function notificationIconFor(kind) {
+        if (kind === "fulltime")
+            return "checkmark";
+        if (kind === "startssoon")
+            return "appointment-soon";
+        return "media-playback-start";
+    }
+
+    function emitMatchNotification(event) {
+        const match = event.match || {};
+        const teams = String(match.homeTeam || "") + " vs " + String(match.awayTeam || "");
+        const league = String(match.league || "").trim();
+        const score = String(event.scoreText || "");
+        const scoreLine = score.length > 0 ? (league.length > 0 ? score + " · " + league : score) : league;
+        let title = teams;
+        let body = league;
+
+        if (event.kind === "kickoff") {
+            title = i18nc("@title:notification", "Kickoff: %1", teams);
+        } else if (event.kind === "goal") {
+            title = i18nc("@title:notification", "Goal! %1", teams);
+            body = scoreLine;
+        } else if (event.kind === "fulltime") {
+            title = i18nc("@title:notification", "Full time: %1", teams);
+            body = scoreLine;
+        } else if (event.kind === "startssoon") {
+            title = i18ncp("@title:notification", "Starts in %1 minute: %2", "Starts in %1 minutes: %2", event.minutes, teams);
+        }
+
+        root.postNotification(title, body, root.notificationIconFor(event.kind));
+    }
+
+    // Saved entries the user has NOT opted out of for the given feature. An
+    // empty exclusion list means everything is included (the default).
+    function enabledEntriesFor(exclusionConfigKey) {
+        let excluded = [];
+        try {
+            const parsed = JSON.parse(Plasmoid.configuration[exclusionConfigKey] || "[]");
+            excluded = Array.isArray(parsed) ? parsed.map(String) : [];
+        } catch (error) {
+            excluded = [];
+        }
+
+        const entries = Array.isArray(root.savedLeagueEntries) ? root.savedLeagueEntries : [];
+        if (excluded.length === 0)
+            return { "all": true, "entries": entries };
+
+        return {
+            "all": false,
+            "entries": entries.filter(entry => excluded.indexOf(MatchNotifications.entryKey(entry)) < 0)
+        };
+    }
+
+    function rowMatchesEnabled(row, enabled) {
+        if (enabled.all)
+            return true;
+
+        return enabled.entries.some(entry => root.matchBelongsToEntry(entry, row));
+    }
+
+    function liveMatchRowsForNotify() {
+        const enabled = root.enabledEntriesFor("notifyEntryExclusions");
+        const rows = [];
+        for (let index = 0; index < liveMatchesModel.count; index += 1) {
+            const match = liveMatchesModel.get(index);
+            if (!match)
+                continue;
+
+            const row = {
+                "matchPath": String(match.matchPath || ""),
+                "liveUrl": String(match.liveUrl || ""),
+                "homeTeam": String(match.homeTeam || ""),
+                "awayTeam": String(match.awayTeam || ""),
+                "league": String(match.league || ""),
+                "sport": String(match.sport || ""),
+                "status": String(match.status || ""),
+                "homeScore": String(match.homeScore || ""),
+                "awayScore": String(match.awayScore || "")
+            };
+            if (root.rowMatchesEnabled(row, enabled))
+                rows.push(row);
+        }
+        return rows;
+    }
+
+    function scheduleRows(exclusionConfigKey) {
+        const enabled = root.enabledEntriesFor(exclusionConfigKey);
+        const rows = [];
+        for (let index = 0; index < scoresModel.count; index += 1) {
+            const match = scoresModel.get(index);
+            if (!match)
+                continue;
+
+            const row = {
+                "matchPath": String(match.matchPath || ""),
+                "liveUrl": String(match.liveUrl || ""),
+                "homeTeam": String(match.homeTeam || ""),
+                "awayTeam": String(match.awayTeam || ""),
+                "league": String(match.league || ""),
+                "matchday": String(match.matchday || ""),
+                "sport": String(match.sport || ""),
+                "emoji": SportVisuals.emoji(String(match.sport || "")),
+                "status": String(match.status || ""),
+                "homeScore": String(match.homeScore || ""),
+                "awayScore": String(match.awayScore || ""),
+                "stadium": String(match.stadium || ""),
+                "timestamp": Number(match.timestamp || 0)
+            };
+            if (root.rowMatchesEnabled(row, enabled))
+                rows.push(row);
+        }
+        return rows;
+    }
+
+    function pushMatchNotifications() {
+        if (!Plasmoid.configuration.notificationsEnabled) {
+            root.notifyHasBaseline = false;
+            return;
+        }
+
+        const result = MatchNotifications.computeLiveNotifications(root.notifyLiveSnapshot, root.liveMatchRowsForNotify(), {
+            "hasBaseline": root.notifyHasBaseline,
+            "triggers": {
+                "kickoff": Plasmoid.configuration.notifyKickoff,
+                "goals": Plasmoid.configuration.notifyGoals,
+                "fullTime": Plasmoid.configuration.notifyFullTime
+            },
+            "favoriteOnly": Plasmoid.configuration.notifyFavoriteTeamsOnly,
+            "favoriteNames": root.watchedTeamNames()
+        });
+
+        root.notifyLiveSnapshot = result.snapshot;
+        root.notifyHasBaseline = true;
+        result.events.forEach(event => root.emitMatchNotification(event));
+    }
+
+    function checkStartsSoon() {
+        if (!Plasmoid.configuration.notificationsEnabled || !Plasmoid.configuration.notifyStartsSoon)
+            return;
+
+        const events = MatchNotifications.computeStartsSoon(root.scheduleRows("notifyEntryExclusions"), Date.now(), Plasmoid.configuration.notifyStartsSoonMinutes, root.startsSoonAnnounced, {
+            "favoriteOnly": Plasmoid.configuration.notifyFavoriteTeamsOnly,
+            "favoriteNames": root.watchedTeamNames()
+        });
+        events.forEach(event => root.emitMatchNotification(event));
+    }
+
+    readonly property string calendarDirectory: "$HOME/.local/share/sports-widget-for-plasma"
+    readonly property string calendarFilePath: root.calendarDirectory + "/sports-matches.ics"
+    readonly property string calendarDisplayName: i18nc("@title calendar name", "Sports Widget for Plasma upcoming matches")
+
+    function syncCalendar() {
+        root.writeCalendar(root.scheduleRows("calendarEntryExclusions"));
+    }
+
+    function writeCalendar(rows) {
+        if (!Plasmoid.configuration.calendarSyncEnabled)
+            return;
+
+        rows = Array.isArray(rows) ? rows : [];
+        // Don't create an empty calendar before any fixtures have ever loaded
+        // (avoids a startup write of 0 events). Once real data has been seen,
+        // empties are allowed through so the calendar can legitimately clear.
+        if (rows.length > 0)
+            root.calendarHadData = true;
+        else if (!root.calendarHadData)
+            return;
+
+        const ics = CalendarSync.buildCalendar(rows, {
+            "nowMs": Date.now(),
+            "reminderMinutes": Plasmoid.configuration.calendarReminderMinutes,
+            "calendarName": root.calendarDisplayName
+        });
+
+        // Skip the (Akonadi-reloading) write when nothing changed.
+        if (ics === root.lastCalendarIcs && root.calendarResourceEnsured)
+            return;
+        root.lastCalendarIcs = ics;
+
+        const base64 = Qt.btoa(ics);
+        const tmp = root.calendarFilePath + ".tmp";
+        // Atomic write: never let the resource read a half-written file.
+        let command = "mkdir -p \"" + root.calendarDirectory + "\""
+            + " && printf %s \"" + base64 + "\" | base64 -d > \"" + tmp + "\""
+            + " && mv -f \"" + tmp + "\" \"" + root.calendarFilePath + "\"";
+
+        // Ensure exactly one read-only resource once per session (also cleans up
+        // any duplicates left over from earlier versions).
+        if (!root.calendarResourceEnsured) {
+            const ensure = CalendarSync.resourceEnsureScript(root.calendarFilePath, root.calendarDisplayName);
+            command += " ; printf %s \"" + Qt.btoa(ensure) + "\" | base64 -d | sh";
+            root.calendarResourceEnsured = true;
+            Plasmoid.configuration.calendarResourceReady = true;
+        }
+
+        // Run fully detached so neither the file write nor the (slow) Akonadi
+        // reconfiguration can ever block plasmashell's UI thread.
+        calendarRunner.connectSource("( " + command + " ) >/dev/null 2>&1 &");
+    }
+
+    function removeCalendarResource() {
+        root.calendarResourceEnsured = false;
+        root.lastCalendarIcs = "";
+        Plasmoid.configuration.calendarResourceReady = false;
+        const remove = CalendarSync.resourceRemoveScript(root.calendarFilePath);
+        calendarRunner.connectSource("( printf %s \"" + Qt.btoa(remove) + "\" | base64 -d | sh ) >/dev/null 2>&1 &");
+    }
+
+    function requestCalendarSync() {
+        if (!Plasmoid.configuration.calendarSyncEnabled)
+            return;
+
+        // Capture the rows now, while scoresModel is freshly populated; the
+        // debounced timer only defers the file write, not the data snapshot.
+        root.pendingCalendarRows = root.scheduleRows("calendarEntryExclusions");
+        calendarSyncTimer.restart();
+    }
+
     function applyLiveMatches(matches, manual) {
         const sourceMatches = Array.isArray(matches) ? matches.slice() : [];
         const scopeSignature = root.liveScopeSignature();
@@ -1934,12 +2287,22 @@ PlasmoidItem {
             return liveMatchesModel.append(row);
         });
         root.refreshAuxiliaryMatchModels();
+        root.pushMatchNotifications();
         return matches.length;
     }
 
     function applyRecentResults(matches) {
+        matches = Array.isArray(matches) ? matches : [];
+        const cacheKey = "recent|" + root.dataScopeSignature();
+        if (matches.length > 0) {
+            matchCache.write(cacheKey, matches);
+        } else {
+            const cached = matchCache.read(cacheKey);
+            if (cached && Array.isArray(cached.value) && cached.value.length > 0)
+                matches = cached.value;
+        }
         recentResultsListModel.clear();
-        const sourceMatches = Array.isArray(matches) ? matches.slice() : [];
+        const sourceMatches = matches.slice();
         root.latestRecentMatches = sourceMatches;
         syncTeamTableOptions();
         matches = sortRecentResultsByDate(sourceMatches);
@@ -2066,6 +2429,17 @@ PlasmoidItem {
 
     function applyTable(rows, updatePrimary) {
         rows = Array.isArray(rows) ? rows : [];
+        // Only the primary (active competition) table is cached/restored.
+        if (updatePrimary !== false) {
+            const cacheKey = root.tableCacheKey();
+            if (rows.length > 0) {
+                matchCache.write(cacheKey, rows);
+            } else {
+                const cached = matchCache.read(cacheKey);
+                if (cached && Array.isArray(cached.value) && cached.value.length > 0)
+                    rows = cached.value;
+            }
+        }
         rows = rows.map((row) => {
             const copy = Object.assign({}, row || {});
             copy.group = root.normalizeGroupLabel(copy.group);
@@ -2209,6 +2583,7 @@ PlasmoidItem {
     preferredRepresentation: Plasmoid.formFactor === PlasmaCore.Types.Planar ? fullRepresentation : compactRepresentation
     Component.onCompleted: {
         migrateDefaultSelection();
+        seedFromCache();
         refreshScores(false);
     }
     Plasmoid.contextualActions: [
@@ -2258,6 +2633,63 @@ PlasmoidItem {
     ListModel {
         id: recentResultsListModel
         dynamicRoles: true
+    }
+
+    // --- Match notifications & calendar sync ---
+
+    Component {
+        id: notificationComponent
+
+        Notification {
+            componentName: "plasma_workspace"
+            eventId: "notification"
+            flags: Notification.CloseOnTimeout
+        }
+    }
+
+    Plasma5Support.DataSource {
+        id: calendarRunner
+
+        engine: "executable"
+        connectedSources: []
+        onNewData: (source, data) => calendarRunner.disconnectSource(source)
+    }
+
+    Timer {
+        id: startsSoonTimer
+
+        interval: 60000
+        repeat: true
+        running: Plasmoid.configuration.notificationsEnabled && Plasmoid.configuration.notifyStartsSoon
+        onTriggered: root.checkStartsSoon()
+    }
+
+    Timer {
+        id: calendarSyncTimer
+
+        interval: 4000
+        repeat: false
+        onTriggered: root.writeCalendar(root.pendingCalendarRows)
+    }
+
+    Connections {
+        target: Plasmoid.configuration
+
+        function onNotificationsEnabledChanged() {
+            root.notifyHasBaseline = false;
+            root.notifyLiveSnapshot = ({});
+        }
+
+        function onCalendarSyncEnabledChanged() {
+            if (Plasmoid.configuration.calendarSyncEnabled)
+                root.syncCalendar();
+            else
+                root.removeCalendarResource();
+        }
+
+        function onCalendarEntryExclusionsChanged() {
+            root.requestCalendarSync();
+        }
     }
 
     Timer {

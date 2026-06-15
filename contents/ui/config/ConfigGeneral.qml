@@ -60,6 +60,18 @@ KCM.SimpleKCM {
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
     property string cfg_widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
     property bool cfg_prioritizePopular: Plasmoid.configuration.prioritizePopular
+    property bool cfg_notificationsEnabled: Plasmoid.configuration.notificationsEnabled
+    property bool cfg_notifyKickoff: Plasmoid.configuration.notifyKickoff
+    property bool cfg_notifyGoals: Plasmoid.configuration.notifyGoals
+    property bool cfg_notifyFullTime: Plasmoid.configuration.notifyFullTime
+    property bool cfg_notifyStartsSoon: Plasmoid.configuration.notifyStartsSoon
+    property int cfg_notifyStartsSoonMinutes: Plasmoid.configuration.notifyStartsSoonMinutes
+    property bool cfg_notifyFavoriteTeamsOnly: Plasmoid.configuration.notifyFavoriteTeamsOnly
+    property bool cfg_calendarSyncEnabled: Plasmoid.configuration.calendarSyncEnabled
+    property int cfg_calendarReminderMinutes: Plasmoid.configuration.calendarReminderMinutes
+    property bool cfg_calendarResourceReady: Plasmoid.configuration.calendarResourceReady
+    property string cfg_notifyEntryExclusions: Plasmoid.configuration.notifyEntryExclusions
+    property string cfg_calendarEntryExclusions: Plasmoid.configuration.calendarEntryExclusions
     property string cfg_providerDefault: "sportscore"
     property string cfg_defaultSportDefault: "football"
     property string cfg_selectedSportsDefault: ""
@@ -92,6 +104,18 @@ KCM.SimpleKCM {
     property string cfg_widgetTabsDefault: "all"
     property string cfg_widgetLayoutModeDefault: "detailed"
     property bool cfg_prioritizePopularDefault: false
+    property bool cfg_notificationsEnabledDefault: false
+    property bool cfg_notifyKickoffDefault: true
+    property bool cfg_notifyGoalsDefault: true
+    property bool cfg_notifyFullTimeDefault: true
+    property bool cfg_notifyStartsSoonDefault: true
+    property int cfg_notifyStartsSoonMinutesDefault: 15
+    property bool cfg_notifyFavoriteTeamsOnlyDefault: false
+    property bool cfg_calendarSyncEnabledDefault: false
+    property int cfg_calendarReminderMinutesDefault: 15
+    property bool cfg_calendarResourceReadyDefault: false
+    property string cfg_notifyEntryExclusionsDefault: "[]"
+    property string cfg_calendarEntryExclusionsDefault: "[]"
 
     function indexFor(model, value) {
         for (let index = 0; index < model.length; index += 1) {

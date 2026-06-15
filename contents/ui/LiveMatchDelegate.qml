@@ -80,6 +80,16 @@ Item {
     signal doubleClicked()
     signal requestExpand()
 
+    // Finished matches are immutable, so their details are cached on disk and
+    // re-opened without another network request.
+    readonly property bool isFinishedMatch: root.status !== "Live"
+        && root.status.toLowerCase() !== "upcoming"
+        && root.homeScore.length > 0 && root.awayScore.length > 0
+
+    MatchDataCache {
+        id: detailsCache
+    }
+
     function loadDetails(force) {
         if (!root.expanded)
             return;
@@ -95,6 +105,18 @@ Item {
             root.detailsLoaded = true;
             root.detailsError = i18nc("@info:status", "Detailed match information is not available for this match.");
             return;
+        }
+
+        const detailsCacheKey = "matchdetails|" + root.detailsIdentity;
+        if (root.isFinishedMatch && !force) {
+            const cached = detailsCache.read(detailsCacheKey);
+            if (cached && cached.value && typeof cached.value === "object") {
+                root.details = cached.value;
+                root.detailsLoaded = true;
+                root.detailsLoading = false;
+                root.detailsError = "";
+                return;
+            }
         }
 
         const generation = root.requestGeneration + 1;
@@ -122,6 +144,8 @@ Item {
             root.details = payload || {};
             root.detailsLoaded = true;
             root.detailsLoading = false;
+            if (root.isFinishedMatch && payload && typeof payload === "object")
+                detailsCache.write(detailsCacheKey, payload);
         }, message => {
             if (!root || generation !== root.requestGeneration)
                 return;

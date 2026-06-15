@@ -771,7 +771,7 @@ function fetchSportScoreTeamPage(options, onSuccess, onError) {
         }
 
         const url = absoluteSportScoreUrl(path);
-        requestText(cacheBustedUrl(url), html => {
+        requestPage(url, html => {
             finish(onSuccess, {
                 html,
                 url,
@@ -1163,7 +1163,7 @@ function fetchSportScoreCompetitionPage(options, onSuccess, onError, allowDefaul
 
         const requestedSeasonPath = sportScoreRequestedSeasonPath(path, options);
         const initialPath = requestedSeasonPath || path;
-        requestText(cacheBustedUrl(absoluteSportScoreUrl(initialPath)), html => {
+        requestPage(absoluteSportScoreUrl(initialPath), html => {
             const defaultSeasonPath = (requestedSeasonPath.length === 0 && allowDefaultSeasonRedirect)
                 ? sportScoreCurrentSeasonPathIfStale(html, initialPath, options)
                 : "";
@@ -1172,7 +1172,7 @@ function fetchSportScoreCompetitionPage(options, onSuccess, onError, allowDefaul
                 return;
             }
 
-            requestText(cacheBustedUrl(absoluteSportScoreUrl(defaultSeasonPath)), seasonHtml => {
+            requestPage(absoluteSportScoreUrl(defaultSeasonPath), seasonHtml => {
                 finish(onSuccess, { html: seasonHtml, path: defaultSeasonPath, url: absoluteSportScoreUrl(defaultSeasonPath) });
             }, () => finish(onSuccess, { html, path: initialPath, url: absoluteSportScoreUrl(initialPath) }));
         }, onError);
@@ -2720,6 +2720,31 @@ function cacheBustedUrl(url) {
 
     const separator = value.indexOf("?") >= 0 ? "&" : "?";
     return value + separator + "src=sports-widget-for-plasma&t=" + Date.now();
+}
+
+// In-flight de-duplication for shared HTML pages (a team or competition page is
+// fetched by several callers — matches, competitions, badge, seasons, table).
+// Concurrent requests for the same page collapse into a single network request;
+// nothing is held across requests, so freshness is unaffected.
+const _pageRequestsInFlight = {};
+
+function requestPage(url, onSuccess, onError) {
+    const key = stringValue(url);
+    if (_pageRequestsInFlight[key]) {
+        _pageRequestsInFlight[key].push({ onSuccess: onSuccess, onError: onError });
+        return;
+    }
+
+    _pageRequestsInFlight[key] = [{ onSuccess: onSuccess, onError: onError }];
+    requestText(cacheBustedUrl(key), text => {
+        const waiters = _pageRequestsInFlight[key] || [];
+        delete _pageRequestsInFlight[key];
+        waiters.forEach(waiter => finish(waiter.onSuccess, text));
+    }, error => {
+        const waiters = _pageRequestsInFlight[key] || [];
+        delete _pageRequestsInFlight[key];
+        waiters.forEach(waiter => finish(waiter.onError, error));
+    });
 }
 
 function sortMatches(matches) {

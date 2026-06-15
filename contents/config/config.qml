@@ -31,6 +31,12 @@ ConfigModel {
     }
 
     ConfigCategory {
+        name: i18n("Notifications")
+        icon: "preferences-desktop-notification"
+        source: "config/ConfigNotifications.qml"
+    }
+
+    ConfigCategory {
         name: i18n("Appearance")
         icon: "preferences-desktop-theme"
         source: "config/ConfigAppearance.qml"

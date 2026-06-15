@@ -116,5 +116,45 @@
     <entry name="prioritizePopular" type="Bool">
       <default>false</default>
     </entry>
+    <entry name="notificationsEnabled" type="Bool">
+      <default>false</default>
+    </entry>
+    <entry name="notifyKickoff" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="notifyGoals" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="notifyFullTime" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="notifyStartsSoon" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="notifyStartsSoonMinutes" type="Int">
+      <default>15</default>
+      <min>1</min>
+      <max>180</max>
+    </entry>
+    <entry name="notifyFavoriteTeamsOnly" type="Bool">
+      <default>false</default>
+    </entry>
+    <entry name="calendarSyncEnabled" type="Bool">
+      <default>false</default>
+    </entry>
+    <entry name="calendarReminderMinutes" type="Int">
+      <default>15</default>
+      <min>0</min>
+      <max>1440</max>
+    </entry>
+    <entry name="calendarResourceReady" type="Bool">
+      <default>false</default>
+    </entry>
+    <entry name="notifyEntryExclusions" type="String">
+      <default>[]</default>
+    </entry>
+    <entry name="calendarEntryExclusions" type="String">
+      <default>[]</default>
+    </entry>
   </group>
 </kcfg>
