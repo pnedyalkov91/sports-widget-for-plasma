@@ -54,7 +54,7 @@ For the full functionality of this widget, please ensure you have the following 
 ## 🛠 Manual Installation (Development)
 If you prefer to install from source:
 ```bash
-git clone https://github.com/pnedyalkov/sports-widget-for-plasma.git && cd sports-widget-for-plasma
+git clone https://github.com/pnedyalkov91/sports-widget-for-plasma.git && cd sports-widget-for-plasma
 kpackagetool6 --type Plasma/Applet --install .
 rm -rf ~/.cache/plasmashell/qmlcache
 systemctl --user restart plasma-plasmashell
@@ -145,7 +145,7 @@ To update an existing installation, replace `--install` with `--upgrade`.
 Translations are welcome, but are currently on hold while the widget is in **beta**. Since many features and strings may still change before the stable release, translation work would have to be redone repeatedly. Once the project reaches a stable release, a translation template will be published here and contributions will be very welcome.
 
 ## 🐛 Bug Reports & Feedback
-If you encounter any issues or have suggestions, please open a [GitHub Issue](https://github.com/pnedyalkov/sports-widget-for-plasma/issues). Please include your distribution, Plasma version, and the sport/competition you were viewing.
+If you encounter any issues or have suggestions, please open a [GitHub Issue](https://github.com/pnedyalkov91/sports-widget-for-plasma/issues). Please include your distribution, Plasma version, and the sport/competition you were viewing.
 
 ## External resources
 
@@ -159,8 +159,8 @@ Sports Widget for Plasma is developed in my free time.
 
 If you enjoy using it, you can support the project:
 
-- Liberapay: https://liberapay.com/pnedyalkov
-- PayPal: https://paypal.me/pnedyalkov91
+- Liberapay: https://liberapay.com/pnedyalkov91
+- PayPal: https://paypal.me/pnedyalkov9191
 - Revolut: https://revolut.me/petarnedyalkov91
 
 ---
