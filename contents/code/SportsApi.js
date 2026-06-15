@@ -27,6 +27,24 @@ const SPORTSCORE_TEAM_LIMIT = 2000;
 const SPORTSCORE_BASKETBALL_TRACKER_PROFILE = "47q3ktv6gh1u8mx";
 const SPORTSCORE_RECENT_MATCH_MAX_AGE_MS = 120 * 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 14000;
+// SportScore's origin is slow and frequently returns 504s under load. Limit how
+// many requests hit it at once, retry the transient failures with backoff, and
+// briefly cool down after a gateway error instead of hammering a struggling
+// origin. The actual backoff timing is driven by a delay scheduler injected
+// from the QML layer (a .pragma library cannot create timers itself).
+const MAX_CONCURRENT_REQUESTS = 3;
+const MAX_REQUEST_RETRIES = 2;
+const RETRY_BASE_DELAY_MS = 700;
+const REQUEST_COOLDOWN_MS = 2500;
+// Round the cache-buster to a time bucket instead of a unique-per-request value,
+// so an edge cache (and our in-flight dedup, and retries) can be served without
+// always forcing a hit on the slow origin, while data stays fresh per bucket.
+const CACHE_BUST_BUCKET_MS = 30000;
+
+let _activeRequestCount = 0;
+const _pendingRequestQueue = [];
+let _requestCooldownUntil = 0;
+let _delayScheduler = null;
 
 function fetchLiveScores(options, onSuccess, onError) {
     if (!canUseSportScore(options)) {
@@ -2612,26 +2630,93 @@ function mergeUniqueStrings(left, right) {
     return values;
 }
 
+// Injected by the QML layer (main.qml) so retries/cooldowns can use real timed
+// delays. Without it we fall back to running the callback immediately.
+function setDelayScheduler(scheduler) {
+    _delayScheduler = (typeof scheduler === "function") ? scheduler : null;
+}
+
+function scheduleAfter(delayMs, callback) {
+    if (_delayScheduler && delayMs > 0) {
+        _delayScheduler(callback, delayMs);
+        return;
+    }
+    callback();
+}
+
+function isRetryableFailure(status) {
+    return status === 0 || status === 408 || status === 425 || status === 429
+        || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
 function requestText(url, onSuccess, onError) {
+    _pendingRequestQueue.push({ url: stringValue(url), onSuccess: onSuccess, onError: onError, attempt: 0 });
+    pumpRequestQueue();
+}
+
+function pumpRequestQueue() {
+    if (_pendingRequestQueue.length === 0 || _activeRequestCount >= MAX_CONCURRENT_REQUESTS)
+        return;
+
+    // Honour the post-504 cooldown only when a real scheduler is available;
+    // otherwise proceed (avoids a busy retry loop without timed delays).
+    if (_delayScheduler) {
+        const remaining = _requestCooldownUntil - Date.now();
+        if (remaining > 0) {
+            _delayScheduler(pumpRequestQueue, remaining);
+            return;
+        }
+    }
+
+    const job = _pendingRequestQueue.shift();
+    _activeRequestCount += 1;
+    sendQueuedRequest(job);
+}
+
+function sendQueuedRequest(job) {
     const xhr = new XMLHttpRequest();
-    xhr.open("GET", url);
+    xhr.open("GET", job.url);
     xhr.timeout = REQUEST_TIMEOUT_MS;
-    xhr.onreadystatechange = function () {
+
+    const settle = (succeeded, payload, status) => {
+        _activeRequestCount -= 1;
+
+        if (succeeded) {
+            finish(job.onSuccess, payload);
+            pumpRequestQueue();
+            return;
+        }
+
+        // A gateway/timeout failure means the origin is overloaded: pause new
+        // requests briefly so we don't pile on while it recovers.
+        if (status === 0 || status === 502 || status === 503 || status === 504)
+            _requestCooldownUntil = Date.now() + REQUEST_COOLDOWN_MS;
+
+        if (isRetryableFailure(status) && job.attempt < MAX_REQUEST_RETRIES) {
+            job.attempt += 1;
+            const backoff = RETRY_BASE_DELAY_MS * Math.pow(2, job.attempt - 1);
+            scheduleAfter(backoff, () => {
+                _pendingRequestQueue.unshift(job);
+                pumpRequestQueue();
+            });
+            pumpRequestQueue();
+            return;
+        }
+
+        finish(job.onError, payload);
+        pumpRequestQueue();
+    };
+
+    xhr.onreadystatechange = () => {
         if (xhr.readyState !== XMLHttpRequest.DONE)
             return;
-
-        if (xhr.status >= 200 && xhr.status < 300) {
-            finish(onSuccess, xhr.responseText || "");
-        } else {
-            finish(onError, "HTTP " + xhr.status + " for " + url);
-        }
+        if (xhr.status >= 200 && xhr.status < 300)
+            settle(true, xhr.responseText || "", xhr.status);
+        else
+            settle(false, "HTTP " + xhr.status + " for " + job.url, xhr.status);
     };
-    xhr.ontimeout = function () {
-        finish(onError, "Timeout for " + url);
-    };
-    xhr.onerror = function () {
-        finish(onError, "Network error for " + url);
-    };
+    xhr.ontimeout = () => settle(false, "Timeout for " + job.url, 0);
+    xhr.onerror = () => settle(false, "Network error for " + job.url, 0);
     xhr.send();
 }
 
@@ -2719,7 +2804,8 @@ function cacheBustedUrl(url) {
         return value;
 
     const separator = value.indexOf("?") >= 0 ? "&" : "?";
-    return value + separator + "src=sports-widget-for-plasma&t=" + Date.now();
+    const bucket = Math.floor(Date.now() / CACHE_BUST_BUCKET_MS);
+    return value + separator + "src=sports-widget-for-plasma&t=" + bucket;
 }
 
 // In-flight de-duplication for shared HTML pages (a team or competition page is

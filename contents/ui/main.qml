@@ -2582,6 +2582,7 @@ PlasmoidItem {
     }
     preferredRepresentation: Plasmoid.formFactor === PlasmaCore.Types.Planar ? fullRepresentation : compactRepresentation
     Component.onCompleted: {
+        SportsApi.setDelayScheduler(root.scheduleNetworkDelay);
         migrateDefaultSelection();
         seedFromCache();
         refreshScores(false);
@@ -2645,6 +2646,30 @@ PlasmoidItem {
             eventId: "notification"
             flags: Notification.CloseOnTimeout
         }
+    }
+
+    Component {
+        id: networkDelayTimerComponent
+
+        Timer {
+            repeat: false
+        }
+    }
+
+    // Delay scheduler handed to SportsApi so its request retries/cooldowns can
+    // use real timed backoff (a .pragma library cannot create timers itself).
+    function scheduleNetworkDelay(callback, delayMs) {
+        const timer = networkDelayTimerComponent.createObject(root, { "interval": Math.max(0, Number(delayMs) || 0) });
+        if (!timer) {
+            callback();
+            return;
+        }
+
+        timer.triggered.connect(() => {
+            timer.destroy();
+            callback();
+        });
+        timer.start();
     }
 
     Plasma5Support.DataSource {
