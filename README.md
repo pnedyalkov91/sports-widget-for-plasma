@@ -159,8 +159,8 @@ Sports Widget for Plasma is developed in my free time.
 
 If you enjoy using it, you can support the project:
 
-- Liberapay: https://liberapay.com/pnedyalkov91
-- PayPal: https://paypal.me/pnedyalkov9191
+- Liberapay: https://liberapay.com/pnedyalkov
+- PayPal: https://paypal.me/pnedyalkov91
 - Revolut: https://revolut.me/petarnedyalkov91
 
 ---
