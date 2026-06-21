@@ -18,13 +18,27 @@
 .pragma library
 .import "ProviderCountries.js" as ProviderCountries
 .import "SportScoreSports.js" as SportScoreSports
+.import "EspnSports.js" as EspnSports
 
+// Sport picker = SportScore's sports plus the ESPN-native sports, deduped.
 function sportOptions(providerId) {
-    return SportScoreSports.options();
+    const options = SportScoreSports.options();
+    const seen = {};
+    options.forEach(option => { seen[option.value] = true; });
+    EspnSports.nativeOptions().forEach(option => {
+        if (!seen[option.value]) {
+            seen[option.value] = true;
+            options.push(option);
+        }
+    });
+    return options;
 }
 
 function countryOptions(providerId, sport) {
     const normalized = SportScoreSports.normalizedSport(sport);
+    // ESPN-native sports: countries come from their ESPN leagues.
+    if (EspnSports.isNative(normalized))
+        return EspnSports.countriesFor(normalized);
     if (normalized === "basketball")
         return ProviderCountries.basketballCountryOptions();
     if (normalized === "cricket")

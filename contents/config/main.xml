@@ -128,6 +128,17 @@
     <entry name="notifyFullTime" type="Bool">
       <default>true</default>
     </entry>
+    <entry name="notifyHalfTime" type="Bool">
+      <default>true</default>
+    </entry>
+    <!-- Opt-in, off by default: polls each live football match's ESPN incident
+         feed (goals/cards/subs) on a separate, slower timer so goal
+         notifications can include the scorer and yellow/red cards and
+         substitutions can be announced. Costs one extra request per live
+         football match per poll; only matches sourced from ESPN are polled. -->
+    <entry name="notifyDetailedEvents" type="Bool">
+      <default>false</default>
+    </entry>
     <entry name="notifyStartsSoon" type="Bool">
       <default>true</default>
     </entry>
@@ -142,13 +153,22 @@
     <entry name="calendarSyncEnabled" type="Bool">
       <default>false</default>
     </entry>
+    <!-- Optional: also write a plain iCalendar (.ics) EXPORT file the user can
+         import/subscribe to in any calendar app. It is never registered as an
+         Akonadi resource (that is what used to hang Plasma); it is just a file. -->
+    <entry name="calendarIcsExportEnabled" type="Bool">
+      <default>false</default>
+    </entry>
+    <!-- UNSTABLE / NOT RECOMMENDED: also register the .ics as a live Akonadi
+         (KDE PIM) calendar resource. Can freeze plasmashell on some systems;
+         opt-in only. Implies the .ics export. -->
+    <entry name="calendarAkonadiEnabled" type="Bool">
+      <default>false</default>
+    </entry>
     <entry name="calendarReminderMinutes" type="Int">
       <default>15</default>
       <min>0</min>
       <max>1440</max>
-    </entry>
-    <entry name="calendarResourceReady" type="Bool">
-      <default>false</default>
     </entry>
     <entry name="notifyEntryExclusions" type="String">
       <default>[]</default>

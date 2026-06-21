@@ -35,7 +35,12 @@ ColumnLayout {
     // League loading
     property bool loadingLeagues: false
     property string leagueLoadError: ""
+    // True only when the provider request failed (network/timeout), not when it
+    // simply returned no competitions.
+    property bool leagueLoadFailed: false
     property int leagueRequestToken: 0
+    // lowercased competition name -> emblem url (best-effort, from matches API).
+    property var competitionEmblems: ({})
 
     // National teams
     property var nationalTeamOptions: []
@@ -152,6 +157,8 @@ ColumnLayout {
             root.badgeByTeam = ({});
             root.pendingBadgeTeams = ({});
             root.attemptedBadgeTeams = ({});
+            root.competitionEmblems = ({});
+            root.loadCompetitionEmblems();
             root.refreshTeamPool();
             if (root.pageActive && root.footballMode)
                 root.refreshNationalVariants();
@@ -164,6 +171,7 @@ ColumnLayout {
                 return;
             }
             root.loadLeagues();
+            root.loadCompetitionEmblems();
             root.ensureStaticTeamOptions();
             root.scheduleBadgePrefetch();
             if (!root.teamDiscoveryRunning && root.discoveredTeamCount() === 0)
@@ -182,6 +190,35 @@ ColumnLayout {
 
     WizardCache {
         id: wizardCache
+    }
+
+    function loadCompetitionEmblems() {
+        if (!root.pageActive || !root.configRoot)
+            return;
+        const sport = String(root.configRoot.normalizedSport() || "").trim();
+        if (sport.length === 0)
+            return;
+
+        const cacheKey = "emblems|" + sport;
+        const cached = wizardCache.read(cacheKey);
+        if (cached && cached.value && typeof cached.value === "object" && cached.value.competitions) {
+            root.competitionEmblems = cached.value.competitions;
+            if (cached.fresh)
+                return;
+        }
+
+        SportsApi.fetchPopularEmblems({ "sports": sport }, map => {
+            if (map && typeof map === "object") {
+                wizardCache.write(cacheKey, map);
+                root.competitionEmblems = map.competitions || ({});
+            }
+        });
+    }
+
+    function competitionEmblem(comp) {
+        const key = String(comp && comp.label || "").trim().toLowerCase();
+        return root.competitionEmblems && root.competitionEmblems[key]
+            ? String(root.competitionEmblems[key]) : "";
     }
 
     function applyLeagueRows(country, rows) {
@@ -221,6 +258,7 @@ ColumnLayout {
         root.leagueRequestToken = token;
         root.loadingLeagues = true;
         root.leagueLoadError = "";
+        root.leagueLoadFailed = false;
         root.configRoot.cfg_providerLeagueCountry = "";
         root.configRoot.cfg_providerLeagueOptions = [];
 
@@ -245,6 +283,7 @@ ColumnLayout {
             if (token !== root.leagueRequestToken)
                 return;
             root.loadingLeagues = false;
+            root.leagueLoadFailed = false;
             if (Array.isArray(rows) && rows.length > 0)
                 wizardCache.write(cacheKey, rows);
             const count = root.applyLeagueRows(country, rows);
@@ -258,7 +297,8 @@ ColumnLayout {
             if (!hasCache) {
                 root.configRoot.cfg_providerLeagueCountry = country;
                 root.configRoot.cfg_providerLeagueOptions = [];
-                root.leagueLoadError = String(message || i18nc("@info", "Unable to load leagues from provider.")).trim();
+                // Provider failed (no ESPN fallback for the competition catalog).
+                root.leagueLoadFailed = true;
             }
         });
     }
@@ -793,8 +833,19 @@ ColumnLayout {
         const verifyExistingBadges = root.discoveredTeamCount() > 0;
         root.displayedTeams.slice(0, root.badgePrefetchLimit).forEach(option => {
             const teamName = String(option && option.value || "").trim();
+            if (teamName.length === 0) return;
+            // ESPN already ships a badge with each team option. Seed it and skip the
+            // standings-derived badge lookup, which otherwise fans out up to 6
+            // fetchLeagueTable calls per team (× up to 20 teams, re-run on every
+            // add) — a heavy main-thread storm now that standings return real data.
+            const optionBadge = String(option && option.badge || "").trim();
+            if (optionBadge.length > 0) {
+                if (root.teamBadge(teamName).length === 0)
+                    root.setTeamBadge(teamName, optionBadge);
+                return;
+            }
             const teamSlug = String(option && (option.teamSlug || option.team_slug) || "").trim();
-            if (teamName.length > 0) root.ensureTeamBadge(teamName, verifyExistingBadges, teamSlug);
+            root.ensureTeamBadge(teamName, verifyExistingBadges, teamSlug);
         });
     }
 
@@ -820,6 +871,29 @@ ColumnLayout {
             opacity: 0.72
             wrapMode: Text.WordWrap
         }
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        visible: true
+        type: Kirigami.MessageType.Information
+        text: root.playerMode
+            ? i18nc("@info", "Open a competition to follow it or pick players inside it, or follow a player directly from the list below.")
+            : i18nc("@info", "Open a competition to follow the whole competition or pick teams inside it, or follow a team directly from the list below.")
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        visible: root.leagueLoadFailed && !root.loadingLeagues
+        type: Kirigami.MessageType.Error
+        text: i18nc("@info", "SportScore is not responding right now, so competitions could not be loaded. Please try again later.")
+        actions: [
+            Kirigami.Action {
+                icon.name: "view-refresh"
+                text: i18nc("@action:button", "Try again")
+                onTriggered: root.loadLeagues()
+            }
+        ]
     }
 
     TextField {
@@ -898,7 +972,8 @@ ColumnLayout {
 
             Label {
                 Layout.fillWidth: true
-                visible: !root.loadingLeagues && root.displayedLeagues.length === 0
+                // The provider-failure case is shown by the error banner above.
+                visible: !root.loadingLeagues && !root.leagueLoadFailed && root.displayedLeagues.length === 0
                 text: root.leagueLoadError.length > 0
                     ? root.leagueLoadError
                     : i18nc("@info", "No competitions found for this country.")
@@ -920,9 +995,11 @@ ColumnLayout {
                     model: root.displayedLeagues
                     SportChoiceCard {
                         title: modelData.label
+                        iconSource: root.competitionEmblem(modelData)
                         iconName: "view-calendar-list"
+                        cardToolTipText: i18nc("@info:tooltip", "Open %1", modelData.label)
                         selected: root.configRoot && root.configRoot.isLeagueSelected(modelData.value)
-                        onClicked: root.configRoot.selectLeague(modelData.value)
+                        onClicked: root.configRoot.openLeaguePage(modelData, root.competitionEmblem(modelData), "select")
                     }
                 }
             }

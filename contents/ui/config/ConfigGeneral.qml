@@ -63,13 +63,16 @@ KCM.SimpleKCM {
     property bool cfg_notificationsEnabled: Plasmoid.configuration.notificationsEnabled
     property bool cfg_notifyKickoff: Plasmoid.configuration.notifyKickoff
     property bool cfg_notifyGoals: Plasmoid.configuration.notifyGoals
+    property bool cfg_notifyHalfTime: Plasmoid.configuration.notifyHalfTime
     property bool cfg_notifyFullTime: Plasmoid.configuration.notifyFullTime
+    property bool cfg_notifyDetailedEvents: Plasmoid.configuration.notifyDetailedEvents
     property bool cfg_notifyStartsSoon: Plasmoid.configuration.notifyStartsSoon
     property int cfg_notifyStartsSoonMinutes: Plasmoid.configuration.notifyStartsSoonMinutes
     property bool cfg_notifyFavoriteTeamsOnly: Plasmoid.configuration.notifyFavoriteTeamsOnly
     property bool cfg_calendarSyncEnabled: Plasmoid.configuration.calendarSyncEnabled
+    property bool cfg_calendarIcsExportEnabled: Plasmoid.configuration.calendarIcsExportEnabled
+    property bool cfg_calendarAkonadiEnabled: Plasmoid.configuration.calendarAkonadiEnabled
     property int cfg_calendarReminderMinutes: Plasmoid.configuration.calendarReminderMinutes
-    property bool cfg_calendarResourceReady: Plasmoid.configuration.calendarResourceReady
     property string cfg_notifyEntryExclusions: Plasmoid.configuration.notifyEntryExclusions
     property string cfg_calendarEntryExclusions: Plasmoid.configuration.calendarEntryExclusions
     property string cfg_providerDefault: "sportscore"
@@ -107,13 +110,16 @@ KCM.SimpleKCM {
     property bool cfg_notificationsEnabledDefault: false
     property bool cfg_notifyKickoffDefault: true
     property bool cfg_notifyGoalsDefault: true
+    property bool cfg_notifyHalfTimeDefault: true
     property bool cfg_notifyFullTimeDefault: true
+    property bool cfg_notifyDetailedEventsDefault: false
     property bool cfg_notifyStartsSoonDefault: true
     property int cfg_notifyStartsSoonMinutesDefault: 15
     property bool cfg_notifyFavoriteTeamsOnlyDefault: false
     property bool cfg_calendarSyncEnabledDefault: false
+    property bool cfg_calendarIcsExportEnabledDefault: false
+    property bool cfg_calendarAkonadiEnabledDefault: false
     property int cfg_calendarReminderMinutesDefault: 15
-    property bool cfg_calendarResourceReadyDefault: false
     property string cfg_notifyEntryExclusionsDefault: "[]"
     property string cfg_calendarEntryExclusionsDefault: "[]"
 

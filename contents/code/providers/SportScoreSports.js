@@ -33,8 +33,11 @@ function supports(sport) {
     return SPORTS.some(option => option.value === wanted);
 }
 
+// Individual sports where a "team" is really a single player/competitor.
+const PLAYER_SPORTS = ["tennis", "golf", "mma", "racing"];
+
 function usesPlayers(sport) {
-    return normalizedSport(sport) === "tennis";
+    return PLAYER_SPORTS.indexOf(normalizedSport(sport)) >= 0;
 }
 
 function hasCountryCompetitions(sport) {
@@ -180,8 +183,11 @@ function standingsHtmlSchema(sport) {
     };
 }
 
+// Individual / event sports have no league table.
+const NO_STANDINGS_SPORTS = ["tennis", "golf", "racing", "mma"];
+
 function supportsStandings(sport) {
-    return normalizedSport(sport) !== "tennis";
+    return NO_STANDINGS_SPORTS.indexOf(normalizedSport(sport)) < 0;
 }
 
 function standingsHasForm(sport) {

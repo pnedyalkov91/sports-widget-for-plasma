@@ -127,6 +127,9 @@ Item {
             matchPath: model.matchPath || ""
             liveUrl: model.liveUrl || ""
             detailsProvider: model.detailsProvider || ""
+            espnEventId: model.espnEventId || ""
+            espnSport: model.espnSport || ""
+            espnLeague: model.espnLeague || ""
             onClicked: {
                 root.matchSelected(index);
                 liveList.expandedIndex = liveList.expandedIndex === index ? -1 : index;

@@ -23,6 +23,7 @@ import QtQuick.Layouts
 import org.kde.kcmutils as KCM
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
+import org.kde.plasma.plasma5support as Plasma5Support
 
 KCM.SimpleKCM {
     id: root
@@ -30,15 +31,46 @@ KCM.SimpleKCM {
     property alias cfg_notificationsEnabled: notificationsEnabled.checked
     property alias cfg_notifyKickoff: notifyKickoff.checked
     property alias cfg_notifyGoals: notifyGoals.checked
+    property alias cfg_notifyHalfTime: notifyHalfTime.checked
     property alias cfg_notifyFullTime: notifyFullTime.checked
+    property alias cfg_notifyDetailedEvents: notifyDetailedEvents.checked
     property alias cfg_notifyStartsSoon: notifyStartsSoon.checked
     property alias cfg_notifyStartsSoonMinutes: notifyStartsSoonMinutes.value
     property alias cfg_notifyFavoriteTeamsOnly: notifyFavoriteTeamsOnly.checked
     property alias cfg_calendarSyncEnabled: calendarSyncEnabled.checked
+    property alias cfg_calendarIcsExportEnabled: calendarIcsExportEnabled.checked
+    property alias cfg_calendarAkonadiEnabled: calendarAkonadiEnabled.checked
     property alias cfg_calendarReminderMinutes: calendarReminderMinutes.value
-    property bool cfg_calendarResourceReady: Plasmoid.configuration.calendarResourceReady
+
+    readonly property string calendarIcsFileHint: "~/.local/share/sports-widget-for-plasma/sports-matches.ics"
     property string cfg_notifyEntryExclusions: Plasmoid.configuration.notifyEntryExclusions
     property string cfg_calendarEntryExclusions: Plasmoid.configuration.calendarEntryExclusions
+
+    // Detect whether the native Plasma calendar plugin is installed, by checking
+    // the Qt plugin paths plasmashell scans. "unknown" until the check returns.
+    property string calendarPluginState: "unknown" // "unknown" | "installed" | "missing"
+
+    function checkCalendarPlugin() {
+        root.calendarPluginState = "unknown";
+        // Look in both the system and per-user Qt6 plugin dirs.
+        const cmd = "for d in /usr/lib64/qt6/plugins /usr/lib/qt6/plugins \"$HOME/.local/lib64/qt6/plugins\" \"$HOME/.local/lib/qt6/plugins\"; do"
+            + " [ -f \"$d/plasmacalendarplugins/sportsmatchesevents.so\" ] && { echo INSTALLED; exit 0; }; done; echo MISSING";
+        pluginCheck.connectSource(cmd);
+    }
+
+    Plasma5Support.DataSource {
+        id: pluginCheck
+
+        engine: "executable"
+        connectedSources: []
+        onNewData: (source, data) => {
+            const out = String((data && data["stdout"]) || "").trim();
+            root.calendarPluginState = out.indexOf("INSTALLED") >= 0 ? "installed" : "missing";
+            pluginCheck.disconnectSource(source);
+        }
+    }
+
+    Component.onCompleted: root.checkCalendarPlugin()
 
     readonly property var savedEntries: {
         try {
@@ -84,13 +116,16 @@ KCM.SimpleKCM {
     property bool cfg_notificationsEnabledDefault: false
     property bool cfg_notifyKickoffDefault: true
     property bool cfg_notifyGoalsDefault: true
+    property bool cfg_notifyHalfTimeDefault: true
     property bool cfg_notifyFullTimeDefault: true
+    property bool cfg_notifyDetailedEventsDefault: false
     property bool cfg_notifyStartsSoonDefault: true
     property int cfg_notifyStartsSoonMinutesDefault: 15
     property bool cfg_notifyFavoriteTeamsOnlyDefault: false
     property bool cfg_calendarSyncEnabledDefault: false
+    property bool cfg_calendarIcsExportEnabledDefault: false
+    property bool cfg_calendarAkonadiEnabledDefault: false
     property int cfg_calendarReminderMinutesDefault: 15
-    property bool cfg_calendarResourceReadyDefault: false
 
     Kirigami.FormLayout {
         anchors.fill: parent
@@ -132,10 +167,31 @@ KCM.SimpleKCM {
         }
 
         CheckBox {
+            id: notifyHalfTime
+
+            text: i18nc("@option:check", "Half-time and second half")
+            enabled: notificationsEnabled.checked
+        }
+
+        CheckBox {
             id: notifyFullTime
 
             text: i18nc("@option:check", "Full-time result")
             enabled: notificationsEnabled.checked
+        }
+
+        CheckBox {
+            id: notifyDetailedEvents
+
+            text: i18nc("@option:check", "Detailed events (scorer, cards, substitutions, extra time, penalties) — football only")
+            enabled: notificationsEnabled.checked
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: notifyDetailedEvents.checked
+            type: Kirigami.MessageType.Information
+            text: i18nc("@info", "Polls each live football match for its scorer/cards/substitutions/extra time/penalty shootout on a separate, slower timer (every 90s). This means extra network requests per live match you follow, on top of the regular score refresh — leave this off if you'd rather minimize requests.")
         }
 
         CheckBox {
@@ -191,10 +247,58 @@ KCM.SimpleKCM {
         Label {
             Layout.fillWidth: true
             Layout.maximumWidth: Kirigami.Units.gridUnit * 22
-            text: i18nc("@info", "Upcoming fixtures from the competitions and teams you follow are added to a dedicated \"Sports\" calendar in KDE, kept in sync automatically. Remove it any time from your calendar settings.")
+            text: i18nc("@info", "Upcoming fixtures from the competitions and teams you follow are shown directly in the Plasma calendar (the date/clock pop-up), kept in sync automatically. This runs entirely in memory and never uses Akonadi, so it cannot slow down or freeze Plasma.")
             wrapMode: Text.WordWrap
             font: Kirigami.Theme.smallFont
             color: Kirigami.Theme.disabledTextColor
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: root.calendarPluginState === "installed"
+            type: Kirigami.MessageType.Positive
+            text: i18nc("@info", "Calendar plugin detected. If matches still don't appear, make sure the \"Sports Widget matches\" plugin is enabled in the Plasma calendar settings.")
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: root.calendarPluginState === "missing"
+            type: Kirigami.MessageType.Warning
+            text: i18nc("@info", "The native calendar plugin is not installed, so matches won't appear in the Plasma calendar yet. Build and install it from the widget's plugin/ folder (see the README), then restart Plasma.")
+        }
+
+        Switch {
+            id: calendarIcsExportEnabled
+
+            Kirigami.FormData.label: i18nc("@label:chooser", "Export iCal file:")
+            text: i18nc("@option:check", "Also save an .ics file")
+            enabled: calendarSyncEnabled.checked
+        }
+
+        Label {
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            visible: calendarIcsExportEnabled.checked
+            text: i18nc("@info", "Also writes a standard iCalendar (.ics) file you can import into or subscribe to from any calendar app (Google Calendar, Thunderbird, GNOME, mobile…). It is only a file — it is never registered with Akonadi, so it cannot affect Plasma. File:\n%1", root.calendarIcsFileHint)
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            font: Kirigami.Theme.smallFont
+            color: Kirigami.Theme.disabledTextColor
+        }
+
+        Switch {
+            id: calendarAkonadiEnabled
+
+            Kirigami.FormData.label: i18nc("@label:chooser", "KDE (Akonadi) calendar:")
+            text: i18nc("@option:check", "Register as a live KDE calendar")
+            enabled: calendarSyncEnabled.checked
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: calendarAkonadiEnabled.checked
+            type: Kirigami.MessageType.Warning
+            text: i18nc("@info", "Unstable — not recommended. This registers the .ics as a live Akonadi (KDE PIM) calendar. On some systems Akonadi re-indexes every match on each update and can freeze Plasma for several seconds. Prefer the native calendar plugin above; only enable this if you specifically need an Akonadi calendar and accept the risk.")
         }
 
         RowLayout {

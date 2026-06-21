@@ -53,6 +53,23 @@ function isLiveStatus(status) {
     return stringValue(status).trim().toLowerCase() === "live";
 }
 
+// Whether the live "minute" field denotes the half-time break (as opposed to a
+// numeric playing minute). The widget's live model normalizes the break to
+// "HT" (see SportsApi/main.qml liveMatchForModel), but tolerate the raw
+// provider spellings too.
+function isHalfTimeMinute(minute) {
+    const value = stringValue(minute).trim().toLowerCase();
+    return value === "ht" || value === "half-time" || value === "half time" || value === "halftime" || value === "break";
+}
+
+// Whether the "minute" field denotes second-half play has resumed (a plain
+// numeric minute, not the empty/"HT"/extra-time-style value seen during the
+// break). Used only to detect the HT -> playing transition.
+function isSecondHalfMinute(minute) {
+    const value = stringValue(minute).trim();
+    return /^\d{1,3}(\+\d{0,2})?$/.test(value);
+}
+
 function isUpcomingStatus(status) {
     const value = stringValue(status).trim().toLowerCase();
     return value.length === 0 || value === "upcoming" || value === "scheduled";
@@ -92,7 +109,8 @@ function snapshotEntry(match) {
         "homeTeam": stringValue(match.homeTeam),
         "awayTeam": stringValue(match.awayTeam),
         "league": stringValue(match.league),
-        "sport": stringValue(match.sport)
+        "sport": stringValue(match.sport),
+        "minute": stringValue(match.minute)
     };
 }
 
@@ -102,9 +120,10 @@ function snapshotEntry(match) {
 //
 //   previous     - map of matchId -> snapshotEntry from the last call ({} first time)
 //   liveMatches  - current array of live match rows
-//   options      - { hasBaseline, triggers:{kickoff,goals,fullTime}, favoriteOnly, favoriteNames }
+//   options      - { hasBaseline, triggers:{kickoff,goals,halfTime,fullTime}, favoriteOnly,
+//                    favoriteNames, isUnreliable(prevEntry), detailedEventsAvailable(match) }
 //
-// Events: { kind: "kickoff"|"goal"|"fulltime", match, scoreText }.
+// Events: { kind: "kickoff"|"goal"|"halftime"|"secondhalf"|"fulltime", match, scoreText }.
 function computeLiveNotifications(previous, liveMatches, options) {
     previous = previous || {};
     options = options || {};
@@ -126,20 +145,39 @@ function computeLiveNotifications(previous, liveMatches, options) {
         if (triggers.kickoff && !prev.live && entry.live)
             events.push({ "kind": "kickoff", "match": match, "scoreText": "" });
 
-        if (triggers.goals && prev.live && entry.live && hasScores(match)
+        // When detailed events are on for this match, the incidents poll fires a
+        // single enriched "goalscorer" notification instead (see
+        // computeIncidentNotifications) — skip this plain one to avoid double
+        // notifying the same goal.
+        const hasDetailedEvents = typeof options.detailedEventsAvailable === "function" && options.detailedEventsAvailable(match);
+        if (triggers.goals && !hasDetailedEvents && prev.live && entry.live && hasScores(match)
             && (entry.homeScore !== prev.homeScore || entry.awayScore !== prev.awayScore))
             events.push({ "kind": "goal", "match": match, "scoreText": scoreText(match) });
+
+        if (triggers.halfTime && prev.live && entry.live) {
+            if (!isHalfTimeMinute(prev.minute) && isHalfTimeMinute(entry.minute))
+                events.push({ "kind": "halftime", "match": match, "scoreText": hasScores(match) ? scoreText(match) : "" });
+            else if (isHalfTimeMinute(prev.minute) && isSecondHalfMinute(entry.minute))
+                events.push({ "kind": "secondhalf", "match": match, "scoreText": hasScores(match) ? scoreText(match) : "" });
+        }
     });
 
     // A live match that has vanished from the feed has finished. Fire full-time
     // using its last known score (only when we have a real baseline to compare).
+    // Exception: if the match vanished only because its competition/team's fetch
+    // failed this refresh (see options.isUnreliable), it has not necessarily
+    // ended — a flaky provider response should not be read as full-time.
     if (triggers.fullTime && hasBaseline) {
+        const isUnreliable = typeof options.isUnreliable === "function" ? options.isUnreliable : null;
         Object.keys(previous).forEach(id => {
             const prev = previous[id];
             if (!prev || !prev.live || snapshot[id])
                 return;
 
             if (!matchInScope(prev, options))
+                return;
+
+            if (isUnreliable && isUnreliable(prev))
                 return;
 
             events.push({
@@ -191,4 +229,87 @@ function computeStartsSoon(scheduledMatches, nowMs, minutes, announced, options)
     });
 
     return events;
+}
+
+// A stable-enough identity for one incident within a match (incidents have no
+// id of their own from either provider): kind + player + minute is unique for
+// all practical purposes (two different players don't score in the same
+// minute on the same side without distinct names).
+function incidentId(incident) {
+    incident = incident || {};
+    return [stringValue(incident.kind), stringValue(incident.side), stringValue(incident.player), stringValue(incident.minute)]
+        .join("|")
+        .toLowerCase();
+}
+
+// Maps an incident's provider-agnostic kind (see sportScoreWidgetIncidents /
+// fetchEspnMatchIncidents in SportsApi.js) to a notification kind.
+function notificationKindForIncident(kind) {
+    const value = stringValue(kind).toLowerCase();
+    if (value === "goal")
+        return "goalscorer";
+    if (value === "yellow")
+        return "yellowcard";
+    if (value === "red")
+        return "redcard";
+    if (value === "substitution")
+        return "substitution";
+    if (value === "extratime")
+        return "extratime";
+    if (value === "extratimesecondhalf")
+        return "extratimesecondhalf";
+    if (value === "shootout")
+        return "shootout";
+    return "";
+}
+
+// Diffs one match's current incident list against the set of incident ids
+// already notified for it, returning the new notification events and the
+// updated id set (to persist for next time).
+//   previousIds  - array of incidentId() strings already notified for this match
+//   match        - the match row (for building notification events)
+//   incidents    - current incident rows from fetchEspnMatchIncidents/
+//                  sportScoreWidgetIncidents
+//   triggers     - { goals, cards, substitutions, halfTime } — which kinds to
+//                  notify (halfTime also gates extratime/extratimesecondhalf/
+//                  shootout, the same "match phase changed" family)
+function computeIncidentNotifications(previousIds, match, incidents, triggers) {
+    const seen = {};
+    (Array.isArray(previousIds) ? previousIds : []).forEach(id => { seen[id] = true; });
+
+    triggers = triggers || {};
+    const events = [];
+    const nextIds = [];
+
+    (Array.isArray(incidents) ? incidents : []).forEach(incident => {
+        const id = incidentId(incident);
+        nextIds.push(id);
+        if (seen[id])
+            return;
+
+        const notifKind = notificationKindForIncident(incident && incident.kind);
+        if (notifKind.length === 0)
+            return;
+        if (notifKind === "goalscorer" && !triggers.goals)
+            return;
+        if ((notifKind === "yellowcard" || notifKind === "redcard") && !triggers.cards)
+            return;
+        if (notifKind === "substitution" && !triggers.substitutions)
+            return;
+        // Same "match phase changed" family as half-time/second-half (which use
+        // the lightweight scoreboard field instead); reuse that trigger rather
+        // than invent a separate one for this knockout-only scenario.
+        if ((notifKind === "extratime" || notifKind === "extratimesecondhalf" || notifKind === "shootout") && !triggers.halfTime)
+            return;
+
+        const isPhaseChange = notifKind === "extratime" || notifKind === "extratimesecondhalf" || notifKind === "shootout";
+        events.push({
+            "kind": notifKind,
+            "match": match,
+            "incident": incident,
+            "scoreText": isPhaseChange && hasScores(match) ? scoreText(match) : ""
+        });
+    });
+
+    return { "events": events, "incidentIds": nextIds };
 }

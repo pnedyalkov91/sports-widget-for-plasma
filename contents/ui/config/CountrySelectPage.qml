@@ -21,6 +21,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "../../code/SportsApi.js" as SportsApi
 import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
+import "../../code/providers/SportScoreSports.js" as SportScoreSports
 
 SportStepPage {
     id: root
@@ -29,15 +30,18 @@ SportStepPage {
     property string countryFilter: ""
     property bool loadingCountries: false
     property string countryLoadError: ""
+    // True only when the provider request failed (network/timeout), not when it
+    // simply returned no countries.
+    property bool countryLoadFailed: false
     property int countryRequestToken: 0
-    readonly property bool pageActive: root.configRoot && !root.configRoot.tennisMode && root.configRoot.pageIndex === 1
+    readonly property bool pageActive: root.configRoot && !root.configRoot.tennisMode && root.configRoot.pageIndex === root.configRoot.countryPageIndex
     readonly property bool tennisMode: root.configRoot && root.configRoot.normalizedSport() === "tennis"
     readonly property var displayedOptions: root.pageActive && root.configRoot && !root.loadingCountries ? root.configRoot.filtered(root.configRoot.countryOptions(), root.countryFilter) : []
 
     title: i18nc("@title:group", "Country")
     subtitle: root.tennisMode
         ? i18nc("@info", "SportScore lists tennis competitions and players internationally.")
-        : i18nc("@info", "Only one country can be active for the selected sport.")
+        : i18nc("@info", "Open a country to follow its leagues and teams.")
     filterText: root.countryFilter
     filterPlaceholder: i18nc("@info:placeholder", "Search countries")
     onFilterEdited: text => root.countryFilter = text
@@ -45,6 +49,30 @@ SportStepPage {
     onPageActiveChanged: {
         if (root.pageActive)
             root.loadCountries();
+    }
+
+    // SportScore only backs football/basketball/cricket/tennis; other sports are
+    // ESPN-only, so the SportScore failure message must not appear for them.
+    readonly property bool sportScoreSport: root.configRoot && SportScoreSports.supports(root.configRoot.normalizedSport())
+    readonly property bool showCountryError: root.countryLoadFailed && !root.loadingCountries && root.sportScoreSport
+
+    headerContent: Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        visible: true
+        type: root.showCountryError ? Kirigami.MessageType.Error : Kirigami.MessageType.Information
+        text: root.showCountryError
+            ? i18nc("@info", "SportScore is not responding right now, so the list of countries could not be loaded. Please try again later.")
+            : (root.tennisMode
+                ? i18nc("@info", "Tennis is organised internationally, so there is no country to choose — continue to pick competitions and players.")
+                : i18nc("@info", "Open a country to browse its competitions and follow the ones you want. You can follow competitions from several countries."))
+        actions: root.showCountryError ? [retryCountriesAction] : []
+    }
+
+    Kirigami.Action {
+        id: retryCountriesAction
+        icon.name: "view-refresh"
+        text: i18nc("@action:button", "Try again")
+        onTriggered: root.loadCountries()
     }
 
     Connections {
@@ -99,6 +127,7 @@ SportStepPage {
         root.countryRequestToken = token;
         root.loadingCountries = true;
         root.countryLoadError = "";
+        root.countryLoadFailed = false;
         root.configRoot.cfg_providerCountrySport = "";
         root.configRoot.cfg_providerCountryOptions = [];
 
@@ -122,6 +151,7 @@ SportStepPage {
                 return;
 
             root.loadingCountries = false;
+            root.countryLoadFailed = false;
             if (Array.isArray(rows) && rows.length > 0)
                 wizardCache.write(cacheKey, rows);
             const count = root.applyCountryRows(sport, rows);
@@ -132,8 +162,9 @@ SportStepPage {
                 return;
 
             root.loadingCountries = false;
+            // Provider failed (no ESPN fallback for the country catalog).
             if (!hasCache)
-                root.countryLoadError = String(message || i18nc("@info", "Unable to load countries from provider.")).trim();
+                root.countryLoadFailed = true;
         });
     }
 
@@ -163,7 +194,8 @@ SportStepPage {
     Label {
         Layout.columnSpan: Math.max(1, root.contentColumns)
         Layout.fillWidth: true
-        visible: !root.loadingCountries && root.displayedOptions.length === 0
+        // The provider-failure case is shown by the error banner in the header.
+        visible: !root.loadingCountries && !root.showCountryError && root.displayedOptions.length === 0
         text: root.countryLoadError.length > 0 ? root.countryLoadError : i18nc("@info", "No countries were found for this sport.")
         horizontalAlignment: Text.AlignHCenter
         opacity: 0.78
@@ -178,8 +210,15 @@ SportStepPage {
             flagSource: String(modelData.icon || "").indexOf("file://") === 0 ? modelData.icon : ""
             iconName: String(modelData.icon || "").indexOf("file://") === 0 ? "" : modelData.icon || ""
             infoText: modelData.infoText || ""
+            cardToolTipText: i18nc("@info:tooltip", "Open %1", modelData.label)
             selected: root.configRoot && root.configRoot.cfg_country === modelData.value
-            onClicked: root.configRoot.selectCountry(modelData.value)
+            onClicked: {
+                root.configRoot.selectCountry(modelData.value);
+                root.configRoot.openCountryPage(
+                    modelData.value,
+                    modelData.label,
+                    String(modelData.icon || "").indexOf("file://") === 0 ? modelData.icon : "");
+            }
         }
     }
 }

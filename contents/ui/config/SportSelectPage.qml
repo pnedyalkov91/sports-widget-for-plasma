@@ -47,6 +47,13 @@ ColumnLayout {
         }
     }
 
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        visible: true
+        type: Kirigami.MessageType.Information
+        text: i18nc("@info", "Pick a sport to start. Next you can follow the most popular competitions worldwide, or browse every country and league.")
+    }
+
     GridLayout {
         Layout.fillWidth: true
         columns: Math.max(1, Math.floor((width + columnSpacing) / (root.cardMinimumWidth + columnSpacing)))

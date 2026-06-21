@@ -94,6 +94,7 @@ ColumnLayout {
             titleLabel: root.configRoot.displaySavedTitle(safeEntry),
             metaLabel: parts.filter(part => String(part || "").length > 0).join(" · "),
             countryIcon: safeEntry.countryIcon || root.configRoot.countryIconForEntry(safeEntry),
+            leagueBadge: String(safeEntry.leagueBadge || "").trim(),
             teamBadge,
             includeLive: safeEntry.includeLive !== false,
             includeSchedules: safeEntry.includeSchedules !== false,
@@ -463,6 +464,7 @@ ColumnLayout {
                 required property string titleLabel
                 required property string metaLabel
                 required property string countryIcon
+                required property string leagueBadge
                 required property string entryType
                 required property string sportValue
                 required property string sportLabel
@@ -522,7 +524,9 @@ ColumnLayout {
 
                             Image {
                                 anchors.fill: parent
-                                source: savedDelegateRoot.entryType === "team" ? savedDelegateRoot.teamBadge : ""
+                                source: savedDelegateRoot.entryType === "team"
+                                    ? savedDelegateRoot.teamBadge
+                                    : savedDelegateRoot.leagueBadge
                                 visible: source.toString().length > 0
                                 fillMode: Image.PreserveAspectFit
                                 asynchronous: true
@@ -533,7 +537,7 @@ ColumnLayout {
                             CountryFlag {
                                 anchors.fill: parent
                                 sourceUrl: savedDelegateRoot.countryIcon
-                                visible: savedDelegateRoot.entryType !== "team"
+                                visible: savedDelegateRoot.entryType !== "team" && savedDelegateRoot.leagueBadge.length === 0
                             }
 
                             Kirigami.Icon {

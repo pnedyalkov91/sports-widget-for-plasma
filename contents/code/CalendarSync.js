@@ -137,9 +137,70 @@ function eventDescription(match) {
     return parts.join(" · ");
 }
 
-// Folds a single content line to <=75 octets as required by RFC 5545. We keep
-// it simple and fold on character count, which is safe for our mostly-ascii
-// content; continuation lines start with a single space.
+
+// Default event color (Plasma highlight-ish green) shown in the calendar grid.
+var EVENT_COLOR = "#27ae60";
+
+// Builds the inert JSON snapshot consumed by the bundled Plasma calendar-events
+// plugin (plugin/sportsmatchesevents). The plugin feeds these straight to the
+// Plasma calendar in memory — no .ics, no Akonadi, no PIM indexer — so it cannot
+// hang plasmashell. Returns a JSON string: { "matches": [ {startMs, ...} ] }.
+//
+// Each entry carries:
+//   startMs          - kickoff time in epoch milliseconds (UTC)
+//   durationMinutes  - per-sport default match length
+//   title            - "{emoji} Home vs Away · League" (or with score)
+//   description      - league · matchday
+//   uid              - stable id (so the plugin can de-duplicate)
+//   color            - grid color
+function buildSnapshot(matches, options) {
+    options = options || {};
+    const nowMs = Number(options.nowMs) || Date.now();
+    // Drop matches older than the start of yesterday (day-granular floor keeps the
+    // snapshot stable all day for an unchanged fixture list).
+    const nowDate = new Date(nowMs);
+    const floorMs = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime() - 24 * 60 * 60 * 1000;
+
+    const seen = {};
+    const ordered = (Array.isArray(matches) ? matches.slice() : []).sort((left, right) => {
+        const leftStart = normalizedTimestampMs(left);
+        const rightStart = normalizedTimestampMs(right);
+        if (leftStart !== rightStart)
+            return leftStart - rightStart;
+        return stringValue(matchUid(left)).localeCompare(stringValue(matchUid(right)));
+    });
+
+    const rows = [];
+    ordered.forEach(match => {
+        const startMs = normalizedTimestampMs(match);
+        if (startMs <= 0 || startMs < floorMs)
+            return;
+
+        const uid = matchUid(match);
+        if (seen[uid])
+            return;
+        seen[uid] = true;
+
+        rows.push({
+            "startMs": startMs,
+            "durationMinutes": durationMinutes(match && match.sport),
+            "title": eventSummary(match),
+            "description": eventDescription(match),
+            "uid": uid,
+            "color": EVENT_COLOR
+        });
+    });
+
+    return JSON.stringify({ "matches": rows });
+}
+
+// --- Optional iCalendar (.ics) export -------------------------------------
+// This is an EXPORT-ONLY file the user can import into any calendar app. It is
+// never registered as an Akonadi resource (that is what used to hang Plasma);
+// it is just a plain file written to disk for the user to subscribe to/import.
+
+// Folds a content line to <=75 octets as required by RFC 5545; continuation
+// lines start with a single space.
 function foldLine(line) {
     if (line.length <= 75)
         return line;
@@ -155,7 +216,7 @@ function foldLine(line) {
     return chunks.join("\r\n");
 }
 
-function buildEvent(match, nowMs, reminderMinutes) {
+function buildEvent(match, reminderMinutes) {
     const startMs = normalizedTimestampMs(match);
     if (startMs <= 0)
         return [];
@@ -164,8 +225,8 @@ function buildEvent(match, nowMs, reminderMinutes) {
     const lines = [];
     lines.push("BEGIN:VEVENT");
     lines.push("UID:" + matchUid(match));
-    // DTSTAMP must be stable across rebuilds (deriving it from "now" would make
-    // every sync produce a different file, forcing needless Akonadi reloads).
+    // DTSTAMP stable across rebuilds (deriving from "now" would change the file
+    // on every write).
     lines.push("DTSTAMP:" + toICalUtc(startMs));
     lines.push("DTSTART:" + toICalUtc(startMs));
     lines.push("DTEND:" + toICalUtc(endMs));
@@ -194,17 +255,13 @@ function buildEvent(match, nowMs, reminderMinutes) {
     return lines;
 }
 
-// Builds a complete VCALENDAR document for the given upcoming matches. Past
-// matches (and ones without a usable kickoff time) are skipped. Returns a
-// string terminated with CRLF line endings, ready to write to an .ics file.
-function buildCalendar(matches, options) {
+// Builds a complete VCALENDAR document for the given matches. Past matches (and
+// ones without a usable kickoff time) are skipped. CRLF line endings.
+function buildIcs(matches, options) {
     options = options || {};
     const nowMs = Number(options.nowMs) || Date.now();
     const reminderMinutes = Number(options.reminderMinutes) || 0;
-    const calendarName = stringValue(options.calendarName || "Sports");
-    // Drop matches older than the start of yesterday. Using a day-granular floor
-    // (rather than "now - Nh") keeps the generated file byte-identical all day for
-    // an unchanged fixture list, so the cache prevents needless rewrites/reloads.
+    const calendarName = stringValue(options.calendarName || "Sports Widget for Plasma");
     const nowDate = new Date(nowMs);
     const floorMs = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime() - 24 * 60 * 60 * 1000;
 
@@ -217,8 +274,6 @@ function buildCalendar(matches, options) {
     lines.push("METHOD:PUBLISH");
     lines.push("X-WR-CALNAME:" + escapeText(calendarName));
 
-    // Emit in a deterministic order (kickoff, then teams) so an unchanged set of
-    // fixtures always produces a byte-identical file regardless of input order.
     const ordered = (Array.isArray(matches) ? matches.slice() : []).sort((left, right) => {
         const leftStart = normalizedTimestampMs(left);
         const rightStart = normalizedTimestampMs(right);
@@ -229,34 +284,33 @@ function buildCalendar(matches, options) {
 
     ordered.forEach(match => {
         const startMs = normalizedTimestampMs(match);
-        if (startMs < floorMs)
+        if (startMs <= 0 || startMs < floorMs)
             return;
-
         const uid = matchUid(match);
         if (seen[uid])
             return;
         seen[uid] = true;
-
-        buildEvent(match, nowMs, reminderMinutes).forEach(line => lines.push(line));
+        buildEvent(match, reminderMinutes).forEach(line => lines.push(line));
     });
 
     lines.push("END:VCALENDAR");
     return lines.map(foldLine).join("\r\n") + "\r\n";
 }
 
-function eventCount(icsText) {
-    const matches = stringValue(icsText).match(/BEGIN:VEVENT/g);
-    return matches ? matches.length : 0;
-}
+// --- Optional Akonadi (live KDE Plasma calendar via PIM) ------------------
+// UNSTABLE / NOT RECOMMENDED. Registering the exported .ics as a read-only
+// Akonadi ical resource makes it a "live" KDE calendar, but on some systems the
+// PIM stack reconciles and re-indexes every event on each write and can freeze
+// plasmashell. The native in-memory plugin is the recommended path; this exists
+// only as an opt-in escape hatch and requires the .ics export to be enabled.
 
 // Marker grepped for in the resource rc files to find our own ical resources.
 var RESOURCE_PATH_MARKER = "sports-widget-for-plasma/sports-matches.ics";
 
 // POSIX-sh script (run via `sh`) that guarantees exactly one read-only Akonadi
-// iCal resource points at our file. It de-duplicates any extra instances (the
-// cause of calendar duplication), (re)creates one if missing, then sets its
-// path, display name and read-only flag. Read-only stops Akonadi writing back
-// to the file, which otherwise fights the widget's own writes.
+// iCal resource points at our file. De-duplicates extras, (re)creates one if
+// missing, then sets its path, display name and read-only flag, and brings it
+// online. Read-only stops Akonadi writing back to the file.
 function resourceEnsureScript(icsPath, displayName) {
     const name = stringValue(displayName).replace(/["$`\\]/g, "");
     const findKept = [
@@ -270,7 +324,6 @@ function resourceEnsureScript(icsPath, displayName) {
         "AM=\"org.freedesktop.Akonadi.Control /AgentManager org.freedesktop.Akonadi.AgentManager\"",
         "ICS=\"" + stringValue(icsPath) + "\"",
         "NAME=\"" + name + "\"",
-        // Collect every resource pointing at our file; keep the first, drop the rest.
         "matches=\"\"",
         "for rc in \"$HOME\"/.config/akonadi_ical_resource_*rc; do",
         "  [ -e \"$rc\" ] || continue",
@@ -280,20 +333,14 @@ function resourceEnsureScript(icsPath, displayName) {
         "keep=\"${1:-}\"",
         "[ -n \"$keep\" ] && shift",
         "for extra in \"$@\"; do qdbus $AM.removeAgentInstance \"$extra\" >/dev/null 2>&1 || true; done",
-        // Create via konsolekalendar (reliably sets the file path) only when none exists.
         "if [ -z \"$keep\" ]; then",
         "  konsolekalendar --create \"$ICS\" >/dev/null 2>&1 || true",
         "  sleep 1"
     ].concat(findKept.map(line => "  " + line)).concat([
         "fi",
         "[ -n \"$keep\" ] || exit 0",
-        // Wait for the resource's D-Bus service before configuring it.
         "i=0; while [ $i -lt 50 ]; do qdbus \"org.freedesktop.Akonadi.Resource.$keep\" /Settings >/dev/null 2>&1 && break; sleep 0.2; i=$((i+1)); done",
         "S=\"org.freedesktop.Akonadi.Resource.$keep /Settings org.kde.Akonadi.ICal.Settings\"",
-        // Mark read-only (so Akonadi never writes back to our file) and rename.
-        // save() persists to the rc; reconfigure applies it to the running agent.
-        // Applied twice with a settle in between so a still-initialising agent
-        // cannot clobber the values by reloading its config afterwards.
         "configure() {",
         "  qdbus $S.setReadOnly true >/dev/null 2>&1 || true",
         "  qdbus $S.setDisplayName \"$NAME\" >/dev/null 2>&1 || true",
@@ -304,19 +351,23 @@ function resourceEnsureScript(icsPath, displayName) {
         "configure",
         "sleep 2",
         "configure",
+        "qdbus $AM.setAgentInstanceOnline \"$keep\" true >/dev/null 2>&1 || true",
         "qdbus org.freedesktop.Akonadi.Resource.$keep / org.freedesktop.Akonadi.Resource.synchronize >/dev/null 2>&1 || true"
     ]).join("\n");
 }
 
-// POSIX-sh script that removes every ical resource pointing at our file and
-// deletes the generated files (used when the user turns calendar sync off).
-function resourceRemoveScript(icsPath) {
+// POSIX-sh script that takes our ical resource(s) OFFLINE (used when Akonadi
+// mode is turned off / calendar disabled). Offline is a single fast call that
+// stops the reconcile churn without the removal-time spin; the resource and
+// file are left in place and can be removed from calendar settings.
+function resourceOfflineScript() {
     return [
         "AM=\"org.freedesktop.Akonadi.Control /AgentManager org.freedesktop.Akonadi.AgentManager\"",
         "for rc in \"$HOME\"/.config/akonadi_ical_resource_*rc; do",
         "  [ -e \"$rc\" ] || continue",
-        "  grep -q \"" + RESOURCE_PATH_MARKER + "\" \"$rc\" && qdbus $AM.removeAgentInstance \"$(basename \"$rc\" | sed -E 's/rc$//')\" >/dev/null 2>&1 || true",
-        "done",
-        "rm -f \"" + stringValue(icsPath) + "\" \"" + stringValue(icsPath) + "~\""
+        "  grep -q \"" + RESOURCE_PATH_MARKER + "\" \"$rc\" || continue",
+        "  id=\"$(basename \"$rc\" | sed -E 's/rc$//')\"",
+        "  qdbus $AM.setAgentInstanceOnline \"$id\" false >/dev/null 2>&1 || true",
+        "done"
     ].join("\n");
 }

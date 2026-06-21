@@ -40,6 +40,11 @@ Item {
     property string matchPath: ""
     property string liveUrl: ""
     property string detailsProvider: ""
+    // ESPN-sourced matches have no matchPath/liveUrl; these identify the match
+    // for fetching its incident feed (goals/cards/subs) instead.
+    property string espnEventId: ""
+    property string espnSport: ""
+    property string espnLeague: ""
     property bool popular: false
     property bool favorite: false
     property bool selected: false
@@ -68,6 +73,7 @@ Item {
         root.detailsProvider,
         root.matchPath,
         root.liveUrl,
+        root.espnEventId,
         root.homeTeam,
         root.awayTeam,
         root.homeScore,
@@ -100,7 +106,7 @@ Item {
         if (root.detailsLoaded && !force)
             return;
 
-        if (root.liveUrl.length === 0 && root.matchPath.length === 0) {
+        if (root.liveUrl.length === 0 && root.matchPath.length === 0 && root.espnEventId.length === 0) {
             root.details = {};
             root.detailsLoaded = true;
             root.detailsError = i18nc("@info:status", "Detailed match information is not available for this match.");
@@ -131,6 +137,9 @@ Item {
             "liveUrl": root.liveUrl,
             "matchPath": root.matchPath,
             "detailsProvider": root.detailsProvider,
+            "espnEventId": root.espnEventId,
+            "espnSport": root.espnSport,
+            "espnLeague": root.espnLeague,
             "homeTeam": root.homeTeam,
             "awayTeam": root.awayTeam,
             "homeScore": root.homeScore,

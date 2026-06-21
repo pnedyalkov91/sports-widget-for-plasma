@@ -48,8 +48,15 @@ Item {
         const s = String(root.cfg_selectedSports || "").split(",")[0].trim().toLowerCase();
         return s === "tennis";
     }
-    readonly property int pageCount: root.tennisMode ? 2 : 3
-    readonly property int combinedPageIndex: root.tennisMode ? 1 : 2
+    // Non-tennis flow: Sport(0) → Top/Popular(1) → Country(2) → Competition(3).
+    // Tennis skips Popular and Country: Sport(0) → Players(1).
+    readonly property int pageCount: root.tennisMode ? 2 : 4
+    readonly property int combinedPageIndex: root.tennisMode ? 1 : 3
+    readonly property int countryPageIndex: root.tennisMode ? -1 : 2
+    readonly property bool onPopularPage: !root.tennisMode && root.pageIndex === 1
+    // On the country page the competition picking happens in the country subpage
+    // overlay (immediate add), so this page is the terminal step for non-tennis.
+    readonly property bool onCountryPage: !root.tennisMode && root.pageIndex === root.countryPageIndex
     readonly property string currentProvider: settingsRoot ? settingsRoot.currentProvider : ""
 
     signal closeRequested()
@@ -195,6 +202,36 @@ Item {
         return root.selectedNationalTeamValues().indexOf(team) >= 0;
     }
 
+    // Immediate add/remove of a saved favorite (used by the "Top in the World"
+    // page, whose items span multiple countries and so cannot use the single
+    // country-scoped staged selection). Reuses the settings page's own helpers.
+    function isFavoriteSaved(entry) {
+        if (!root.settingsRoot || !entry)
+            return false;
+
+        const saved = root.settingsRoot.savedLeagues();
+        for (let index = 0; index < saved.length; index += 1) {
+            if (root.settingsRoot.sameEntry(saved[index], entry))
+                return true;
+        }
+        return false;
+    }
+
+    function toggleFavorite(entry) {
+        if (!root.settingsRoot || !entry)
+            return;
+
+        const saved = root.settingsRoot.savedLeagues();
+        for (let index = 0; index < saved.length; index += 1) {
+            if (root.settingsRoot.sameEntry(saved[index], entry)) {
+                saved.splice(index, 1);
+                root.settingsRoot.saveLeagues(saved);
+                return;
+            }
+        }
+        root.settingsRoot.saveOrReplaceLeague(entry, -1);
+    }
+
     function filtered(options, filterText) {
         return settingsRoot ? settingsRoot.filtered(options, filterText) : options;
     }
@@ -203,12 +240,14 @@ Item {
         if (root.pageIndex === 0)
             return root.normalizedSport().length > 0;
 
-        if (root.pageIndex === 1)
-            return root.cfg_country.length > 0;
+        if (root.pageIndex === root.combinedPageIndex)
+            return root.selectedLeagueValues().length > 0
+                || root.selectedFavoriteTeamValues().length > 0
+                || root.selectedNationalTeamValues().length > 0;
 
-        return root.selectedLeagueValues().length > 0
-            || root.selectedFavoriteTeamValues().length > 0
-            || root.selectedNationalTeamValues().length > 0;
+        // Popular landing page and country page: favourites are added instantly
+        // (via their subpages), so the user can always move on or finish.
+        return true;
     }
 
     function selectSport(value) {
@@ -662,12 +701,19 @@ Item {
             Button {
                 id: nextButton
 
-                icon.name: root.pageIndex === root.pageCount - 1 ? "dialog-ok-apply" : "go-next"
-                text: root.pageIndex === root.pageCount - 1 ? i18nc("@action:button", "Done") : i18nc("@action:button", "Next")
+                icon.name: (root.onPopularPage || root.onCountryPage || root.pageIndex === root.pageCount - 1) ? "dialog-ok-apply" : "go-next"
+                text: (root.onPopularPage || root.onCountryPage || root.pageIndex === root.pageCount - 1) ? i18nc("@action:button", "Done") : i18nc("@action:button", "Next")
                 enabled: root.canAdvance()
                 onClicked: {
                     if (!root.canAdvance())
                         return;
+
+                    // On the Top page and the country page favourites are added
+                    // instantly (via their subpages), so "Done" simply closes.
+                    if (root.onPopularPage || root.onCountryPage) {
+                        root.closeRequested();
+                        return;
+                    }
 
                     if (root.pageIndex === root.pageCount - 1) {
                         reviewDialog.open();
@@ -854,9 +900,15 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        currentIndex: root.tennisMode && root.pageIndex >= 1 ? root.pageIndex + 1 : root.pageIndex
+        // Items: Sport(0), Popular(1), Country(2), Competition(3). Tennis maps
+        // its second page straight to Competition (skipping Popular + Country).
+        currentIndex: root.tennisMode ? (root.pageIndex === 0 ? 0 : 3) : root.pageIndex
 
         SportSelectPage {
+            configRoot: root
+        }
+
+        PopularSelectPage {
             configRoot: root
         }
 
@@ -867,5 +919,83 @@ Item {
         CombinedSelectPage {
             configRoot: root
         }
+    }
+
+    // League detail subpage, opened from the league cards as a full-page overlay
+    // that covers the wizard (including its navigation bar).
+    property var openedLeague: null
+    property url openedLeagueEmblem: ""
+    // "favorite" = add/remove a saved favorite instantly (Top page); "select" =
+    // toggle it in the staged wizard selection committed on Done (Browse flow).
+    property string openedLeagueMode: "favorite"
+
+    function openLeaguePage(league, emblem, mode) {
+        root.openedLeagueEmblem = emblem || "";
+        root.openedLeagueMode = String(mode || "favorite");
+        root.openedLeague = league || null;
+    }
+
+    function closeLeaguePage() {
+        root.openedLeague = null;
+        root.openedLeagueEmblem = "";
+        root.openedLeagueMode = "favorite";
+    }
+
+    Component {
+        id: leagueSubPageComponent
+
+        LeagueSubPage {
+            configRoot: root
+            league: root.openedLeague
+            emblem: root.openedLeagueEmblem
+            commitMode: root.openedLeagueMode
+        }
+    }
+
+    // Country detail subpage, opened from the country cards in the Browse flow as
+    // a full-page overlay. Its league cards open the league subpage on top of it.
+    property string openedCountry: ""
+    property string openedCountryLabel: ""
+    property url openedCountryFlag: ""
+
+    function openCountryPage(country, label, flag) {
+        root.openedCountryLabel = String(label || "");
+        root.openedCountryFlag = flag || "";
+        root.openedCountry = String(country || "");
+    }
+
+    function closeCountryPage() {
+        root.openedCountry = "";
+        root.openedCountryLabel = "";
+        root.openedCountryFlag = "";
+    }
+
+    Component {
+        id: countrySubPageComponent
+
+        CountrySubPage {
+            configRoot: root
+            country: root.openedCountry
+            countryLabel: root.openedCountryLabel
+            flag: root.openedCountryFlag
+        }
+    }
+
+    // Country overlay sits below the league overlay (z 90 < 100), so opening a
+    // league from inside the country subpage covers it cleanly.
+    Loader {
+        anchors.fill: parent
+        z: 90
+        active: root.openedCountry.length > 0
+        visible: active
+        sourceComponent: countrySubPageComponent
+    }
+
+    Loader {
+        anchors.fill: parent
+        z: 100
+        active: root.openedLeague !== null
+        visible: active
+        sourceComponent: leagueSubPageComponent
     }
 }

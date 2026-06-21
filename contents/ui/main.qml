@@ -22,6 +22,8 @@ import "../code/MatchNotifications.js" as MatchNotifications
 import "../code/CalendarSync.js" as CalendarSync
 import "../code/providers/ProviderCatalog.js" as ProviderCatalog
 import "../code/providers/ProviderCountries.js" as ProviderCountries
+import "../code/providers/PopularCatalog.js" as PopularCatalog
+import "config" as WizardConfig
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -49,11 +51,26 @@ PlasmoidItem {
     property bool liveRefreshInFlight: false
     property int consecutiveEmptyLiveRefreshes: 0
     property string lastLiveScopeSignature: ""
+    // Entries whose live fetch failed on the most recent refresh (e.g. a
+    // SportScore 504). A match disappearing only because of one of these is a
+    // fetch failure, not the match ending — see pushMatchNotifications().
+    property var lastLiveFetchFailedEntries: []
     property bool scheduleRequestCompleted: false
     property bool tableScheduleFallbackStarted: false
     property bool recentResultsTableFallbackStarted: false
     property int refreshToken: 0
     property int liveRefreshToken: 0
+    // Wall-clock of the last wake-detector tick; a large jump between ticks means
+    // the machine was suspended (timers freeze during sleep), so we force a
+    // refresh on resume instead of showing pre-sleep "live" matches.
+    property double lastWakeTickMs: 0
+    // Memo for matchForModel, keyed by display-relevant match fields. Cleared each
+    // full refresh (bounds growth) and on format-config changes.
+    property var _matchModelCache: ({})
+    // Cached "today" so per-match start-time formatting doesn't allocate a Date for
+    // it on every call; refreshed at most once a minute.
+    property var _todayDate: null
+    property double _todayDateMs: 0
     property var savedSportsModel: SavedSportsModel.create(Plasmoid.configuration.savedLeagues || "[]", {
         "activeIndex": Plasmoid.configuration.activeSavedLeagueIndex,
         "allCompetitionsLabel": i18nc("@label", "All competitions")
@@ -104,9 +121,14 @@ PlasmoidItem {
     property var latestScheduleMatches: []
     property var notifyLiveSnapshot: ({})
     property bool notifyHasBaseline: false
+    // Opt-in detailed events (goal scorer / cards / substitutions): map of
+    // matchId -> array of incidentId strings already notified for that match.
+    property var notifyIncidentIds: ({})
+    property bool detailedEventsPollInFlight: false
     property var startsSoonAnnounced: ({})
-    property bool calendarResourceEnsured: false
+    property string lastCalendarSnapshot: ""
     property string lastCalendarIcs: ""
+    property bool calendarAkonadiEnsured: false
     property var pendingCalendarRows: []
     property bool calendarHadData: false
     property var latestRecentMatches: []
@@ -215,6 +237,22 @@ PlasmoidItem {
     function liveRefreshIntervalMs() {
         const seconds = Plasmoid.configuration.smartRefreshEnabled ? 60 : Number(Plasmoid.configuration.liveRefreshInterval || 60);
         return Math.max(10, seconds) * 1000;
+    }
+
+    // A gap between wake-detector ticks beyond this means the machine was asleep.
+    // At least 2 minutes, or twice the live-refresh cadence, so ordinary timer
+    // jitter never trips it but any real suspend does.
+    function wakeRefreshThresholdMs() {
+        return Math.max(120000, root.liveRefreshIntervalMs() * 2);
+    }
+
+    function handleSystemWake() {
+        // Live matches shown from before the suspend are almost certainly stale
+        // (often already finished). Drop them right away so the user never sees
+        // phantom live games, then pull everything fresh.
+        liveMatchesModel.clear();
+        root.latestLiveMatches = [];
+        root.refreshScores(true);
     }
 
     function liveRefreshIsEnabled() {
@@ -577,6 +615,15 @@ PlasmoidItem {
             && left.getDate() === right.getDate();
     }
 
+    function currentDayDate() {
+        const now = Date.now();
+        if (root._todayDate === null || (now - root._todayDateMs) > 60000) {
+            root._todayDate = new Date(now);
+            root._todayDateMs = now;
+        }
+        return root._todayDate;
+    }
+
     function formattedMatchStartTime(match) {
         const timestamp = Number(match && match.timestamp || 0);
         if (timestamp <= 0)
@@ -584,8 +631,7 @@ PlasmoidItem {
 
         const date = new Date(timestamp);
         const timeText = formatConfiguredTime(date);
-        const today = new Date();
-        if (sameCalendarDay(date, today))
+        if (sameCalendarDay(date, root.currentDayDate()))
             return timeText;
 
         const dateText = formatConfiguredDate(date);
@@ -655,13 +701,34 @@ PlasmoidItem {
         return SportsApi.isFinishedMatch(match);
     }
 
+    // matchForModel runs locale date formatting + badge resolution per match, and
+    // the same matches flow through several models (main + panel + tooltip) each
+    // refresh — so memoize the expensive result. The key encodes every
+    // display-relevant field (incl. score/status/minute), so any live change
+    // misses the cache and recomputes; only format-config changes need an explicit
+    // clear (see clearMatchModelCache). A fresh shallow copy is returned so callers
+    // that tweak the row (e.g. leagueGroup) can't poison the shared entry.
+    function matchModelCacheKey(match) {
+        return root.matchKey(match) + "|" + String(match && match.minute || "");
+    }
+
+    function clearMatchModelCache() {
+        root._matchModelCache = ({});
+    }
+
     function matchForModel(match) {
+        const key = root.matchModelCacheKey(match);
+        const cached = root._matchModelCache[key];
+        if (cached !== undefined)
+            return Object.assign({}, cached);
+
         const copy = Object.assign({}, match || {});
         copy.homeBadge = root.preferredTeamBadge(copy.homeTeam, copy.homeBadge);
         copy.awayBadge = root.preferredTeamBadge(copy.awayTeam, copy.awayBadge);
         copy.showScore = matchHasDisplayScore(copy);
         copy.startTime = formattedMatchStartTime(copy);
-        return copy;
+        root._matchModelCache[key] = copy;
+        return Object.assign({}, copy);
     }
 
     function emptySchedulesText() {
@@ -725,6 +792,9 @@ PlasmoidItem {
             "sports": String(entry && entry.sport || "football").trim(),
             "country": String(entry && entry.country || "").trim(),
             "league": type === "team" ? "" : String(entry && entry.league || "").trim(),
+            // The competition a followed team came from, so ESPN can resolve the
+            // team's league even when its country doesn't map to a single one.
+            "teamLeague": type === "team" ? String(entry && (entry.teamLeague || entry.league) || "").trim() : "",
             "competitionPath": type === "team" ? "" : String(entry && (entry.competitionPath || entry.leaguePath) || "").trim(),
             "favoriteTeam": type === "team" ? String(entry && entry.favoriteTeam || "").trim() : "",
             "teamSlug": type === "team" ? String(entry && entry.teamSlug || "").trim() : "",
@@ -832,7 +902,7 @@ PlasmoidItem {
         return matchLeagueKey.length > 0 && (matchLeagueKey.indexOf(leagueSlugKey) >= 0 || leagueSlugKey.indexOf(matchLeagueKey) >= 0 || (leagueLabelKey.length > 0 && (matchLeagueKey.indexOf(leagueLabelKey) >= 0 || leagueLabelKey.indexOf(matchLeagueKey) >= 0)));
     }
 
-    function fetchScopedMatches(entries, token, manual, fetcher, onSuccess, onError, override) {
+    function fetchScopedMatches(entries, token, manual, fetcher, onSuccess, onError, override, onEntryError) {
         const scopeEntries = Array.isArray(entries) ? entries : [];
         if (scopeEntries.length === 0) {
             onSuccess([]);
@@ -864,6 +934,11 @@ PlasmoidItem {
                 const text = String(message || "").trim();
                 if (text.length > 0)
                     errors.push(text);
+                // A failed entry is NOT "this entry has no live matches" — its
+                // previously-live matches must not be treated as finished just
+                // because this one fetch (e.g. a SportScore 504) came back empty.
+                if (onEntryError)
+                    onEntryError(entry);
                 pending -= 1;
                 if (pending > 0)
                     return;
@@ -940,6 +1015,7 @@ PlasmoidItem {
         root.refreshToken = token;
         root.liveRefreshToken += 1;
         root.liveRefreshInFlight = false;
+        root.clearMatchModelCache();
         const options = root.currentRequestOptions();
         options.refreshToken = token;
         options.forceLiveRefresh = Boolean(manual);
@@ -971,17 +1047,19 @@ PlasmoidItem {
         root.errorMessage = "";
         scoresModel.clear();
         recentResultsListModel.clear();
-        root.refreshAuxiliaryMatchModels();
+        root.requestAuxiliaryMatchModelsRefresh();
         syncTeamTableOptions();
         root.tableErrorMessage = "";
         if (root.watchedTeamEntries().length > 0)
             refreshTeamCompetitionOptions(options);
         tableFallbackTimer.restart();
         refreshWatchdogTimer.restart();
+        const liveFetchFailedEntries = [];
         root.fetchScopedMatches(root.liveScopeEntries(), token, manual, SportsApi.fetchLiveScores, (matches) => {
             if (!root.isCurrentRefresh(token))
                 return;
 
+            root.lastLiveFetchFailedEntries = liveFetchFailedEntries;
             applyLiveMatches(matches, manual);
             root.liveLoading = false;
             finishRefresh(manual, "", token);
@@ -989,10 +1067,11 @@ PlasmoidItem {
             if (!root.isCurrentRefresh(token))
                 return;
 
+            root.lastLiveFetchFailedEntries = liveFetchFailedEntries;
             applyLiveMatches([], manual);
             root.liveLoading = false;
             finishRefresh(manual, message, token);
-        });
+        }, undefined, (entry) => liveFetchFailedEntries.push(entry));
         const hasCompetitionTableScope = root.tableScopeEntries().some(entry => root.entryType(entry) === "competition");
         if (!hasCompetitionTableScope || String(options.league || "").trim().length === 0) {
             root.tableRequestCompleted = true;
@@ -1146,6 +1225,7 @@ PlasmoidItem {
         root.liveLoading = liveMatchesModel.count === 0;
         root.liveRefreshInFlight = true;
         liveRefreshWatchdogTimer.restart();
+        const liveFetchFailedEntries = [];
         root.fetchScopedMatches(root.liveScopeEntries(), root.refreshToken, true, SportsApi.fetchLiveScores, (matches) => {
             if (!root.isCurrentLiveRefresh(token))
                 return;
@@ -1156,6 +1236,7 @@ PlasmoidItem {
                 return;
             }
 
+            root.lastLiveFetchFailedEntries = liveFetchFailedEntries;
             applyLiveMatches(matches, manual);
             root.liveLoading = false;
             root.liveRefreshInFlight = false;
@@ -1171,7 +1252,7 @@ PlasmoidItem {
         }, {
             "scoreboardDaysBack": 1,
             "scoreboardDaysForward": 1
-        });
+        }, (entry) => liveFetchFailedEntries.push(entry));
     }
 
     function refreshSchedulesFromTable(options) {
@@ -1873,6 +1954,87 @@ PlasmoidItem {
         id: matchCache
     }
 
+    // Same on-disk cache the configuration wizard reads from, so the background
+    // refresh below can keep its competition teams + emblems current.
+    WizardConfig.WizardCache {
+        id: wizardCache
+    }
+
+    // Quietly refreshes the wizard's cached emblems and competition team lists in
+    // the background (shortly after start, then daily) so cached data never goes
+    // stale and missing emblems get backfilled. Uses the hardened, concurrency-
+    // limited request layer, so it stays light on the provider.
+    function refreshWizardCaches() {
+        const saved = Array.isArray(root.savedLeagues()) ? root.savedLeagues() : [];
+
+        // Sports the user actually follows (fall back to the active sport).
+        let sports = [];
+        saved.forEach(entry => {
+            const sport = SportVisuals.normalizedSport(entry && entry.sport);
+            if (sport.length > 0 && sports.indexOf(sport) < 0)
+                sports.push(sport);
+        });
+        if (sports.length === 0) {
+            const sport = SportVisuals.normalizedSport(root.activeSport);
+            if (sport.length > 0)
+                sports.push(sport);
+        }
+
+        sports.forEach(sport => {
+            // 1) Emblems map for this sport (one matches request).
+            SportsApi.fetchPopularEmblems({ "sports": sport }, map => {
+                if (map && typeof map === "object")
+                    wizardCache.write("emblems|" + sport, map);
+            });
+
+            // 2) Team lists for the competitions worth keeping fresh: the ones the
+            // user follows plus this sport's curated popular competitions. Capped
+            // so a daily refresh never bursts the provider.
+            let slugs = [];
+            saved.forEach(entry => {
+                if (SportVisuals.normalizedSport(entry && entry.sport) !== sport)
+                    return;
+                const slug = String(entry && entry.league || "").trim();
+                if (slug.length > 0 && !slugs.some(item => item.slug === slug))
+                    slugs.push({ "slug": slug, "country": String(entry && entry.country || "") });
+            });
+            const popular = PopularCatalog.popularCompetitions(sport) || [];
+            popular.forEach(comp => {
+                const slug = String(comp && (comp.value || comp.slug) || "").trim();
+                if (slug.length > 0 && !slugs.some(item => item.slug === slug))
+                    slugs.push({ "slug": slug, "country": String(comp && comp.country || "") });
+            });
+
+            slugs.slice(0, 24).forEach(item => {
+                SportsApi.fetchCompetitionTeams({
+                    "sports": sport,
+                    "league": item.slug,
+                    "country": item.country
+                }, teams => {
+                    if (Array.isArray(teams) && teams.length > 0)
+                        wizardCache.write("compteams|" + sport + "|" + item.slug, teams);
+                }, () => {});
+            });
+        });
+    }
+
+    Timer {
+        id: wizardInitialRefreshTimer
+        interval: 30 * 1000
+        repeat: false
+        running: true
+        onTriggered: root.refreshWizardCaches()
+    }
+
+    Timer {
+        id: wizardDailyRefreshTimer
+        interval: 24 * 60 * 60 * 1000
+        repeat: true
+        running: true
+        triggeredOnStart: false
+        onTriggered: root.refreshWizardCaches()
+    }
+
     // A stable signature of the followed competitions/teams, so cached live data
     // is restored only for the selection it was captured under.
     function dataScopeSignature() {
@@ -1960,7 +2122,7 @@ PlasmoidItem {
         }
 
         root.lastUpdatedText = updateText;
-        root.refreshAuxiliaryMatchModels();
+        root.requestAuxiliaryMatchModelsRefresh();
         root.requestCalendarSync();
         root.checkStartsSoon();
         return matches.length;
@@ -1979,6 +2141,15 @@ PlasmoidItem {
         scheduleMatches.forEach(match => scheduleTarget.append(root.matchForModel(match)));
     }
 
+    // The panel + tooltip models are rebuilt from scratch (re-running matchForModel
+    // for every match). A single refresh applies live, schedule and recent results
+    // separately, so calling this directly each time rebuilt them 3× — expensive
+    // with a busy competition (e.g. the live World Cup). Coalesce the bursts into
+    // one rebuild; the panel/tooltip aren't even visible while the full view is.
+    function requestAuxiliaryMatchModelsRefresh() {
+        auxModelsRefreshTimer.restart();
+    }
+
     function refreshAuxiliaryMatchModels() {
         root.appendScopedDisplayModels(root.panelScopeEntries(), panelLiveMatchesModel, panelScheduleMatchesModel);
         root.appendScopedDisplayModels(root.tooltipScopeEntries(), tooltipLiveMatchesModel, tooltipScheduleMatchesModel);
@@ -1989,6 +2160,9 @@ PlasmoidItem {
     }
 
     function reformatDisplayedMatches() {
+        // Display formatting (time/date format, badge style) may have changed, so
+        // drop the memoized rows before re-rendering from the retained matches.
+        root.clearMatchModelCache();
         if (root.latestLiveMatches.length > 0)
             applyLiveMatches(root.latestLiveMatches);
         if (root.latestScheduleMatches.length > 0 || scoresModel.count > 0)
@@ -2034,7 +2208,7 @@ PlasmoidItem {
         });
     }
 
-    function postNotification(title, text, iconName) {
+    function postNotification(title, text, iconName, url) {
         const notification = notificationComponent.createObject(root, {
             "title": title,
             "text": text,
@@ -2044,39 +2218,120 @@ PlasmoidItem {
             return;
 
         notification.closed.connect(() => notification.destroy());
+
+        const targetUrl = String(url || "").trim();
+        if (targetUrl.length > 0) {
+            const action = notificationOpenActionComponent.createObject(notification, {
+                "label": i18nc("@action:button", "Open match")
+            });
+            if (action) {
+                action.activated.connect(() => Qt.openUrlExternally(targetUrl));
+                notification.defaultAction = action;
+            }
+        }
+
         notification.sendEvent();
     }
 
     function notificationIconFor(kind) {
         if (kind === "fulltime")
             return "checkmark";
+        if (kind === "halftime")
+            return "media-playback-pause";
+        if (kind === "secondhalf")
+            return "media-playback-start";
         if (kind === "startssoon")
+            return "appointment-soon";
+        if (kind === "goal" || kind === "goalscorer")
+            return "starred";
+        if (kind === "yellowcard")
+            return "dialog-warning";
+        if (kind === "redcard")
+            return "dialog-error";
+        if (kind === "substitution")
+            return "view-refresh";
+        if (kind === "extratime" || kind === "extratimesecondhalf")
+            return "media-playback-start";
+        if (kind === "shootout")
             return "appointment-soon";
         return "media-playback-start";
     }
 
+    // Match page URL for the notification's "Open match" action, in the same
+    // style as the in-widget "Powered by SportScore" link.
+    function matchPageUrl(match) {
+        const path = String((match && match.matchPath) || "").trim();
+        if (path.length === 0)
+            return "";
+        return root.effectiveBaseUrl(String(match.sport || "football")) + path;
+    }
+
     function emitMatchNotification(event) {
         const match = event.match || {};
-        const teams = String(match.homeTeam || "") + " vs " + String(match.awayTeam || "");
+        const home = String(match.homeTeam || "");
+        const away = String(match.awayTeam || "");
+        const teams = home + " vs " + away;
         const league = String(match.league || "").trim();
         const score = String(event.scoreText || "");
-        const scoreLine = score.length > 0 ? (league.length > 0 ? score + " · " + league : score) : league;
+        // GnomeFootball-style body: "Home Score Away — League".
+        const scoreLine = score.length > 0 ? home + " " + score.replace("–", "-") + " " + away : teams;
+        const fullBody = league.length > 0 ? scoreLine + " — " + league : scoreLine;
+
         let title = teams;
         let body = league;
 
         if (event.kind === "kickoff") {
-            title = i18nc("@title:notification", "Kickoff: %1", teams);
+            title = i18nc("@title:notification", "Kick-off");
+            body = league.length > 0 ? teams + " — " + league : teams;
         } else if (event.kind === "goal") {
-            title = i18nc("@title:notification", "Goal! %1", teams);
-            body = scoreLine;
+            title = i18nc("@title:notification", "GOAL");
+            body = fullBody;
+        } else if (event.kind === "halftime") {
+            title = i18nc("@title:notification", "Half-time");
+            body = fullBody;
+        } else if (event.kind === "secondhalf") {
+            title = i18nc("@title:notification", "Second half");
+            body = fullBody;
         } else if (event.kind === "fulltime") {
-            title = i18nc("@title:notification", "Full time: %1", teams);
-            body = scoreLine;
+            title = i18nc("@title:notification", "Full-time");
+            body = fullBody;
+        } else if (event.kind === "extratime") {
+            title = i18nc("@title:notification", "Extra time");
+            body = fullBody;
+        } else if (event.kind === "extratimesecondhalf") {
+            title = i18nc("@title:notification", "Extra time: second half");
+            body = fullBody;
+        } else if (event.kind === "shootout") {
+            title = i18nc("@title:notification", "Penalty shootout");
+            body = fullBody;
         } else if (event.kind === "startssoon") {
-            title = i18ncp("@title:notification", "Starts in %1 minute: %2", "Starts in %1 minutes: %2", event.minutes, teams);
+            title = i18ncp("@title:notification", "Starts in %1 minute", "Starts in %1 minutes", event.minutes);
+            body = league.length > 0 ? teams + " — " + league : teams;
+        } else if (event.kind === "goalscorer" || event.kind === "yellowcard" || event.kind === "redcard" || event.kind === "substitution") {
+            const incident = event.incident || {};
+            const player = String(incident.player || "");
+            const minute = String(incident.minute || "");
+            const team = incident.side === "home" ? home : incident.side === "away" ? away : "";
+            const currentScore = String(match.homeScore || "") + "-" + String(match.awayScore || "");
+            const matchLine = league.length > 0 ? home + " " + currentScore + " " + away + " — " + league : home + " " + currentScore + " " + away;
+
+            if (event.kind === "goalscorer") {
+                title = i18nc("@title:notification", "GOAL");
+                const playerLine = [player, minute.length > 0 ? minute + "'" : ""].filter(part => part.length > 0).join(" ");
+                body = [matchLine, [playerLine, team].filter(part => part.length > 0).join(" • ")].filter(part => part.length > 0).join(" • ");
+            } else if (event.kind === "yellowcard") {
+                title = i18nc("@title:notification", "Yellow card");
+                body = [[player, minute.length > 0 ? minute + "'" : ""].filter(part => part.length > 0).join(" "), team, matchLine].filter(part => part.length > 0).join(" • ");
+            } else if (event.kind === "redcard") {
+                title = i18nc("@title:notification", "Red card");
+                body = [[player, minute.length > 0 ? minute + "'" : ""].filter(part => part.length > 0).join(" "), team, matchLine].filter(part => part.length > 0).join(" • ");
+            } else {
+                title = i18nc("@title:notification", "Substitution");
+                body = [player, minute.length > 0 ? minute + "'" : "", team, matchLine].filter(part => part.length > 0).join(" • ");
+            }
         }
 
-        root.postNotification(title, body, root.notificationIconFor(event.kind));
+        root.postNotification(title, body, root.notificationIconFor(event.kind), root.matchPageUrl(match));
     }
 
     // Saved entries the user has NOT opted out of for the given feature. An
@@ -2123,8 +2378,13 @@ PlasmoidItem {
                 "league": String(match.league || ""),
                 "sport": String(match.sport || ""),
                 "status": String(match.status || ""),
+                "minute": String(match.minute || ""),
                 "homeScore": String(match.homeScore || ""),
-                "awayScore": String(match.awayScore || "")
+                "awayScore": String(match.awayScore || ""),
+                "detailsProvider": String(match.detailsProvider || ""),
+                "espnEventId": String(match.espnEventId || ""),
+                "espnSport": String(match.espnSport || ""),
+                "espnLeague": String(match.espnLeague || "")
             };
             if (root.rowMatchesEnabled(row, enabled))
                 rows.push(row);
@@ -2164,23 +2424,82 @@ PlasmoidItem {
     function pushMatchNotifications() {
         if (!Plasmoid.configuration.notificationsEnabled) {
             root.notifyHasBaseline = false;
+            root.notifyIncidentIds = ({});
             return;
         }
 
+        // A match that vanished only because its entry's fetch failed this cycle
+        // (e.g. a SportScore 504) has NOT necessarily finished — don't let that
+        // fire a false "full-time" notification.
+        const failedEntries = root.lastLiveFetchFailedEntries;
         const result = MatchNotifications.computeLiveNotifications(root.notifyLiveSnapshot, root.liveMatchRowsForNotify(), {
             "hasBaseline": root.notifyHasBaseline,
             "triggers": {
                 "kickoff": Plasmoid.configuration.notifyKickoff,
                 "goals": Plasmoid.configuration.notifyGoals,
+                "halfTime": Plasmoid.configuration.notifyHalfTime,
                 "fullTime": Plasmoid.configuration.notifyFullTime
             },
             "favoriteOnly": Plasmoid.configuration.notifyFavoriteTeamsOnly,
-            "favoriteNames": root.watchedTeamNames()
+            "favoriteNames": root.watchedTeamNames(),
+            "isUnreliable": (match) => failedEntries.some(entry => root.matchBelongsToEntry(entry, match)),
+            "detailedEventsAvailable": (match) => root.detailedEventsAvailableFor(match)
         });
 
         root.notifyLiveSnapshot = result.snapshot;
         root.notifyHasBaseline = true;
         result.events.forEach(event => root.emitMatchNotification(event));
+    }
+
+    // Detailed events (scorer name, cards, substitutions) are opt-in: only
+    // football matches sourced from ESPN are polled, since that is the only
+    // incident feed currently implemented (see fetchEspnMatchIncidents).
+    function detailedEventsAvailableFor(match) {
+        if (!Plasmoid.configuration.notifyDetailedEvents)
+            return false;
+        if (String((match && match.sport) || "").trim().toLowerCase() !== "football")
+            return false;
+        if (String((match && match.detailsProvider) || "") !== "espn")
+            return false;
+        return String((match && match.espnEventId) || "").length > 0;
+    }
+
+    function pollDetailedEvents() {
+        if (!Plasmoid.configuration.notificationsEnabled || !Plasmoid.configuration.notifyDetailedEvents)
+            return;
+        if (root.detailedEventsPollInFlight)
+            return;
+
+        const candidates = root.liveMatchRowsForNotify().filter(match => root.detailedEventsAvailableFor(match));
+        if (candidates.length === 0)
+            return;
+
+        root.detailedEventsPollInFlight = true;
+        let pending = candidates.length;
+        const nextIncidentIds = Object.assign({}, root.notifyIncidentIds);
+
+        function settleOne() {
+            pending -= 1;
+            if (pending <= 0) {
+                root.notifyIncidentIds = nextIncidentIds;
+                root.detailedEventsPollInFlight = false;
+            }
+        }
+
+        candidates.forEach(match => {
+            const id = MatchNotifications.matchId(match);
+            SportsApi.fetchEspnMatchIncidents(match.espnSport, match.espnLeague, match.espnEventId, match.homeTeam, match.awayTeam, incidents => {
+                const result = MatchNotifications.computeIncidentNotifications(root.notifyIncidentIds[id], match, incidents, {
+                    "goals": Plasmoid.configuration.notifyGoals,
+                    "cards": true,
+                    "substitutions": true,
+                    "halfTime": Plasmoid.configuration.notifyHalfTime
+                });
+                nextIncidentIds[id] = result.incidentIds;
+                result.events.forEach(event => root.emitMatchNotification(event));
+                settleOne();
+            }, () => settleOne());
+        });
     }
 
     function checkStartsSoon() {
@@ -2195,7 +2514,8 @@ PlasmoidItem {
     }
 
     readonly property string calendarDirectory: "$HOME/.local/share/sports-widget-for-plasma"
-    readonly property string calendarFilePath: root.calendarDirectory + "/sports-matches.ics"
+    readonly property string calendarFilePath: root.calendarDirectory + "/sports-matches.json"
+    readonly property string calendarIcsFilePath: root.calendarDirectory + "/sports-matches.ics"
     readonly property string calendarDisplayName: i18nc("@title calendar name", "Sports Widget for Plasma upcoming matches")
 
     function syncCalendar() {
@@ -2207,7 +2527,7 @@ PlasmoidItem {
             return;
 
         rows = Array.isArray(rows) ? rows : [];
-        // Don't create an empty calendar before any fixtures have ever loaded
+        // Don't write an empty snapshot before any fixtures have ever loaded
         // (avoids a startup write of 0 events). Once real data has been seen,
         // empties are allowed through so the calendar can legitimately clear.
         if (rows.length > 0)
@@ -2215,44 +2535,97 @@ PlasmoidItem {
         else if (!root.calendarHadData)
             return;
 
-        const ics = CalendarSync.buildCalendar(rows, {
-            "nowMs": Date.now(),
-            "reminderMinutes": Plasmoid.configuration.calendarReminderMinutes,
-            "calendarName": root.calendarDisplayName
-        });
-
-        // Skip the (Akonadi-reloading) write when nothing changed.
-        if (ics === root.lastCalendarIcs && root.calendarResourceEnsured)
-            return;
-        root.lastCalendarIcs = ics;
-
-        const base64 = Qt.btoa(ics);
-        const tmp = root.calendarFilePath + ".tmp";
-        // Atomic write: never let the resource read a half-written file.
-        let command = "mkdir -p \"" + root.calendarDirectory + "\""
-            + " && printf %s \"" + base64 + "\" | base64 -d > \"" + tmp + "\""
-            + " && mv -f \"" + tmp + "\" \"" + root.calendarFilePath + "\"";
-
-        // Ensure exactly one read-only resource once per session (also cleans up
-        // any duplicates left over from earlier versions).
-        if (!root.calendarResourceEnsured) {
-            const ensure = CalendarSync.resourceEnsureScript(root.calendarFilePath, root.calendarDisplayName);
-            command += " ; printf %s \"" + Qt.btoa(ensure) + "\" | base64 -d | sh";
-            root.calendarResourceEnsured = true;
-            Plasmoid.configuration.calendarResourceReady = true;
+        // Write a plain, inert JSON snapshot. The bundled Plasma calendar-events
+        // plugin (plugin/sportsmatchesevents) reads it and feeds the matches to the
+        // Plasma calendar in memory. Nothing parses/reconciles/indexes this file —
+        // no Akonadi resource, no PIM indexer — so it can never hang plasmashell
+        // (the failure mode the old Akonadi path had).
+        const json = CalendarSync.buildSnapshot(rows, { "nowMs": Date.now() });
+        if (json !== root.lastCalendarSnapshot) {
+            root.lastCalendarSnapshot = json;
+            root.writeFileAtomic(root.calendarFilePath, json);
         }
 
-        // Run fully detached so neither the file write nor the (slow) Akonadi
-        // reconfiguration can ever block plasmashell's UI thread.
+        // Optional: also write a plain .ics EXPORT file the user can import into
+        // any calendar app. This is just a file on disk — it is never registered
+        // as an Akonadi resource, so it cannot hang Plasma.
+        root.writeIcsExport(rows);
+    }
+
+    function writeIcsExport(rows) {
+        // Akonadi mode needs the .ics on disk, so treat it as implying the export.
+        if (!Plasmoid.configuration.calendarIcsExportEnabled && !Plasmoid.configuration.calendarAkonadiEnabled)
+            return;
+
+        const ics = CalendarSync.buildIcs(rows, {
+            "nowMs": Date.now(),
+            "reminderMinutes": Plasmoid.configuration.calendarReminderMinutes
+        });
+        if (ics !== root.lastCalendarIcs) {
+            root.lastCalendarIcs = ics;
+            root.writeFileAtomic(root.calendarIcsFilePath, ics);
+        }
+
+        root.ensureAkonadiResource();
+    }
+
+    // UNSTABLE / opt-in: register the exported .ics as a read-only Akonadi
+    // resource so it shows as a live KDE calendar. Done once per session, fully
+    // detached (setsid) so the slow PIM reconfiguration can never block or hang
+    // plasmashell. The in-memory plugin remains the recommended path.
+    function ensureAkonadiResource() {
+        if (!Plasmoid.configuration.calendarAkonadiEnabled || root.calendarAkonadiEnsured)
+            return;
+        root.calendarAkonadiEnsured = true;
+
+        const ensure = CalendarSync.resourceEnsureScript(root.calendarIcsFilePath, root.calendarDisplayName);
+        const command = "printf %s \"" + Qt.btoa(ensure) + "\" | base64 -d | " + root.detachedShellPrefix();
+        calendarRunner.connectSource("( " + command + " ) >/dev/null 2>&1 &");
+    }
+
+    // Runs the piped-in script in a new session (setsid), detached from
+    // plasmashell's process group, so a wedged Akonadi/qdbus call cannot freeze
+    // plasmashell. Falls back to a plain shell if setsid is unavailable.
+    function detachedShellPrefix() {
+        return "sh -c 'command -v setsid >/dev/null 2>&1 && exec setsid sh || exec sh'";
+    }
+
+    function takeAkonadiResourceOffline() {
+        const offline = CalendarSync.resourceOfflineScript();
+        const command = "printf %s \"" + Qt.btoa(offline) + "\" | base64 -d | " + root.detachedShellPrefix();
+        calendarRunner.connectSource("( " + command + " ) >/dev/null 2>&1 &");
+    }
+
+    // Atomic, detached write of arbitrary text to a file (tmp + rename), so a
+    // reader never sees a half-written file and the write never blocks the UI.
+    function writeFileAtomic(path, content) {
+        const base64 = Qt.btoa(content);
+        const tmp = path + ".tmp";
+        const command = "mkdir -p \"" + root.calendarDirectory + "\""
+            + " && printf %s \"" + base64 + "\" | base64 -d > \"" + tmp + "\""
+            + " && mv -f \"" + tmp + "\" \"" + path + "\"";
         calendarRunner.connectSource("( " + command + " ) >/dev/null 2>&1 &");
     }
 
     function removeCalendarResource() {
-        root.calendarResourceEnsured = false;
+        // Disable: clear both files to an empty match list. The plugin sees zero
+        // events and shows nothing; the .ics export becomes an empty calendar. No
+        // file deletion — nothing that could hang Plasma.
+        root.lastCalendarSnapshot = "";
         root.lastCalendarIcs = "";
-        Plasmoid.configuration.calendarResourceReady = false;
-        const remove = CalendarSync.resourceRemoveScript(root.calendarFilePath);
-        calendarRunner.connectSource("( printf %s \"" + Qt.btoa(remove) + "\" | base64 -d | sh ) >/dev/null 2>&1 &");
+
+        // If an Akonadi resource was registered, take it offline so it stops
+        // watching the file (the safe way to quiet it; see CalendarSync).
+        if (root.calendarAkonadiEnsured) {
+            root.takeAkonadiResourceOffline();
+            root.calendarAkonadiEnsured = false;
+        }
+
+        if (!root.calendarHadData)
+            return;
+        root.writeFileAtomic(root.calendarFilePath, CalendarSync.buildSnapshot([], { "nowMs": Date.now() }));
+        if (Plasmoid.configuration.calendarIcsExportEnabled || Plasmoid.configuration.calendarAkonadiEnabled)
+            root.writeFileAtomic(root.calendarIcsFilePath, CalendarSync.buildIcs([], { "nowMs": Date.now() }));
     }
 
     function requestCalendarSync() {
@@ -2286,7 +2659,7 @@ PlasmoidItem {
             row.leagueGroup = root.liveLeagueGroupLabel(row);
             return liveMatchesModel.append(row);
         });
-        root.refreshAuxiliaryMatchModels();
+        root.requestAuxiliaryMatchModelsRefresh();
         root.pushMatchNotifications();
         return matches.length;
     }
@@ -2648,6 +3021,13 @@ PlasmoidItem {
         }
     }
 
+    // Default ("clicked") action for a match notification: opens the match page.
+    Component {
+        id: notificationOpenActionComponent
+
+        NotificationAction {}
+    }
+
     Component {
         id: networkDelayTimerComponent
 
@@ -2703,6 +3083,7 @@ PlasmoidItem {
         function onNotificationsEnabledChanged() {
             root.notifyHasBaseline = false;
             root.notifyLiveSnapshot = ({});
+            root.notifyIncidentIds = ({});
         }
 
         function onCalendarSyncEnabledChanged() {
@@ -2710,6 +3091,28 @@ PlasmoidItem {
                 root.syncCalendar();
             else
                 root.removeCalendarResource();
+        }
+
+        function onCalendarIcsExportEnabledChanged() {
+            // Toggled on: write the .ics now. Toggled off: leave the last file in
+            // place (the user may still want to import it); a fresh write only
+            // happens again if they re-enable.
+            root.lastCalendarIcs = "";
+            if (Plasmoid.configuration.calendarSyncEnabled && Plasmoid.configuration.calendarIcsExportEnabled)
+                root.syncCalendar();
+        }
+
+        function onCalendarAkonadiEnabledChanged() {
+            root.lastCalendarIcs = "";
+            if (Plasmoid.configuration.calendarAkonadiEnabled) {
+                // (Re)write the .ics and register the resource on next sync.
+                if (Plasmoid.configuration.calendarSyncEnabled)
+                    root.syncCalendar();
+            } else if (root.calendarAkonadiEnsured) {
+                // Turned Akonadi off: quiet the resource without touching the file.
+                root.takeAkonadiResourceOffline();
+                root.calendarAkonadiEnsured = false;
+            }
         }
 
         function onCalendarEntryExclusionsChanged() {
@@ -2733,6 +3136,47 @@ PlasmoidItem {
         repeat: true
         running: false
         onTriggered: root.refreshLiveMatches(false)
+    }
+
+    // Debounces panel/tooltip model rebuilds so a refresh that applies live,
+    // schedule and recent in quick succession rebuilds them once, not three times.
+    Timer {
+        id: auxModelsRefreshTimer
+
+        interval: 120
+        repeat: false
+        onTriggered: root.refreshAuxiliaryMatchModels()
+    }
+
+    // Resume-from-suspend detector. Timers don't tick while the machine sleeps, so
+    // on wake the gap since the previous tick is far larger than this interval —
+    // that's the signal to force a refresh (otherwise stale pre-sleep live matches
+    // linger until the next periodic refresh, which can be up to 30 min away).
+    Timer {
+        id: wakeDetectTimer
+
+        interval: 15000
+        repeat: true
+        running: true
+        onTriggered: {
+            const now = Date.now();
+            if (root.lastWakeTickMs > 0 && (now - root.lastWakeTickMs) > root.wakeRefreshThresholdMs())
+                root.handleSystemWake();
+            root.lastWakeTickMs = now;
+        }
+    }
+
+    // Opt-in, slower than the live score refresh: polls each eligible live
+    // match's ESPN incident feed for goal scorer / cards / substitutions.
+    // Only runs while notifications + the "detailed events" setting are both
+    // enabled (see detailedEventsAvailableFor / pollDetailedEvents).
+    Timer {
+        id: detailedEventsTimer
+
+        interval: 90000
+        repeat: true
+        running: Plasmoid.configuration.notificationsEnabled && Plasmoid.configuration.notifyDetailedEvents
+        onTriggered: root.pollDetailedEvents()
     }
 
     Timer {
