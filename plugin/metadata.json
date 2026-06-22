@@ -1,0 +1,16 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "petar.nedyalkov91@gmail.com",
+                "Name": "Petar Nedyalkov"
+            }
+        ],
+        "Description": "Shows the matches you follow in the Sports widget directly in the Plasma calendar",
+        "EnabledByDefault": true,
+        "Icon": "view-calendar-day",
+        "License": "GPL-2.0-or-later",
+        "Name": "Sports Widget matches"
+    },
+    "X-KDE-PlasmaCalendar-ConfigUi": "sportsmatchesevents/SportsMatchesEventsConfig.qml"
+}
