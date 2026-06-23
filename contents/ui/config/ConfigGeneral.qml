@@ -102,7 +102,7 @@ KCM.SimpleKCM {
     property int cfg_panelMatchRotationIntervalDefault: 30
     property bool cfg_widgetMatchRotationEnabledDefault: true
     property int cfg_widgetMatchRotationIntervalDefault: 30
-    property string cfg_matchDateFormatDefault: "dd.MM"
+    property string cfg_matchDateFormatDefault: "dd.MM.yy"
     property string cfg_matchTimeFormatDefault: "HH:mm"
     property string cfg_widgetTabsDefault: "all"
     property string cfg_widgetLayoutModeDefault: "detailed"

@@ -85,6 +85,9 @@ Kirigami.FormLayout {
                 "label": i18nc("@item:inlistbox", "22.05"),
                 "value": "dd.MM"
             }, {
+                "label": i18nc("@item:inlistbox", "22.05.26"),
+                "value": "dd.MM.yy"
+            }, {
                 "label": i18nc("@item:inlistbox", "22.05.2026"),
                 "value": "dd.MM.yyyy"
             }, {

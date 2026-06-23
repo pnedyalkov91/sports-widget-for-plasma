@@ -42,6 +42,10 @@ KCM.SimpleKCM {
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
     property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+    property int cfg_widgetRecentMatchesPerGroup: Plasmoid.configuration.widgetRecentMatchesPerGroup
+    property string cfg_widgetRecentFilter: Plasmoid.configuration.widgetRecentFilter
+    property int cfg_widgetScheduleDaysAhead: Plasmoid.configuration.widgetScheduleDaysAhead
+    property int cfg_widgetScheduleMatchesPerGroup: Plasmoid.configuration.widgetScheduleMatchesPerGroup
     property string cfg_widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
     property string cfg_nationalTeamVisualStyle: Plasmoid.configuration.nationalTeamVisualStyle
     property string cfg_provider: Plasmoid.configuration.provider

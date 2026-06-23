@@ -95,21 +95,25 @@ Kirigami.FormLayout {
         onToggled: panelTab.configRoot.cfg_panelMatchRotationEnabled = checked
     }
 
-    SpinBox {
+    RowLayout {
         Kirigami.FormData.label: i18nc("@label:spinbox", "Rotation interval:")
         visible: panelMatchRotation.checked
-        enabled: visible
-        from: 5
-        to: 300
-        stepSize: 5
-        editable: true
-        value: Math.max(5, panelTab.configRoot.cfg_panelMatchRotationInterval || 30)
-        textFromValue: (value) => i18ncp("@item:valuesuffix seconds", "%1 second", "%1 seconds", value)
-        valueFromText: (text) => {
-            const value = parseInt(text, 10);
-            return Number.isFinite(value) ? value : 30;
+        spacing: Kirigami.Units.smallSpacing
+
+        SpinBox {
+            id: panelRotationInterval
+
+            from: 5
+            to: 300
+            stepSize: 5
+            editable: true
+            value: Math.max(5, panelTab.configRoot.cfg_panelMatchRotationInterval || 30)
+            onValueModified: panelTab.configRoot.cfg_panelMatchRotationInterval = value
         }
-        onValueModified: panelTab.configRoot.cfg_panelMatchRotationInterval = value
+
+        Label {
+            text: i18ncp("@label:spinbox", "second", "seconds", panelRotationInterval.value)
+        }
     }
 
     RowLayout {
@@ -145,11 +149,6 @@ Kirigami.FormLayout {
             stepSize: 10
             editable: true
             value: Math.max(20, panelTab.configRoot.cfg_panelAreaSize || 240)
-            textFromValue: (value) => i18nc("@item:valuesuffix pixels", "%1 px", value)
-            valueFromText: (text) => {
-                const value = parseInt(text, 10);
-                return Number.isFinite(value) ? value : 240;
-            }
             onValueModified: panelTab.configRoot.cfg_panelAreaSize = value
         }
 
@@ -230,12 +229,13 @@ Kirigami.FormLayout {
             stepSize: 2
             editable: true
             value: panelTab.configRoot.cfg_panelEmblemSize > 0 ? panelTab.configRoot.cfg_panelEmblemSize : panelTab.defaultPanelEmblemSize()
-            textFromValue: (value) => i18nc("@item:valuesuffix pixels", "%1 px", value)
-            valueFromText: (text) => {
-                const value = parseInt(text, 10);
-                return Number.isFinite(value) ? value : panelTab.defaultPanelEmblemSize();
-            }
             onValueModified: panelTab.configRoot.cfg_panelEmblemSize = value
+        }
+
+        Label {
+            visible: manualPanelEmblemSize.checked
+            text: i18nc("@label:spinbox pixels unit", "px")
+            opacity: 0.65
         }
 
         Item {

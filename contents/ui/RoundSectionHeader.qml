@@ -26,6 +26,7 @@ Item {
     property string text: ""
     property bool collapsible: false
     property bool collapsed: false
+    property bool loading: false
 
     signal toggled()
 
@@ -67,6 +68,13 @@ Item {
             opacity: 0.82
             font.bold: true
             elide: Text.ElideRight
+        }
+
+        PlasmaComponents.BusyIndicator {
+            Layout.preferredWidth: Kirigami.Units.iconSizes.small
+            Layout.preferredHeight: Layout.preferredWidth
+            visible: root.loading
+            running: root.loading
         }
 
         Rectangle {

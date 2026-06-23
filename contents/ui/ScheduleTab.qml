@@ -32,20 +32,30 @@ Item {
     property string loadingText: i18nc("@info:status", "Loading schedules")
     property string emptyIconName: "view-calendar-day"
     property var collapsedGroups: ({})
+    // Groups whose data is currently being fetched (lazy expand), so the section
+    // header can show a spinner.
+    property var loadingGroups: ({})
 
     signal matchSelected(int index)
+    // Emitted when a group header is toggled. The host owns the collapsed map
+    // (collapsedGroups is bound from it) and lazily fetches a group on expand.
+    signal groupExpanded(string group)
+    signal groupCollapsed(string group)
 
     function isGroupCollapsed(group) {
         return Boolean(root.collapsedGroups[String(group || "")]);
     }
 
+    function isGroupLoading(group) {
+        return Boolean(root.loadingGroups[String(group || "")]);
+    }
+
     function toggleGroup(group) {
         const key = String(group || "");
-        const next = {};
-        for (let existingKey in root.collapsedGroups)
-            next[existingKey] = root.collapsedGroups[existingKey];
-        next[key] = !root.isGroupCollapsed(key);
-        root.collapsedGroups = next;
+        if (root.isGroupCollapsed(key))
+            root.groupExpanded(key);
+        else
+            root.groupCollapsed(key);
     }
 
     function isFavoriteTeam(teamName) {
@@ -64,6 +74,10 @@ Item {
         spacing: 0
         boundsBehavior: Flickable.StopAtBounds
         model: root.scheduleModel
+        // Keep rows non-reused so contentHeight stays stable while scrolling
+        // collapsed/placeholder groups (mirrors the Recent Results tab).
+        reuseItems: false
+        cacheBuffer: Kirigami.Units.gridUnit * 20
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
         }
@@ -77,6 +91,7 @@ Item {
             text: section
             collapsible: true
             collapsed: root.isGroupCollapsed(section)
+            loading: root.isGroupLoading(section)
             onToggled: root.toggleGroup(section)
         }
 
@@ -87,32 +102,72 @@ Item {
             iconName: root.emptyIconName
         }
 
-        delegate: ScoreDelegate {
+        delegate: Item {
+            id: scheduleRow
+
+            required property var model
+            required property int index
+
             width: scheduleList.contentColumnWidth
-            visible: !root.isGroupCollapsed(model.leagueGroup)
-            height: visible ? implicitHeight : 0
-            enabled: visible
-            sport: model.sport
-            league: model.league
-            homeTeam: model.homeTeam
-            awayTeam: model.awayTeam
-            homeScore: model.homeScore
-            awayScore: model.awayScore
-            status: model.status
-            minute: model.minute
-            startTime: model.startTime
-            matchday: model.matchday || ""
-            stadium: model.stadium || ""
-            homeBadge: model.homeBadge
-            awayBadge: model.awayBadge
-            poster: model.poster
-            popular: model.popular
-            showScore: model.showScore !== false
-            splitLeagueAndTimeLines: true
-            splitDateAndTimeLines: true
-            favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
-            selected: index === root.selectedIndex
-            onClicked: root.matchSelected(index)
+            // Row kind is carried explicitly ("header" | "match" | "notice") so the
+            // discriminator is reliable: a header row only exists so the section
+            // header renders (never shown itself), a notice row shows "no upcoming
+            // matches", and a match row loads the score delegate.
+            readonly property string rowType: String(scheduleRow.model.rowType || "match")
+            readonly property bool isNotice: rowType === "notice"
+            readonly property bool shown: rowType !== "header"
+                && !root.isGroupCollapsed(scheduleRow.model.leagueGroup)
+            visible: shown
+            // Fixed match-row height (ScoreDelegate's own implicitHeight) so the row
+            // height never drifts as the Loader's item settles — keeps the ListView
+            // contentHeight stable and the scroll from jumping.
+            readonly property real matchRowHeight: Kirigami.Units.gridUnit * 4.2
+            height: visible ? (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2 : matchRowHeight) : 0
+
+            PlasmaComponents.Label {
+                id: noticeLabel
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Kirigami.Units.gridUnit
+                visible: scheduleRow.isNotice
+                text: i18nc("@info:placeholder", "No upcoming matches")
+                color: Kirigami.Theme.disabledTextColor
+                wrapMode: Text.WordWrap
+            }
+
+            Loader {
+                id: scoreLoader
+
+                anchors.fill: parent
+                active: scheduleRow.shown && !scheduleRow.isNotice
+                visible: active
+                sourceComponent: ScoreDelegate {
+                    width: scheduleRow.width
+                    sport: scheduleRow.model.sport
+                    league: scheduleRow.model.league
+                    homeTeam: scheduleRow.model.homeTeam
+                    awayTeam: scheduleRow.model.awayTeam
+                    homeScore: scheduleRow.model.homeScore
+                    awayScore: scheduleRow.model.awayScore
+                    status: scheduleRow.model.status
+                    minute: scheduleRow.model.minute
+                    startTime: scheduleRow.model.startTime
+                    matchday: scheduleRow.model.matchday || ""
+                    stadium: scheduleRow.model.stadium || ""
+                    homeBadge: scheduleRow.model.homeBadge
+                    awayBadge: scheduleRow.model.awayBadge
+                    poster: scheduleRow.model.poster
+                    popular: scheduleRow.model.popular
+                    showScore: scheduleRow.model.showScore !== false
+                    splitLeagueAndTimeLines: true
+                    splitDateAndTimeLines: false
+                    favorite: root.isFavoriteTeam(scheduleRow.model.homeTeam) || root.isFavoriteTeam(scheduleRow.model.awayTeam)
+                    selected: scheduleRow.index === root.selectedIndex
+                    onClicked: root.matchSelected(scheduleRow.index)
+                }
+            }
         }
     }
 

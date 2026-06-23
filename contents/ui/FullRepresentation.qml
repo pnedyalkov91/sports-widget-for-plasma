@@ -31,6 +31,13 @@ Item {
     property var tableModel: null
     property var tableRows: []
     property var recentResultsModel: null
+    // Lazy-load: which Recent/Schedule groups start collapsed (driven by main.qml,
+    // which fetches a group's data the first time it is expanded).
+    property var collapsedRecentGroups: ({})
+    property var collapsedScheduleGroups: ({})
+    // Groups currently being fetched on expand, so a section spinner can show.
+    property var loadingRecentGroups: ({})
+    property var loadingScheduleGroups: ({})
     property bool loading: false
     property bool liveLoading: false
     property bool schedulesLoading: false
@@ -92,6 +99,10 @@ Item {
     signal sportSelected(string sport)
     signal teamTableSelected(string slug)
     signal teamTableSeasonSelected(string seasonKey)
+    signal recentGroupExpanded(string group)
+    signal scheduleGroupExpanded(string group)
+    signal recentGroupCollapsed(string group)
+    signal scheduleGroupCollapsed(string group)
 
     function isFavoriteTeam(teamName) {
         const favorite = root.favoriteTeam.toLowerCase();
@@ -742,9 +753,13 @@ Item {
                 loading: root.loading || root.schedulesLoading
                 emptyText: root.favoriteTeam.length > 0 ? i18nc("@info:placeholder", "No scheduled matches for %1", root.favoriteTeam) : i18nc("@info:placeholder", "No scheduled matches")
                 selectedIndex: root.selectedScoreIndex
+                collapsedGroups: root.collapsedScheduleGroups
+                loadingGroups: root.loadingScheduleGroups
                 onMatchSelected: (index) => {
                     root.selectedScoreIndex = index;
                 }
+                onGroupExpanded: (group) => root.scheduleGroupExpanded(group)
+                onGroupCollapsed: (group) => root.scheduleGroupCollapsed(group)
             }
 
             RecentResultsTab {
@@ -753,9 +768,13 @@ Item {
                 loading: root.recentResultsLoading
                 emptyText: root.favoriteTeam.length > 0 ? i18nc("@info:placeholder", "No recent results for %1", root.favoriteTeam) : i18nc("@info:placeholder", "No recent results")
                 selectedIndex: root.selectedRecentResultIndex
+                collapsedGroups: root.collapsedRecentGroups
+                loadingGroups: root.loadingRecentGroups
                 onMatchSelected: (index) => {
                     root.selectedRecentResultIndex = index;
                 }
+                onGroupExpanded: (group) => root.recentGroupExpanded(group)
+                onGroupCollapsed: (group) => root.recentGroupCollapsed(group)
             }
 
             TableTab {

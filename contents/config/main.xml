@@ -102,7 +102,7 @@
       <max>300</max>
     </entry>
     <entry name="matchDateFormat" type="String">
-      <default>dd.MM</default>
+      <default>dd.MM.yy</default>
     </entry>
     <entry name="matchTimeFormat" type="String">
       <default>HH:mm</default>
@@ -112,6 +112,31 @@
     </entry>
     <entry name="widgetTabs" type="String">
       <default>all</default>
+    </entry>
+    <!-- How many recent matches to show per team/competition group in the
+         Recent Results tab. -->
+    <entry name="widgetRecentMatchesPerGroup" type="Int">
+      <default>5</default>
+      <min>1</min>
+      <max>30</max>
+    </entry>
+    <!-- Which saved-entry types to show in the Recent Results tab:
+         "both", "teams" or "competitions". -->
+    <entry name="widgetRecentFilter" type="String">
+      <default>both</default>
+    </entry>
+    <!-- How far ahead (days) to look for upcoming fixtures in the Schedules tab. -->
+    <entry name="widgetScheduleDaysAhead" type="Int">
+      <default>150</default>
+      <min>1</min>
+      <max>365</max>
+    </entry>
+    <!-- How many upcoming matches to show per team/competition group in the
+         Schedules tab. -->
+    <entry name="widgetScheduleMatchesPerGroup" type="Int">
+      <default>5</default>
+      <min>1</min>
+      <max>30</max>
     </entry>
     <entry name="prioritizePopular" type="Bool">
       <default>false</default>

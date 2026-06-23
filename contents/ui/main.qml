@@ -40,9 +40,12 @@ PlasmoidItem {
     property string tableErrorMessage: ""
     property string lastUpdatedText: ""
     property int liveCount: liveMatchesModel.count
-    property int scheduleCount: scoresModel.count
+    // Real-match counts come from the source arrays, not the list models, because
+    // the Recent/Schedule models also hold invisible placeholder rows (group
+    // headers for not-yet-loaded lazy groups) that must not inflate these counts.
+    property int scheduleCount: root.latestScheduleMatches.length
     property int tableCount: tableModel.count
-    property int recentResultsCount: recentResultsListModel.count
+    property int recentResultsCount: root.latestRecentMatches.length
     property bool tableRequestCompleted: false
     property bool currentManualRefresh: false
     property bool liveLoading: false
@@ -58,6 +61,30 @@ PlasmoidItem {
     property bool scheduleRequestCompleted: false
     property bool tableScheduleFallbackStarted: false
     property bool recentResultsTableFallbackStarted: false
+    // Lazy-loading state. To avoid over-requesting, only the first saved entry's
+    // Recent/Schedule data is fetched up front; every other group is fetched the
+    // first time the user expands it (then kept). These track which group labels
+    // have already been fetched in the current refresh cycle so a re-expand is a
+    // no-op, and which groups should start collapsed.
+    // Schedule groups already attempted this refresh cycle (cleared on refresh), so
+    // a group that legitimately has no upcoming fixtures isn't re-fetched on every
+    // re-expand, yet is re-checked after the next refresh.
+    property var attemptedScheduleGroups: ({})
+    // Recent groups whose lazy load has completed (cleared on refresh) — drives the
+    // "no recent matches" notice for an expanded group that came back empty.
+    property var recentAttemptedGroups: ({})
+    property var collapsedRecentGroups: ({})
+    property var collapsedScheduleGroups: ({})
+    // Re-render the lists when a group is collapsed/expanded so collapsed groups
+    // drop their match rows from the model entirely (kept lightweight: in-memory,
+    // no refetch). Guarded so the very first assignment during startup doesn't run
+    // before the helpers/models exist.
+    property bool _modelRebuildReady: false
+    onCollapsedRecentGroupsChanged: if (_modelRebuildReady) rebuildRecentModel()
+    onCollapsedScheduleGroupsChanged: if (_modelRebuildReady) rebuildScheduleModel()
+    // In-flight per-group loads, so a rapid double-expand can't fire two fetches.
+    property var pendingRecentGroups: ({})
+    property var pendingScheduleGroups: ({})
     property int refreshToken: 0
     property int liveRefreshToken: 0
     // Wall-clock of the last wake-detector tick; a large jump between ticks means
@@ -112,7 +139,7 @@ PlasmoidItem {
     property string activeDisplayLabel: activeTitleLabel()
     property string activeDisplayCountryLabel: activeSubtitleLabel()
     readonly property string nationalTeamVisualStyle: String(Plasmoid.configuration.nationalTeamVisualStyle || "emblems").trim()
-    property string primarySport: liveMatchesModel.count > 0 ? liveMatchesModel.get(0).sport : scoresModel.count > 0 ? scoresModel.get(0).sport : SportVisuals.normalizedSport(selectedSport)
+    property string primarySport: liveMatchesModel.count > 0 ? liveMatchesModel.get(0).sport : root.latestScheduleMatches.length > 0 ? String(root.latestScheduleMatches[0].sport || "") : SportVisuals.normalizedSport(selectedSport)
     property int pendingRequests: 0
     property var refreshErrors: []
     property var tableRows: []
@@ -230,20 +257,132 @@ PlasmoidItem {
     // Smart mode picks fixed refresh times (30 min schedules, 60s live) to
     // limit requests; turning it off lets the user pick their own values.
     function refreshIntervalMs() {
-        const minutes = Plasmoid.configuration.smartRefreshEnabled ? 30 : Plasmoid.configuration.refreshInterval;
+        // Smart mode: the full refresh (live + schedules + recent + tables for all
+        // saved entries) is heavier than the live poll, so it runs sparsely while
+        // idle and tightens only while something is live or about to start — to keep
+        // schedules/recent/tables current during matches without over-requesting at
+        // other times. Manual mode keeps the user's configured interval.
+        if (Plasmoid.configuration.smartRefreshEnabled) {
+            return root.hasImminentOrLiveActivity()
+                ? root.smartActiveFullRefreshMs
+                : root.smartIdleFullRefreshMs;
+        }
+        const minutes = Plasmoid.configuration.refreshInterval;
         return Math.max(1, minutes) * 60 * 1000;
     }
 
+    // Full-refresh cadence in smart mode: tighter while live/imminent, sparse while
+    // idle. Active stays well above the 60 s live poll since a full refresh touches
+    // every saved entry across every tab.
+    readonly property int smartActiveFullRefreshMs: 5 * 60 * 1000
+    readonly property int smartIdleFullRefreshMs: 30 * 60 * 1000
+
     function liveRefreshIntervalMs() {
-        const seconds = Plasmoid.configuration.smartRefreshEnabled ? 60 : Number(Plasmoid.configuration.liveRefreshInterval || 60);
+        // Smart mode polls fast (60 s, matching SportScore's 60 s edge cache) only
+        // while something is live or about to kick off; otherwise it idles slowly to
+        // avoid over-requesting — the whole point of the option. A one-shot timer
+        // scheduled for the next kickoff (see scheduleKickoffWake) guarantees the
+        // transition is caught promptly even while idling. Manual mode keeps the
+        // user's fixed interval.
+        if (Plasmoid.configuration.smartRefreshEnabled)
+            return root.hasImminentOrLiveActivity() ? 60000 : root.smartIdleLiveIntervalMs;
+        const seconds = Number(Plasmoid.configuration.liveRefreshInterval || 60);
         return Math.max(10, seconds) * 1000;
     }
 
-    // A gap between wake-detector ticks beyond this means the machine was asleep.
-    // At least 2 minutes, or twice the live-refresh cadence, so ordinary timer
-    // jitter never trips it but any real suspend does.
+    // Idle live-poll cadence in smart mode when nothing is live or imminent.
+    readonly property int smartIdleLiveIntervalMs: 10 * 60 * 1000
+    // A match counts as "imminent" from this long before kickoff (so the fast poll
+    // and local promotion are already active when it starts).
+    readonly property int kickoffImminentLeadMs: 5 * 60 * 1000
+    // How long after kickoff a started match is still treated as live without the
+    // provider confirming the finish. Long enough to cover a full match incl. extra
+    // time and penalties (~2.5 h), with margin; after this a not-yet-updated match
+    // stops being shown as live so it can't linger as a phantom. The live poll
+    // normally moves it to a real finished state well before this.
+    readonly property int liveGraceAfterKickoffMs: 2.75 * 60 * 60 * 1000
+
+    // (Re)arm the one-shot kickoff wake for the next upcoming match. Fires shortly
+    // after kickoff (the lead makes promotion active a touch early; a small pad
+    // covers clock skew) so a starting match enters Live without waiting for the
+    // slow idle poll. Clamped so it never schedules absurdly far out.
+    function armKickoffWake() {
+        kickoffWakeTimer.stop();
+        if (!root.hasSportSelection() || !root.liveRefreshIsEnabled())
+            return;
+
+        const next = root.nextKickoffMs();
+        if (next <= 0)
+            return;
+
+        const now = Date.now();
+        // Wake when the match becomes "imminent" (lead before kickoff); if that is
+        // already past, wake almost immediately. Cap the wait at the idle interval
+        // so we re-check periodically regardless.
+        let delay = next - root.kickoffImminentLeadMs - now;
+        if (delay < 1000)
+            delay = 1000;
+        kickoffWakeTimer.interval = Math.min(delay, root.smartIdleLiveIntervalMs);
+        kickoffWakeTimer.start();
+    }
+
+    // Earliest future kickoff among the scheduled matches, or 0 if none.
+    function nextKickoffMs() {
+        const now = Date.now();
+        let next = 0;
+        (Array.isArray(root.latestScheduleMatches) ? root.latestScheduleMatches : []).forEach((match) => {
+            if (SportsApi.isFinishedMatch(match))
+                return;
+            const ts = Number(match && match.timestamp || 0);
+            if (ts > now && (next === 0 || ts < next))
+                next = ts;
+        });
+        return next;
+    }
+
+    // True when any match is live now, or kicked off within the live grace window,
+    // or kicks off within the imminent lead — i.e. when fast polling is worthwhile.
+    function hasImminentOrLiveActivity() {
+        if (liveMatchesModel.count > 0)
+            return true;
+
+        const now = Date.now();
+        const all = (Array.isArray(root.latestScheduleMatches) ? root.latestScheduleMatches : [])
+            .concat(Array.isArray(root.latestLiveMatches) ? root.latestLiveMatches : []);
+        return all.some((match) => {
+            if (SportsApi.isLiveMatch(match))
+                return true;
+            if (SportsApi.isFinishedMatch(match))
+                return false;
+            const ts = Number(match && match.timestamp || 0);
+            if (ts <= 0)
+                return false;
+            return ts >= now - root.liveGraceAfterKickoffMs && ts <= now + root.kickoffImminentLeadMs;
+        });
+    }
+
+    // A match the widget should display as live: the provider says so, OR its
+    // kickoff has passed and it isn't finished yet (within the grace window). The
+    // second case is what makes a 20:00 match appear at 20:00 instead of whenever
+    // the provider's status finally flips.
+    function isEffectivelyLive(match) {
+        if (SportsApi.isLiveMatch(match))
+            return true;
+        if (SportsApi.isFinishedMatch(match))
+            return false;
+        const ts = Number(match && match.timestamp || 0);
+        if (ts <= 0)
+            return false;
+        const now = Date.now();
+        return ts <= now && ts >= now - root.liveGraceAfterKickoffMs;
+    }
+
+    // A gap between wake-detector ticks (which fire every 15 s) beyond this means
+    // the machine was asleep. Fixed at 2 minutes — far above normal timer jitter,
+    // well below any real suspend — and independent of the live-poll cadence (which
+    // now varies in smart mode and would otherwise make this threshold too large).
     function wakeRefreshThresholdMs() {
-        return Math.max(120000, root.liveRefreshIntervalMs() * 2);
+        return 120000;
     }
 
     function handleSystemWake() {
@@ -377,6 +516,175 @@ PlasmoidItem {
         return root.savedSportsModel.tableScopeEntries(root.activeSport);
     }
 
+    // ─── Lazy group loading ──────────────────────────────────────────────────
+    // Build the initial collapse map for a set of scope entries: the first entry's
+    // group is expanded, all others collapsed. Returns { groupLabel: true } for the
+    // collapsed ones.
+    function initialCollapsedGroups(entries) {
+        const list = Array.isArray(entries) ? entries : [];
+        const map = ({});
+        list.forEach((entry, index) => {
+            if (index === 0)
+                return;
+            const group = root.entryGroupLabel(entry);
+            if (group.length > 0)
+                map[group] = true;
+        });
+        return map;
+    }
+
+    // Fetch a single entry's matches for one tab and merge them into the existing
+    // model without disturbing the already-loaded groups. `fetcher` is the same
+    // SportsApi function used by the bulk path; `appendFn(scopeGroup, rows, ok)` is
+    // always called exactly once — on success or failure — so the caller can clear
+    // its pending flag and decide whether to mark the group loaded. Deliberately NOT
+    // gated on the refresh token: a lazy expand is user-initiated and must complete
+    // even if a periodic refresh happens to fire while it is in flight.
+    function loadGroupForEntry(entry, override, fetcher, appendFn, scopeOrder) {
+        const scopeGroup = root.entryGroupLabel(entry);
+        const order = Number.isFinite(scopeOrder) ? scopeOrder : 0;
+        const options = root.requestOptionsForEntry(entry, root.refreshToken, false, override);
+        fetcher(options, (matches) => {
+            const scoped = (Array.isArray(matches) ? matches : [])
+                .filter(match => root.matchBelongsToEntry(entry, match))
+                .map(match => {
+                    const copy = Object.assign({}, match || {});
+                    copy.scopeGroup = scopeGroup;
+                    copy.scopeOrder = order;
+                    return copy;
+                });
+            appendFn(scopeGroup, scoped, true);
+        }, () => {
+            appendFn(scopeGroup, [], false);
+        });
+    }
+
+    // Does the in-memory recent data already hold matches for this group? Used to
+    // decide whether an expanded group still needs fetching, instead of trusting a
+    // "loaded" flag that a subsequent refresh (which clears latestRecentMatches)
+    // can leave stale — the cause of a group showing expanded but empty.
+    function recentGroupHasData(group) {
+        const key = String(group || "").trim();
+        return (Array.isArray(root.latestRecentMatches) ? root.latestRecentMatches : [])
+            .some(match => String(match && match.scopeGroup || "").trim() === key);
+    }
+
+    function recentGroupAttempted(group) {
+        return Boolean(root.recentAttemptedGroups[String(group || "").trim()]);
+    }
+
+    // Triggered when the user expands a Recent Results group. Fetches that group's
+    // results on demand (once), then keeps them.
+    function requestRecentGroupLoad(group) {
+        const key = String(group || "").trim();
+        if (key.length === 0)
+            return;
+
+        const next = Object.assign({}, root.collapsedRecentGroups);
+        delete next[key];
+        root.collapsedRecentGroups = next;
+
+        // Already in flight, or already have its data → nothing to fetch. Note we
+        // check actual data presence, not just a "loaded" flag, so a group whose
+        // data was dropped by a refresh re-fetches when expanded again.
+        // Skip if in flight, if we already have its data, or if it was already tried
+        // this cycle and came back empty (attempted marker is cleared on refresh).
+        if (root.pendingRecentGroups[key] || root.recentGroupHasData(key) || root.recentAttemptedGroups[key])
+            return;
+        const entries = root.recentScopeEntries();
+        const order = entries.findIndex(e => root.entryGroupLabel(e) === key);
+        const entry = order >= 0 ? entries[order] : null;
+        if (!entry)
+            return;
+
+        root.pendingRecentGroups = Object.assign({}, root.pendingRecentGroups, { [key]: true });
+        root.loadGroupForEntry(entry, {
+            "preferTeamRecentResults": true,
+            "recentResultsLimit": 80,
+            "recentResultsPerTeam": 50
+        }, SportsApi.fetchRecentResults, (scopeGroup, scoped, ok) => {
+            const pend = Object.assign({}, root.pendingRecentGroups); delete pend[key]; root.pendingRecentGroups = pend;
+            if (ok) {
+                root.recentAttemptedGroups = Object.assign({}, root.recentAttemptedGroups, { [key]: true });
+                if (Array.isArray(scoped) && scoped.length > 0)
+                    root.mergeRecentResults(scoped);
+                else
+                    root.rebuildRecentModel();
+            }
+        }, order);
+    }
+
+    // Expand + lazily load the currently-active entry's Recent and Schedule groups.
+    // Called when the user switches the active entry so its data appears without a
+    // manual expand. Both request* functions are no-ops if the group is already
+    // loaded, so this never re-fetches.
+    function loadActiveEntryGroups() {
+        const group = root.entryGroupLabel(root.activeLeagueEntry);
+        if (group.length === 0)
+            return;
+        root.requestRecentGroupLoad(group);
+        root.requestScheduleGroupLoad(group);
+    }
+
+    function collapseRecentGroup(group) {
+        const key = String(group || "").trim();
+        if (key.length === 0)
+            return;
+        root.collapsedRecentGroups = Object.assign({}, root.collapsedRecentGroups, { [key]: true });
+    }
+
+    function collapseScheduleGroup(group) {
+        const key = String(group || "").trim();
+        if (key.length === 0)
+            return;
+        root.collapsedScheduleGroups = Object.assign({}, root.collapsedScheduleGroups, { [key]: true });
+    }
+
+    // Does the in-memory schedule data already hold matches for this group?
+    function scheduleGroupHasData(group) {
+        const key = String(group || "").trim();
+        return (Array.isArray(root.latestScheduleMatches) ? root.latestScheduleMatches : [])
+            .some(match => String(match && match.scopeGroup || "").trim() === key);
+    }
+
+    // Triggered when the user expands a Schedule group.
+    function requestScheduleGroupLoad(group) {
+        const key = String(group || "").trim();
+        if (key.length === 0)
+            return;
+
+        const next = Object.assign({}, root.collapsedScheduleGroups);
+        delete next[key];
+        root.collapsedScheduleGroups = next;
+
+        // Skip if a fetch is in flight, if we already have this group's fixtures, or
+        // if we already tried this refresh cycle and it legitimately had none (a
+        // team can simply have no upcoming fixtures — off-season). The "attempted"
+        // marker is cleared on each refresh, so a later expand re-checks. Unlike a
+        // plain "loaded" flag, this never leaves a group stuck empty after a refresh
+        // wipes its data: data-presence is re-evaluated and the attempt re-runs.
+        if (root.pendingScheduleGroups[key] || root.scheduleGroupHasData(key) || root.attemptedScheduleGroups[key])
+            return;
+        const entries = root.scheduleScopeEntries();
+        const order = entries.findIndex(e => root.entryGroupLabel(e) === key);
+        const entry = order >= 0 ? entries[order] : null;
+        if (!entry)
+            return;
+
+        root.pendingScheduleGroups = Object.assign({}, root.pendingScheduleGroups, { [key]: true });
+        root.loadGroupForEntry(entry, {
+            "preferTeamRecentResults": false
+        }, SportsApi.fetchScoresFixtures, (scopeGroup, scoped, ok) => {
+            const pend = Object.assign({}, root.pendingScheduleGroups); delete pend[key]; root.pendingScheduleGroups = pend;
+            // Mark attempted only on a successful fetch (so a real failure retries on
+            // re-expand). An empty success is a valid "no upcoming fixtures" result.
+            if (ok) {
+                root.attemptedScheduleGroups = Object.assign({}, root.attemptedScheduleGroups, { [key]: true });
+                root.mergeScheduleMatches(scoped);
+            }
+        }, order);
+    }
+
     function panelScopeEntries() {
         return root.savedSportsModel.panelScopeEntries(root.activeSport);
     }
@@ -492,6 +800,17 @@ PlasmoidItem {
         return SavedSportsModel.displayLeagueLabel(entry);
     }
 
+    // Section label for a saved entry: the followed team's name for a team entry,
+    // the competition label otherwise. Used to group Recent Results per team.
+    function entryGroupLabel(entry) {
+        if (root.entryType(entry) === "team") {
+            const team = String(root.displayFavoriteTeam(entry) || "").trim();
+            if (team.length > 0)
+                return team;
+        }
+        return String(root.displayLeagueLabel(entry) || "").trim();
+    }
+
     function stripLegacyTeamPrefix(value) {
         return SavedSportsModel.stripLegacyTeamPrefix(value);
     }
@@ -580,7 +899,13 @@ PlasmoidItem {
     }
 
     function configuredDateFormat() {
-        return String(Plasmoid.configuration.matchDateFormat || "dd.MM").trim();
+        return String(Plasmoid.configuration.matchDateFormat || "dd.MM.yy").trim();
+    }
+
+    // How far ahead (days) the Schedules tab looks for fixtures (Appearance →
+    // Widget → Scheduled), clamped to the supported range.
+    function configuredScheduleDaysAhead() {
+        return Math.min(365, Math.max(1, Number(Plasmoid.configuration.widgetScheduleDaysAhead) || 150));
     }
 
     function configuredTimeFormat() {
@@ -803,7 +1128,7 @@ PlasmoidItem {
             "refreshToken": token,
             "forceLiveRefresh": Boolean(manual),
             "scoreboardDaysBack": 30,
-            "scoreboardDaysForward": 90
+            "scoreboardDaysForward": root.configuredScheduleDaysAhead()
         };
         return Object.assign(options, override || {});
     }
@@ -841,8 +1166,13 @@ PlasmoidItem {
 
             const currentOrder = Number(current.scopeOrder);
             const nextOrder = Number(match.scopeOrder);
-            if (!Number.isFinite(currentOrder) || (Number.isFinite(nextOrder) && nextOrder < currentOrder))
+            if (!Number.isFinite(currentOrder) || (Number.isFinite(nextOrder) && nextOrder < currentOrder)) {
                 current.scopeOrder = nextOrder;
+                // Keep the group label aligned with the scope it now sorts under, so a
+                // match shared by two followed teams renders under the earlier group.
+                if (String(match.scopeGroup || "").trim().length > 0)
+                    current.scopeGroup = match.scopeGroup;
+            }
             if (String(current.league || "").trim().length === 0 && String(match.league || "").trim().length > 0)
                 current.league = match.league;
             if (String(current.homeBadge || "").trim().length === 0 && String(match.homeBadge || "").trim().length > 0)
@@ -914,10 +1244,12 @@ PlasmoidItem {
         let errors = [];
         scopeEntries.forEach((entry, index) => {
             const options = root.requestOptionsForEntry(entry, token, manual, override);
+            const scopeGroup = root.entryGroupLabel(entry);
             fetcher(options, (matches) => {
                 const scopedMatches = (Array.isArray(matches) ? matches : []).filter(match => root.matchBelongsToEntry(entry, match)).map(match => {
                     const copy = Object.assign({}, match || {});
                     copy.scopeOrder = index;
+                    copy.scopeGroup = scopeGroup;
                     return copy;
                 });
                 merged = root.mergeScopedMatches(merged, scopedMatches);
@@ -958,6 +1290,7 @@ PlasmoidItem {
             root.liveRefreshToken += 1;
             refreshTimer.stop();
             liveRefreshTimer.stop();
+            kickoffWakeTimer.stop();
             configRefreshTimer.stop();
             emptySchedulesTimer.stop();
             tableFallbackTimer.stop();
@@ -1033,6 +1366,14 @@ PlasmoidItem {
         root.pendingScheduleMessage = "";
         root.latestScheduleMatches = [];
         root.latestRecentMatches = [];
+        // Reset lazy-load bookkeeping: only the first entry of each scope loads now;
+        // all later groups start collapsed and load when the user expands them.
+        root.attemptedScheduleGroups = ({});
+        root.recentAttemptedGroups = ({});
+        root.pendingRecentGroups = ({});
+        root.pendingScheduleGroups = ({});
+        root.collapsedRecentGroups = root.initialCollapsedGroups(root.recentScopeEntries());
+        root.collapsedScheduleGroups = root.initialCollapsedGroups(root.scheduleScopeEntries());
         root.discoveredTeamCompetitions = [];
         root.teamTableLoading = false;
         root.teamTableRequestToken += 1;
@@ -1096,7 +1437,7 @@ PlasmoidItem {
                 root.markTableCapability(ProviderCatalog.slugForValue(options.league), true);
                 if (root.recentScopeEntries().length > 0)
                     refreshRecentResultsFromTable(options);
-                if (root.scheduleScopeEntries().length > 0 && scoresModel.count === 0 && (root.teamWatchMode() || root.scheduleRequestCompleted))
+                if (root.scheduleScopeEntries().length > 0 && root.scheduleCount === 0 && (root.teamWatchMode() || root.scheduleRequestCompleted))
                     refreshSchedulesFromTable(options);
                 if (root.currentDisplayTableSlug() !== ProviderCatalog.slugForValue(root.selectedLeague))
                     root.refreshDisplayTableForSelection();
@@ -1140,7 +1481,15 @@ PlasmoidItem {
                 finishRefresh(manual, message, token);
         });
         }
-        root.fetchScopedMatches(root.scheduleScopeEntries(), token, manual, SportsApi.fetchScoresFixtures, (fixtures) => {
+        // Lazy: only fetch the FIRST schedule entry now; mark it attempted so it is
+        // not re-fetched on expand. Other groups load when the user expands them.
+        const firstScheduleEntries = root.scheduleScopeEntries().slice(0, 1);
+        firstScheduleEntries.forEach(entry => {
+            const group = root.entryGroupLabel(entry);
+            if (group.length > 0)
+                root.attemptedScheduleGroups = Object.assign({}, root.attemptedScheduleGroups, { [group]: true });
+        });
+        root.fetchScopedMatches(firstScheduleEntries, token, manual, SportsApi.fetchScoresFixtures, (fixtures) => {
             if (!root.isCurrentRefresh(token))
                 return;
 
@@ -1181,12 +1530,21 @@ PlasmoidItem {
         }, {
             "preferTeamRecentResults": false
         });
-        root.fetchScopedMatches(root.recentScopeEntries(), token, manual, SportsApi.fetchRecentResults, (results) => {
+        // Lazy: only the FIRST recent-results entry loads now; its matches land in
+        // latestRecentMatches (tagged with their scopeGroup), and every other group
+        // fetches on expand — gated on whether its data is already present.
+        const firstRecentEntries = root.recentScopeEntries().slice(0, 1);
+        firstRecentEntries.forEach(entry => {
+            const group = root.entryGroupLabel(entry);
+            if (group.length > 0)
+                root.recentAttemptedGroups = Object.assign({}, root.recentAttemptedGroups, { [group]: true });
+        });
+        root.fetchScopedMatches(firstRecentEntries, token, manual, SportsApi.fetchRecentResults, (results) => {
             if (!root.isCurrentRefresh(token))
                 return;
 
             const hasResults = results.length > 0;
-            if (results.length > 0 || recentResultsListModel.count === 0)
+            if (results.length > 0 || root.recentResultsCount === 0)
                 applyRecentResults(results);
             if (hasResults || !root.recentResultsTableFallbackStarted)
                 root.recentResultsLoading = false;
@@ -1195,7 +1553,7 @@ PlasmoidItem {
             if (!root.isCurrentRefresh(token))
                 return;
 
-            if (recentResultsListModel.count === 0)
+            if (root.recentResultsCount === 0)
                 applyRecentResults([]);
             if (!root.recentResultsTableFallbackStarted)
                 root.recentResultsLoading = false;
@@ -1285,13 +1643,13 @@ PlasmoidItem {
                 if (scheduledCount > 0) {
                     emptySchedulesTimer.stop();
                     root.schedulesLoading = false;
-                } else if (scoresModel.count === 0) {
+                } else if (root.scheduleCount === 0) {
                     deferEmptySchedulesMessage("");
                 }
                 return;
             }
 
-            if (scoresModel.count > 0) {
+            if (root.scheduleCount > 0) {
                 emptySchedulesTimer.stop();
                 root.schedulesLoading = false;
             } else {
@@ -1320,7 +1678,7 @@ PlasmoidItem {
         }
 
         root.recentResultsTableFallbackStarted = true;
-        root.recentResultsLoading = recentResultsListModel.count === 0;
+        root.recentResultsLoading = root.recentResultsCount === 0;
 
         SportsApi.fetchRecentResults(Object.assign({}, options, {
             "tableRows": rows,
@@ -1332,7 +1690,7 @@ PlasmoidItem {
                 return;
 
             const scopedResults = root.filterMatchesByEntries(results, root.recentScopeEntries());
-            if ((scopedResults.length > 0 && (recentResultsListModel.count === 0 || scopedResults.length > recentResultsListModel.count)) || recentResultsListModel.count === 0)
+            if ((scopedResults.length > 0 && (root.recentResultsCount === 0 || scopedResults.length > root.recentResultsCount)) || root.recentResultsCount === 0)
                 applyRecentResults(scopedResults);
             root.recentResultsLoading = false;
         }, (message) => {
@@ -1386,7 +1744,7 @@ PlasmoidItem {
         refreshTeamCompetitionOptions(options);
         if (root.recentScopeEntries().length > 0)
             refreshRecentResultsFromTable(options);
-        if (root.scheduleScopeEntries().length > 0 && scoresModel.count === 0)
+        if (root.scheduleScopeEntries().length > 0 && root.scheduleCount === 0)
             refreshSchedulesFromTable(options);
     }
 
@@ -1444,7 +1802,7 @@ PlasmoidItem {
         return root.selectedCountry;
     }
 
-    function addTeamTableOption(options, seen, label, slug, country) {
+    function addTeamTableOption(options, seen, label, slug, country, fromDiscovery) {
         const resolvedCountry = String(country || "").trim();
         const resolvedLeague = ProviderCatalog.resolveFootballLeagueCode(resolvedCountry, String(slug || label).trim());
         const normalizedSlug = ProviderCatalog.slugForValue(resolvedLeague);
@@ -1452,7 +1810,12 @@ PlasmoidItem {
             return;
 
         const normalizedLabel = String(label || ProviderCatalog.leagueLabel(normalizedSlug) || ProviderCatalog.titleFromSlug(normalizedSlug)).trim();
-        if (!root.isTableCompetitionEligible(normalizedSlug, normalizedLabel))
+        // A competition the followed team actively plays in (fromDiscovery) must
+        // stay selectable even if a previous fetch transiently failed and flagged
+        // it unsupported — otherwise a one-off 504 permanently hides a real league
+        // (e.g. a SportScore-only league like the Bulgarian First League). Only the
+        // permanent disqualifiers (friendlies) still suppress it.
+        if (!root.isTableCompetitionEligible(normalizedSlug, normalizedLabel, fromDiscovery === true))
             return;
 
         const normalizedCountry = String(resolvedCountry || "").trim();
@@ -1464,12 +1827,12 @@ PlasmoidItem {
         });
     }
 
-    function isTableCompetitionEligible(slug, label) {
+    function isTableCompetitionEligible(slug, label, ignoreUnsupported) {
         const normalizedSlug = ProviderCatalog.slugForValue(slug);
         if (normalizedSlug.length === 0)
             return false;
 
-        if (Boolean(root.unsupportedTableSlugs && root.unsupportedTableSlugs[normalizedSlug]))
+        if (ignoreUnsupported !== true && Boolean(root.unsupportedTableSlugs && root.unsupportedTableSlugs[normalizedSlug]))
             return false;
 
         const text = String(label || normalizedSlug).trim().toLowerCase();
@@ -1522,7 +1885,7 @@ PlasmoidItem {
         (Array.isArray(competitions) ? competitions : []).forEach(competition => {
             const label = String(competition && competition.label || "").trim();
             const slug = String(competition && competition.slug || label).trim();
-            root.addTeamTableOption(options, seen, label, slug, String(competition && competition.country || "").trim());
+            root.addTeamTableOption(options, seen, label, slug, String(competition && competition.country || "").trim(), true);
         });
     }
 
@@ -1596,7 +1959,14 @@ PlasmoidItem {
     readonly property int seasonsTtlMs: 7 * 24 * 60 * 60 * 1000
 
     function refreshTeamCompetitionOptions(options) {
-        const teamEntries = root.watchedTeamEntriesForScope("includeTables");
+        // Discover the competitions of EVERY followed team that shows tables, so the
+        // table dropdown lists each team's leagues (e.g. the Bulgarian First League
+        // for Levski/CSKA) and the user can pick one without first making that team
+        // the active entry. This only populates the dropdown LIST — it does not
+        // fetch any table rows; the selected table's data still loads lazily (see
+        // refreshDisplayTableForSelection). Each team's competition list is cached
+        // for 24h, so this is one cheap team-page request per club, once.
+        let teamEntries = root.watchedTeamEntriesForScope("includeTables");
         if (teamEntries.length === 0) {
             root.discoveredTeamCompetitions = [];
             syncTeamTableOptions();
@@ -1622,7 +1992,15 @@ PlasmoidItem {
             if (pending > 0 || !root.isCurrentRefresh(requestToken))
                 return;
 
-            root.discoveredTeamCompetitions = competitions;
+            // Merge with anything already discovered (from a prior activation) so
+            // switching between followed teams accumulates their leagues in the
+            // dropdown instead of dropping the previous team's. Re-discovering an
+            // entry replaces only that entry's rows.
+            const discoveredKeys = {};
+            competitions.forEach(row => { discoveredKeys[String(row && row.sourceEntryKey || "")] = true; });
+            const retained = (Array.isArray(root.discoveredTeamCompetitions) ? root.discoveredTeamCompetitions : [])
+                .filter(row => !discoveredKeys[String(row && row.sourceEntryKey || "")]);
+            root.discoveredTeamCompetitions = retained.concat(competitions);
             syncTeamTableOptions();
             if (root.currentDisplayTableSlug().length > 0)
                 root.refreshDisplayTableForSelection();
@@ -1819,7 +2197,7 @@ PlasmoidItem {
             "followMode": type === "team" ? "team" : "league",
             "refreshToken": root.refreshToken,
             "scoreboardDaysBack": 30,
-            "scoreboardDaysForward": 90
+            "scoreboardDaysForward": root.configuredScheduleDaysAhead()
         };
     }
 
@@ -1934,7 +2312,7 @@ PlasmoidItem {
         refreshWatchdogTimer.stop();
         promoteLiveMatches(root.latestScheduleMatches);
         root.loading = false;
-        if (root.refreshErrors.length > 0 && liveMatchesModel.count === 0 && scoresModel.count === 0 && recentResultsListModel.count === 0 && tableModel.count === 0) {
+        if (root.refreshErrors.length > 0 && liveMatchesModel.count === 0 && root.scheduleCount === 0 && root.recentResultsCount === 0 && tableModel.count === 0) {
             emptySchedulesTimer.stop();
             root.schedulesLoading = false;
             root.errorMessage = manual ? root.refreshErrors.join(", ") : "";
@@ -1942,7 +2320,7 @@ PlasmoidItem {
             if (root.schedulesLoading && root.tableRequestCompleted && root.tableRows.length === 0)
                 deferEmptySchedulesMessage("");
 
-            if (!root.schedulesLoading && scoresModel.count === 0 && root.errorMessage.length === 0)
+            if (!root.schedulesLoading && root.scheduleCount === 0 && root.errorMessage.length === 0)
                 deferEmptySchedulesMessage("");
 
             if (manual && root.refreshErrors.length > 0)
@@ -2098,24 +2476,11 @@ PlasmoidItem {
             if (restored.length > 0)
                 matches = restored;
         }
-        scoresModel.clear();
         root.latestScheduleMatches = matches.slice();
         promoteLiveMatches(root.latestScheduleMatches);
         syncTeamTableOptions();
-        matches = scheduledMatches(root.latestScheduleMatches);
-        matches = prioritizeFavorite(matches);
-        if (Plasmoid.configuration.prioritizePopular) {
-            matches = matches.slice().sort((left, right) => {
-                return Number(Boolean(right.popular)) - Number(Boolean(left.popular));
-            });
-            matches = prioritizeFavorite(matches);
-        }
-        matches.forEach((match) => {
-            const row = matchForModel(match);
-            row.leagueGroup = root.liveLeagueGroupLabel(row);
-            return scoresModel.append(row);
-        });
-        if (matches.length > 0) {
+        const visibleCount = root.rebuildScheduleModel();
+        if (visibleCount > 0) {
             root.errorMessage = "";
         } else if (!root.schedulesLoading) {
             root.errorMessage = emptySchedulesText();
@@ -2125,6 +2490,61 @@ PlasmoidItem {
         root.requestAuxiliaryMatchModelsRefresh();
         root.requestCalendarSync();
         root.checkStartsSoon();
+        root.armKickoffWake();
+        return visibleCount;
+    }
+
+    // (Re)build the Schedule model from in-memory matches honouring collapse state.
+    // Like rebuildRecentModel, a collapsed group contributes only its header row so
+    // the ListView never holds height-0 match rows (the cause of scroll jumps).
+    function rebuildScheduleModel() {
+        scoresModel.clear();
+        let matches = scheduledMatches(root.latestScheduleMatches);
+        matches = prioritizeFavorite(matches);
+        if (Plasmoid.configuration.prioritizePopular) {
+            matches = matches.slice().sort((left, right) => {
+                return Number(Boolean(right.popular)) - Number(Boolean(left.popular));
+            });
+            matches = prioritizeFavorite(matches);
+        }
+
+        const byGroup = ({});
+        const order = [];
+        matches.forEach((match) => {
+            const row = matchForModel(match);
+            const scopeGroup = String(match.scopeGroup || "").trim();
+            row.leagueGroup = scopeGroup.length > 0 ? scopeGroup : root.liveLeagueGroupLabel(row);
+            if (!byGroup[row.leagueGroup]) {
+                byGroup[row.leagueGroup] = [];
+                order.push(row.leagueGroup);
+            }
+            byGroup[row.leagueGroup].push(row);
+        });
+
+        // Soonest N upcoming matches per group (fixtures are sorted soonest-first),
+        // as configured in Appearance → Widget → Scheduled.
+        const perGroup = Math.min(30, Math.max(1, Number(Plasmoid.configuration.widgetScheduleMatchesPerGroup) || 5));
+
+        const emitted = ({});
+        function emitGroup(group) {
+            const key = String(group || "").trim();
+            if (key.length === 0 || emitted[key])
+                return;
+            emitted[key] = true;
+            scoresModel.append({ "leagueGroup": key, "rowType": "header", "isPlaceholder": true });
+            if (Boolean(root.collapsedScheduleGroups[key]))
+                return;
+            const rows = (byGroup[key] || []).slice(0, perGroup);
+            rows.forEach(row => scoresModel.append(Object.assign({ "rowType": "match" }, row)));
+            // Expanded group that finished loading with no upcoming fixtures: show a
+            // clear "nothing scheduled" line instead of a blank gap (common in the
+            // off-season). Only once the group was actually attempted/loaded.
+            if (rows.length === 0 && !root.pendingScheduleGroups[key] && root.attemptedScheduleGroups[key])
+                scoresModel.append({ "leagueGroup": key, "rowType": "notice", "isEmptyNotice": true });
+        }
+
+        root.scheduleScopeEntries().forEach(entry => emitGroup(root.entryGroupLabel(entry)));
+        order.forEach(group => emitGroup(group));
         return matches.length;
     }
 
@@ -2165,9 +2585,9 @@ PlasmoidItem {
         root.clearMatchModelCache();
         if (root.latestLiveMatches.length > 0)
             applyLiveMatches(root.latestLiveMatches);
-        if (root.latestScheduleMatches.length > 0 || scoresModel.count > 0)
+        if (root.latestScheduleMatches.length > 0 || root.scheduleCount > 0)
             applySchedules(root.latestScheduleMatches, root.lastUpdatedText);
-        if (root.latestRecentMatches.length > 0 || recentResultsListModel.count > 0)
+        if (root.latestRecentMatches.length > 0 || root.recentResultsCount > 0)
             applyRecentResults(root.latestRecentMatches);
         if (root.lastUpdatedText.length > 0)
             root.lastUpdatedText = root.updatedText();
@@ -2397,7 +2817,7 @@ PlasmoidItem {
         const rows = [];
         for (let index = 0; index < scoresModel.count; index += 1) {
             const match = scoresModel.get(index);
-            if (!match)
+            if (!match || match.isPlaceholder === true)
                 continue;
 
             const row = {
@@ -2638,8 +3058,34 @@ PlasmoidItem {
         calendarSyncTimer.restart();
     }
 
+    // Merge into the provider-live set any scheduled match that has effectively
+    // started (kickoff passed, not finished) and isn't already present, marking it
+    // Live. Deduped by matchKey so a match the provider already reports live is not
+    // shown twice.
+    function withKickoffPromotedMatches(liveMatches) {
+        const result = Array.isArray(liveMatches) ? liveMatches.slice() : [];
+        const seen = ({});
+        result.forEach((match) => { seen[root.matchKey(match)] = true; });
+
+        (Array.isArray(root.latestScheduleMatches) ? root.latestScheduleMatches : []).forEach((match) => {
+            if (!root.isEffectivelyLive(match) || SportsApi.isLiveMatch(match))
+                return;
+            const key = root.matchKey(match);
+            if (seen[key])
+                return;
+            seen[key] = true;
+            // Mark it live but keep its identity; liveMatchForModel sets status="Live".
+            result.push(Object.assign({}, match, { status: "Live" }));
+        });
+        return result;
+    }
+
     function applyLiveMatches(matches, manual) {
-        const sourceMatches = Array.isArray(matches) ? matches.slice() : [];
+        let sourceMatches = Array.isArray(matches) ? matches.slice() : [];
+        // Promote any scheduled match whose kickoff has passed but the provider
+        // hasn't flagged live yet, so it appears in Live at kickoff instead of when
+        // the provider catches up. The live poll then fills in its minute/score.
+        sourceMatches = root.withKickoffPromotedMatches(sourceMatches);
         const scopeSignature = root.liveScopeSignature();
         const sameScope = scopeSignature === root.lastLiveScopeSignature;
         if (!manual && sourceMatches.length === 0 && sameScope && root.latestLiveMatches.length > 0 && root.consecutiveEmptyLiveRefreshes < 2) {
@@ -2674,17 +3120,101 @@ PlasmoidItem {
             if (cached && Array.isArray(cached.value) && cached.value.length > 0)
                 matches = cached.value;
         }
-        recentResultsListModel.clear();
-        const sourceMatches = matches.slice();
-        root.latestRecentMatches = sourceMatches;
+        root.latestRecentMatches = matches.slice();
         syncTeamTableOptions();
-        matches = sortRecentResultsByDate(sourceMatches);
+        root.rebuildRecentModel();
+        return root.latestRecentMatches.length;
+    }
+
+    // (Re)build the Recent Results model from the in-memory matches + scope list,
+    // honouring the current collapse state. Crucially, a COLLAPSED group contributes
+    // only a single fixed-height header row (a placeholder) and NONE of its match
+    // rows — so the ListView never holds height-0 rows. Mixing height-0 rows with
+    // full-height ones is what made contentHeight drift and the scroll jump; keeping
+    // the model free of them makes every realized row a real, measurable height.
+    function rebuildRecentModel() {
+        recentResultsListModel.clear();
+        const matches = sortRecentResultsByDate(root.latestRecentMatches);
+        const byGroup = ({});
         matches.forEach((match) => {
             const row = matchForModel(match);
-            row.leagueGroup = root.liveLeagueGroupLabel(row);
-            return recentResultsListModel.append(row);
+            const scopeGroup = String(match.scopeGroup || "").trim();
+            row.leagueGroup = scopeGroup.length > 0 ? scopeGroup : root.liveLeagueGroupLabel(row);
+            if (!byGroup[row.leagueGroup])
+                byGroup[row.leagueGroup] = [];
+            byGroup[row.leagueGroup].push(row);
         });
-        return matches.length;
+
+        // Latest N matches per group (newest first; matches are already sorted), as
+        // configured in Appearance → Widget → Recent.
+        const perGroup = Math.min(30, Math.max(1, Number(Plasmoid.configuration.widgetRecentMatchesPerGroup) || 5));
+        // Show teams, competitions, or both (Appearance → Widget → Recent).
+        const filter = String(Plasmoid.configuration.widgetRecentFilter || "both");
+        function typeAllowed(type) {
+            if (filter === "teams")
+                return type === "team";
+            if (filter === "competitions")
+                return type === "competition";
+            return true;
+        }
+
+        // Emit groups in saved-scope order; each group is a header row, followed by
+        // its (capped) match rows only when expanded.
+        const emitted = ({});
+        function emitGroup(group) {
+            const key = String(group || "").trim();
+            if (key.length === 0 || emitted[key])
+                return;
+            emitted[key] = true;
+            const collapsed = Boolean(root.collapsedRecentGroups[key]);
+            // Header marker row (always present so the section header renders).
+            recentResultsListModel.append({ "leagueGroup": key, "rowType": "header", "isPlaceholder": true });
+            if (collapsed)
+                return;
+            const groupRows = (byGroup[key] || []).slice(0, perGroup);
+            groupRows.forEach(row => recentResultsListModel.append(Object.assign({ "rowType": "match" }, row)));
+            // Expanded but loaded-empty group (a club with no recent matches) gets a
+            // clear notice instead of a blank gap.
+            if (groupRows.length === 0 && !root.pendingRecentGroups[key] && root.recentGroupAttempted(key))
+                recentResultsListModel.append({ "leagueGroup": key, "rowType": "notice", "isEmptyNotice": true });
+        }
+
+        root.recentScopeEntries().forEach(entry => {
+            if (typeAllowed(root.entryType(entry)))
+                emitGroup(root.entryGroupLabel(entry));
+        });
+        // Any groups present in the data but not in the scope list (defensive) — only
+        // when not restricting to a single type, since their type is unknown.
+        if (filter === "both")
+            for (let group in byGroup)
+                emitGroup(group);
+    }
+
+    // Append a lazily-loaded group's recent matches to whatever is already shown,
+    // de-duped, then re-render. Used by requestRecentGroupLoad so expanding a group
+    // adds to the list instead of replacing the first group's results.
+    function mergeRecentResults(matches) {
+        const additions = Array.isArray(matches) ? matches : [];
+        if (additions.length === 0)
+            return;
+        const merged = root.mergeScopedMatches(root.latestRecentMatches.slice(), additions);
+        applyRecentResults(merged);
+    }
+
+    // Same incremental merge for the Schedule tab.
+    function mergeScheduleMatches(matches) {
+        const additions = Array.isArray(matches) ? matches : [];
+        root.schedulesLoading = false;
+        if (additions.length === 0) {
+            // No new fixtures (e.g. an off-season team): still re-render so the
+            // expanded group shows its "no upcoming matches" notice and clears the
+            // header spinner, instead of staying blank.
+            if (root._modelRebuildReady)
+                root.rebuildScheduleModel();
+            return;
+        }
+        const merged = root.mergeScopedMatches(root.latestScheduleMatches.slice(), additions);
+        applySchedules(merged, root.updatedText());
     }
 
     function sortRecentResultsByDate(matches) {
@@ -2723,8 +3253,10 @@ PlasmoidItem {
         if (liveMatchesModel.count > 0)
             return 0;
 
+        // Include both provider-live matches and ones whose kickoff has passed, so
+        // the Live tab is populated from schedule data the moment a match starts.
         const liveMatches = (Array.isArray(matches) ? matches : []).filter((match) => {
-            return SportsApi.isLiveMatch(match);
+            return root.isEffectivelyLive(match);
         }).map((match) => liveMatchForModel(match));
         if (liveMatches.length === 0)
             return 0;
@@ -2747,7 +3279,7 @@ PlasmoidItem {
     }
 
     function deferEmptySchedulesMessage(message) {
-        if (scoresModel.count > 0)
+        if (root.scheduleCount > 0)
             return;
 
         root.pendingScheduleMessage = message && message.length > 0 ? message : emptySchedulesText();
@@ -2761,7 +3293,9 @@ PlasmoidItem {
         return (Array.isArray(matches) ? matches : []).filter((match) => {
             const status = String(match.status || "").toLowerCase();
             const timestamp = Number(match.timestamp || 0);
-            if (SportsApi.isLiveMatch(match))
+            // A match past kickoff (or provider-live) belongs in Live, not Schedules,
+            // so it never shows in both places once it has started.
+            if (root.isEffectivelyLive(match))
                 return false;
 
             if (status.indexOf("finished") >= 0 || status.indexOf("final") >= 0)
@@ -2958,6 +3492,7 @@ PlasmoidItem {
         SportsApi.setDelayScheduler(root.scheduleNetworkDelay);
         migrateDefaultSelection();
         seedFromCache();
+        root._modelRebuildReady = true;
         refreshScores(false);
     }
     Plasmoid.contextualActions: [
@@ -3123,7 +3658,16 @@ PlasmoidItem {
     Timer {
         id: refreshTimer
 
-        interval: root.refreshIntervalMs()
+        // Reactive interval: recomputed when the live model or schedule/live arrays
+        // change, so smart mode tightens the full-refresh cadence while matches are
+        // live/imminent and relaxes it when idle (see liveRefreshTimer for the same
+        // pattern). Manual mode just returns the fixed configured interval.
+        interval: {
+            void liveMatchesModel.count;
+            void root.latestScheduleMatches;
+            void root.latestLiveMatches;
+            return root.refreshIntervalMs();
+        }
         repeat: true
         running: true
         onTriggered: root.refreshScores(false)
@@ -3132,10 +3676,38 @@ PlasmoidItem {
     Timer {
         id: liveRefreshTimer
 
-        interval: root.liveRefreshIntervalMs()
+        // Reactive interval: recomputed whenever the live model or the schedule/live
+        // arrays change, so smart mode switches between fast (60 s) and idle cadence
+        // automatically as matches start and finish.
+        interval: {
+            // Touch the reactive deps so the binding re-evaluates on changes.
+            void liveMatchesModel.count;
+            void root.latestScheduleMatches;
+            void root.latestLiveMatches;
+            return root.liveRefreshIntervalMs();
+        }
         repeat: true
         running: false
         onTriggered: root.refreshLiveMatches(false)
+    }
+
+    // One-shot wake fired ~at the next kickoff so a starting match is picked up
+    // promptly even while the live poll is idling in smart mode. Re-armed after
+    // every refresh (see armKickoffWake).
+    Timer {
+        id: kickoffWakeTimer
+
+        repeat: false
+        running: false
+        onTriggered: {
+            // Promote immediately from already-known data, then pull fresh.
+            if (root._modelRebuildReady) {
+                applyLiveMatches(root.latestLiveMatches, false);
+                root.rebuildScheduleModel();
+            }
+            root.refreshLiveMatches(false);
+            root.armKickoffWake();
+        }
     }
 
     // Debounces panel/tooltip model rebuilds so a refresh that applies live,
@@ -3207,7 +3779,7 @@ PlasmoidItem {
             root.pendingRequests = 0;
             root.loading = false;
             root.liveLoading = false;
-            if (root.schedulesLoading && scoresModel.count === 0)
+            if (root.schedulesLoading && root.scheduleCount === 0)
                 deferEmptySchedulesMessage("");
             else
                 root.schedulesLoading = false;
@@ -3283,7 +3855,7 @@ PlasmoidItem {
         repeat: false
         onTriggered: {
             root.schedulesLoading = false;
-            if (scoresModel.count === 0)
+            if (root.scheduleCount === 0)
                 root.errorMessage = root.pendingScheduleMessage.length > 0 ? root.pendingScheduleMessage : emptySchedulesText();
 
             root.pendingScheduleMessage = "";
@@ -3310,6 +3882,29 @@ PlasmoidItem {
             root.scheduleConfigRefresh();
         }
 
+        function onWidgetRecentMatchesPerGroupChanged() {
+            // Apply the new per-group cap immediately from already-fetched data.
+            if (root._modelRebuildReady)
+                root.rebuildRecentModel();
+        }
+
+        function onWidgetRecentFilterChanged() {
+            // Apply the Teams/Competitions/Both filter immediately.
+            if (root._modelRebuildReady)
+                root.rebuildRecentModel();
+        }
+
+        function onWidgetScheduleMatchesPerGroupChanged() {
+            // Per-group cap applies to already-fetched fixtures — just re-render.
+            if (root._modelRebuildReady)
+                root.rebuildScheduleModel();
+        }
+
+        function onWidgetScheduleDaysAheadChanged() {
+            // The look-ahead window changes what is fetched, so a refresh is needed.
+            root.scheduleConfigRefresh();
+        }
+
         function onRefreshIntervalChanged() {
             root.scheduleConfigRefresh();
         }
@@ -3333,8 +3928,10 @@ PlasmoidItem {
             if (root.liveRefreshIsEnabled() && root.hasSportSelection()) {
                 liveRefreshTimer.restart();
                 root.refreshLiveMatches(true);
+                root.armKickoffWake();
             } else {
                 liveRefreshTimer.stop();
+                kickoffWakeTimer.stop();
             }
         }
 
@@ -3372,6 +3969,9 @@ PlasmoidItem {
 
         function onActiveSavedLeagueIndexChanged() {
             root.syncTeamTableOptions();
+            // Switching the active entry should reveal its data: expand + lazily
+            // load its Recent/Schedule groups (no-op if already loaded).
+            root.loadActiveEntryGroups();
         }
 
     }
@@ -3451,12 +4051,20 @@ PlasmoidItem {
         matchRotationEnabled: Plasmoid.configuration.widgetMatchRotationEnabled
         matchRotationInterval: Plasmoid.configuration.widgetMatchRotationInterval
         favoriteTeam: root.teamWatchMode() && root.watchedTeamNames().length === 1 ? root.effectiveFavoriteTeamName() : ""
+        collapsedRecentGroups: root.collapsedRecentGroups
+        collapsedScheduleGroups: root.collapsedScheduleGroups
+        loadingRecentGroups: root.pendingRecentGroups
+        loadingScheduleGroups: root.pendingScheduleGroups
         onRefreshRequested: root.refreshScores(true)
         onConfigureRequested: root.openSportSettings()
         onLeagueSelected: (index) => root.setActiveSavedLeagueIndex(index)
         onSportSelected: (sport) => root.selectActiveSport(sport)
         onTeamTableSelected: (slug) => root.selectTeamTable(slug)
         onTeamTableSeasonSelected: (seasonKey) => root.selectTeamTableSeason(seasonKey)
+        onRecentGroupExpanded: (group) => root.requestRecentGroupLoad(group)
+        onScheduleGroupExpanded: (group) => root.requestScheduleGroupLoad(group)
+        onRecentGroupCollapsed: (group) => root.collapseRecentGroup(group)
+        onScheduleGroupCollapsed: (group) => root.collapseScheduleGroup(group)
     }
 
 }

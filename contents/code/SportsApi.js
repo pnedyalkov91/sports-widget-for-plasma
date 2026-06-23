@@ -33,20 +33,28 @@ const ESPN_PLAYS_LIMIT = 300;
 // How many days around "today" to ask ESPN for when listing fixtures / recent.
 const ESPN_FIXTURE_DAYS_AHEAD = 14;
 const ESPN_RECENT_DAYS_BACK = 14;
-// Off-season fallback: when nothing finished in the normal recent window (the
-// league/club is between seasons), look this far back to still surface the last
-// matches played. Only fires when the normal window is empty, so in-season
-// leagues never pay for it.
-const ESPN_RECENT_FALLBACK_DAYS = 150;
-// ESPN returns matches ascending and caps at the limit, so a wide fallback window
-// needs a high limit or the actual last matches (end of the window) get dropped.
+// ESPN returns matches ascending and caps at the limit, so the wide year-to-date
+// recent window needs a high limit or the actual last matches (end of the window)
+// get dropped.
 const ESPN_RECENT_FALLBACK_LIMIT = 300;
 const SPORTSCORE_MATCH_LIMIT = 50;
 const SPORTSCORE_COUNTRY_COMPETITION_LIMIT = 64;
 const SPORTSCORE_COUNTRY_COMPETITION_CONCURRENCY = 6;
 const SPORTSCORE_TEAM_LIMIT = 2000;
 const SPORTSCORE_BASKETBALL_TRACKER_PROFILE = "47q3ktv6gh1u8mx";
-const SPORTSCORE_RECENT_MATCH_MAX_AGE_MS = 120 * 24 * 60 * 60 * 1000;
+// "Recent results" surfaces every finished match from the start of the current
+// calendar year (year-to-date). A match older than this hard floor is dropped
+// even when year-to-date would reach further, so very early-season requests in
+// January still keep at least a sensible recent window.
+const RECENT_MATCH_MIN_WINDOW_MS = 120 * 24 * 60 * 60 * 1000;
+
+// Milliseconds from 00:00 on Jan 1 of the current year until now. Used as the
+// recent-results look-back so "this year's" matches are all included.
+function recentYearToDateWindowMs() {
+    const now = new Date();
+    const yearStart = new Date(now.getFullYear(), 0, 1).getTime();
+    return Math.max(now.getTime() - yearStart, RECENT_MATCH_MIN_WINDOW_MS);
+}
 const REQUEST_TIMEOUT_MS = 14000;
 // SportScore's origin is slow and frequently returns 504s under load. Limit how
 // many requests hit it at once, retry the transient failures with backoff, and
@@ -181,10 +189,12 @@ function fetchLeagueTable(options, onSuccess, onError) {
 }
 
 function fetchLeagueSeasons(options, onSuccess, onError) {
-    // ESPN serves the current season only and needs no SportScore season list, so
-    // an ESPN-covered competition contributes no season options (no SportScore call).
-    if (espnPlan(options)) {
-        finish(onSuccess, []);
+    // ESPN-covered competition: probe ESPN's own seasons endpoint so the season
+    // dropdown lists exactly the seasons ESPN can serve standings for (e.g. World
+    // Cup 2022). Selecting one drives fetchEspnStandings's ?season= parameter.
+    const plan = espnPlan(options);
+    if (plan) {
+        fetchEspnSeasons(plan.espnSport, plan.league, options, onSuccess, () => finish(onSuccess, []));
         return;
     }
 
@@ -1036,10 +1046,18 @@ function espnDate(timestamp) {
 // Honours the caller's requested window (scoreboardDaysBack/Forward) when present,
 // capped so a single scoreboard call can't pull a multi-MB payload that blocks the
 // UI thread during JSON.parse; falls back to the module default otherwise.
-function espnClampDays(value, fallback) {
+function espnClampDays(value, fallback, max) {
     const n = numberValue(value);
-    return n > 0 ? Math.min(n, 30) : fallback;
+    const cap = numberValue(max) > 0 ? numberValue(max) : 30;
+    return n > 0 ? Math.min(n, cap) : fallback;
 }
+
+// How far ahead the fixtures window may reach. Larger than the back cap because
+// fixtures are sparse (a few per league) — a wide look-ahead is cheap and is what
+// surfaces next-season fixtures during the off-season (e.g. an August restart when
+// "today" is late June), instead of an empty Schedules tab. Upper bound for the
+// user-configurable "Schedules days ahead" setting (max one year).
+const ESPN_FIXTURE_MAX_DAYS_AHEAD = 365;
 
 // One window spanning recent..fixtures. We fetch this once per league and derive
 // live/fixtures/recent from it by status (see fetchEspnScoreboard), rather than
@@ -1048,7 +1066,7 @@ function espnUnifiedDates(options) {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
     const back = espnClampDays(options && options.scoreboardDaysBack, ESPN_RECENT_DAYS_BACK);
-    const ahead = espnClampDays(options && options.scoreboardDaysForward, ESPN_FIXTURE_DAYS_AHEAD);
+    const ahead = espnClampDays(options && options.scoreboardDaysForward, ESPN_FIXTURE_DAYS_AHEAD, ESPN_FIXTURE_MAX_DAYS_AHEAD);
     return espnDate(now - back * day) + "-" + espnDate(now + ahead * day);
 }
 
@@ -1166,31 +1184,33 @@ function filterEspnMatchesForMode(rows, mode) {
 // thread is what makes adding such a competition freeze for seconds. The soonest
 // (fixtures) / most-recent (recent) of this many is far more than the UI shows.
 const ESPN_MODE_MATCH_LIMIT = 40;
+// "Recent results" deliberately shows a whole year of finished matches, so its
+// cap is far higher than the unified-window default — a full football season is
+// ~38 league matches plus cup ties per club, and a year-to-date competition view
+// can hold many more. Still bounded so a huge tournament can't flood the models.
+const ESPN_RECENT_MODE_MATCH_LIMIT = 300;
 
 // Sort + return only the rows for one mode out of a fully-normalized scoreboard.
-function espnRowsForMode(rows, mode) {
+function espnRowsForMode(rows, mode, limit) {
     const filtered = filterEspnMatchesForMode(rows, mode);
     if (mode === "live")
         return sortMatches(filtered);
     const sorted = mode === "recent" ? sortRecentMatches(filtered) : sortMatches(filtered);
-    return sorted.slice(0, ESPN_MODE_MATCH_LIMIT);
+    const cap = numberValue(limit) > 0 ? numberValue(limit) : ESPN_MODE_MATCH_LIMIT;
+    return sorted.slice(0, cap);
 }
 
-// Deliver one mode's rows from an already-fetched window. For "recent", when the
-// normal window holds nothing finished (the league/club is between seasons),
-// transparently fall back to a much wider look-back so the last matches still
-// show. Only the empty off-season case pays for the extra fetch.
+// First day of the current calendar year, ESPN date format (YYYYMMDD).
+function espnYearStartDate() {
+    const now = new Date();
+    return espnDate(new Date(now.getFullYear(), 0, 1).getTime());
+}
+
+// Deliver one mode's rows from an already-fetched unified window. Used for
+// live/fixtures only; "recent" is routed to its own year-to-date fetch upstream
+// (see fetchEspnScoreboard) and never reaches here.
 function deliverEspnMode(espnSport, league, mode, options, rows, onSuccess) {
-    const modeRows = espnRowsForMode(rows, mode);
-    if (mode === "recent" && modeRows.length === 0) {
-        const now = Date.now();
-        const day = 24 * 60 * 60 * 1000;
-        const dates = espnDate(now - ESPN_RECENT_FALLBACK_DAYS * day) + "-" + espnDate(now);
-        fetchEspnScoreboardWindow(espnSport, league, dates, "recent", options,
-            onSuccess, () => finish(onSuccess, []), ESPN_RECENT_FALLBACK_LIMIT);
-        return;
-    }
-    finish(onSuccess, modeRows);
+    finish(onSuccess, espnRowsForMode(rows, mode));
 }
 
 // Short-lived cache + in-flight de-dup, both keyed by espnSport|league. A saved
@@ -1207,7 +1227,7 @@ const _espnScoreboardWaiters = {};
 // just the requested mode's rows. Does NOT touch the unified cache/dedup. A higher
 // `limit` is needed for wide windows, since ESPN returns matches ascending and
 // caps at the limit — too low a cap drops the most recent matches.
-function fetchEspnScoreboardWindow(espnSport, league, dates, mode, options, onSuccess, onError, limit) {
+function fetchEspnScoreboardWindow(espnSport, league, dates, mode, options, onSuccess, onError, limit, modeLimit) {
     const sportValue = normalizedSport(options && (options.sports || options.sport)) || EspnSports.normalizedSport(espnSport);
     const leagueLabel = stringValue(options && options.leagueLabel);
     const merged = Object.assign({}, options, { espnSport: espnSport, espnLeague: league });
@@ -1218,7 +1238,7 @@ function fetchEspnScoreboardWindow(espnSport, league, dates, mode, options, onSu
         } catch (error) {
             rows = [];
         }
-        finish(onSuccess, espnRowsForMode(rows, mode));
+        finish(onSuccess, espnRowsForMode(rows, mode, modeLimit));
     }, error => finish(onError, error || "Unable to load ESPN scoreboard"), { ignoreCooldown: true });
 }
 
@@ -1228,6 +1248,16 @@ function fetchEspnScoreboard(espnSport, league, mode, options, onSuccess, onErro
         return;
     }
     const key = espnSport + "|" + league;
+
+    // Recent always needs its own year-to-date window, which is far wider than the
+    // unified live/fixtures window — fetch it directly instead of pulling (and
+    // caching) the narrow unified window only to discard it.
+    if (mode === "recent") {
+        const dates = espnYearStartDate() + "-" + espnDate(Date.now());
+        fetchEspnScoreboardWindow(espnSport, league, dates, "recent", options,
+            onSuccess, onError, ESPN_RECENT_FALLBACK_LIMIT, ESPN_RECENT_MODE_MATCH_LIMIT);
+        return;
+    }
 
     // A warm unified window serves any mode (incl. live) without another fetch.
     const cached = _espnScoreboardCache[key];
@@ -1368,21 +1398,28 @@ function espnFormByTeam(matches) {
     return map;
 }
 
-// Build the form map for a league, reusing the warm scoreboard cache when present
-// (no extra request) and otherwise fetching a ~10-week recent window.
-function fetchEspnLeagueFormMap(espnSport, league, options, onDone) {
+// Build the form map for a league. For the current season, reuse the warm
+// scoreboard cache when present (no extra request) and otherwise fetch a ~10-week
+// recent window. For a historical season, fetch that season's own calendar-year
+// window so the form reflects how each team finished that season, not today's.
+function fetchEspnLeagueFormMap(espnSport, league, options, onDone, season) {
+    season = stringValue(season);
     const key = espnSport + "|" + league;
     const cached = _espnScoreboardCache[key];
-    if (cached && (Date.now() - cached.ts) < ESPN_SCOREBOARD_TTL_MS) {
+    if (season.length === 0 && cached && (Date.now() - cached.ts) < ESPN_SCOREBOARD_TTL_MS) {
         finish(onDone, espnFormByTeam(cached.rows));
         return;
     }
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
-    const dates = espnDate(now - 70 * day) + "-" + espnDate(now);
+    // Historical season: span its whole calendar year. Current: the last 10 weeks.
+    const dates = season.length === 4
+        ? season + "0101-" + season + "1231"
+        : espnDate(now - 70 * day) + "-" + espnDate(now);
+    const limit = season.length === 4 ? ESPN_RECENT_FALLBACK_LIMIT : ESPN_MATCH_LIMIT;
     const sportValue = normalizedSport(options && (options.sports || options.sport)) || EspnSports.normalizedSport(espnSport);
     const merged = Object.assign({}, options, { espnSport: espnSport, espnLeague: league });
-    requestText(cacheBustedUrl(espnScoreboardUrl(espnSport, league, dates)), text => {
+    requestText(cacheBustedUrl(espnScoreboardUrl(espnSport, league, dates, limit)), text => {
         let matches = [];
         try {
             matches = normalizeEspnScoreboard(JSON.parse(text), sportValue, "", merged);
@@ -1393,12 +1430,30 @@ function fetchEspnLeagueFormMap(espnSport, league, options, onDone) {
     }, () => finish(onDone, {}), { ignoreCooldown: true });
 }
 
+// Extract a 4-digit ESPN season year from the selected season option. ESPN
+// identifies a season by its starting year (the "2022" World Cup, the "2024"
+// Premier League season etc.), so a "2024-2025" key resolves to 2024.
+function espnSeasonYear(options) {
+    if (options && options.seasonIsDefault === true)
+        return "";
+    const candidates = [options && options.seasonId, options && options.seasonKey, options && options.seasonLabel];
+    for (let i = 0; i < candidates.length; i += 1) {
+        const match = /(\d{4})/.exec(stringValue(candidates[i]));
+        if (match)
+            return match[1];
+    }
+    return "";
+}
+
 function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
     if (stringValue(espnSport).length === 0 || stringValue(league).length === 0) {
         finish(onSuccess, []);
         return;
     }
-    const url = ESPN_STANDINGS_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/standings";
+    const season = espnSeasonYear(options);
+    let url = ESPN_STANDINGS_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/standings";
+    if (season.length > 0)
+        url += "?season=" + encodeURIComponent(season);
     requestText(cacheBustedUrl(url), text => {
         let rows = [];
         try {
@@ -1410,6 +1465,8 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
             finish(onSuccess, rows);
             return;
         }
+        // Form badges reflect the standings' own season: the current season pulls
+        // from recent scoreboards, a historical season from that season's matches.
         fetchEspnLeagueFormMap(espnSport, league, options, formMap => {
             rows.forEach(row => {
                 const form = formMap[normalizedTeamName(row.team)];
@@ -1417,8 +1474,58 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
                     row.form = stringValue(form).slice(-5);
             });
             finish(onSuccess, rows);
-        });
+        }, season);
     }, error => finish(onError, error || "Unable to load ESPN standings"), { ignoreCooldown: true });
+}
+
+// ESPN seasons for a league, as season-dropdown options. Reads the core API's
+// seasons collection (each item is a $ref ending in the season's starting year),
+// newest first, marking the most recent as the default selection.
+function fetchEspnSeasons(espnSport, league, options, onSuccess, onError) {
+    if (stringValue(espnSport).length === 0 || stringValue(league).length === 0) {
+        finish(onSuccess, []);
+        return;
+    }
+    const url = ESPN_CORE_BASE + "/" + encodeURIComponent(espnSport) + "/leagues/" + encodeURIComponent(league) + "/seasons?limit=100";
+    requestText(cacheBustedUrl(url), text => {
+        let rows = [];
+        try {
+            rows = normalizeEspnSeasons(JSON.parse(text));
+        } catch (error) {
+            rows = [];
+        }
+        finish(onSuccess, rows);
+    }, error => finish(onError, error || "Unable to load ESPN seasons"), { ignoreCooldown: true });
+}
+
+function normalizeEspnSeasons(payload) {
+    const items = arrayValue(payload && payload.items);
+    const years = [];
+    const seen = {};
+    items.forEach(item => {
+        // Prefer an explicit year field; otherwise pull it from the $ref tail
+        // (.../seasons/2024 or .../seasons/2024?lang=en).
+        let year = stringValue(item && item.year);
+        if (year.length === 0) {
+            const refMatch = /\/seasons\/(\d{4})/.exec(stringValue(item && item.$ref));
+            year = refMatch ? refMatch[1] : "";
+        }
+        if (year.length !== 4 || seen[year])
+            return;
+        seen[year] = true;
+        years.push({ year: year, name: stringValue(item && (item.displayName || item.name)) });
+    });
+
+    years.sort((left, right) => numberValue(right.year) - numberValue(left.year));
+    return years.map((entry, index) => ({
+        key: entry.year,
+        id: entry.year,
+        path: entry.year,
+        label: entry.name.length > 0 ? entry.name : entry.year,
+        provider: "espn",
+        yearScore: numberValue(entry.year) * 10000 + numberValue(entry.year),
+        isDefault: index === 0
+    }));
 }
 
 // Teams → the same option shape as fetchCompetitionTeams.
@@ -1657,7 +1764,17 @@ function resolveSportScoreTeamPath(options, onSuccess, onError) {
 }
 
 function isCanonicalSportScoreTeamPath(path, sport) {
-    return SportScoreSports.isParticipantPath(sportScorePathFromUrl(path), sport);
+    const normalized = sportScorePathFromUrl(path);
+    if (!SportScoreSports.isParticipantPath(normalized, sport))
+        return false;
+
+    // A usable team URL carries the SportScore id segment after the slug:
+    //   /football/team/<slug>/<id>/   (loads)   vs   /football/team/<slug>/  (404).
+    // Without the id the page 404s, so treat an id-less path as NOT canonical so
+    // the caller resolves the real path via the country team list instead.
+    const tail = normalized.replace(/^\/+/, "").replace(/\/+$/, "").split("/");
+    // [sport, "team", slug, id]
+    return tail.length >= 4 && tail[tail.length - 1].length > 0;
 }
 
 function fetchSportScoreTeamMatches(options, mode, onSuccess, onError) {
@@ -1673,7 +1790,32 @@ function fetchSportScoreTeamMatches(options, mode, onSuccess, onError) {
         return;
     }
 
+    // Recent results: the team widget JSON (/api/widget/team/) returns this season's
+    // finished matches in ONE edge-cached request, versus the page path that fetches
+    // the team page plus up to ~10 competition pages (11 large HTML fetches) — the
+    // cause of the slow Recent Results. Use the widget first and only fall back to
+    // page-scraping when it returns nothing (e.g. a team it doesn't index).
+    if (mode === "recent") {
+        const recentCap = numberValue(options && options.recentResultsPerTeam) || 200;
+        fetchSportScoreTeamWidgetMatches(widgetOptionsForRecent(options), rows => {
+            const recent = filterSportScoreMatchesForMode(rows, "recent");
+            if (recent.length > 0) {
+                finish(onSuccess, sortRecentMatches(dedupeMatches(recent)).slice(0, recentCap));
+                return;
+            }
+
+            fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError);
+        }, () => fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError));
+        return;
+    }
+
     fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError);
+}
+
+// The team widget caps at 30 matches; ask for the max so recent results reach as
+// far back into the season as the endpoint allows in its single cached call.
+function widgetOptionsForRecent(options) {
+    return Object.assign({}, options, { limit: 30 });
 }
 
 function fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError) {
@@ -1684,14 +1826,34 @@ function fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError) 
             mode
         );
 
-        if (mode === "recent") {
-            finish(onSuccess, sortRecentMatches(dedupeMatches(teamRows)).slice(0, numberValue(options && options.recentResultsPerTeam) || 80));
-            return;
-        }
-
         const competitions = sportScoreTeamCompetitions(page.html, options)
             .filter(row => stringValue(row && row.path).length > 0)
             .slice(0, 10);
+
+        // The team's own SportScore page lists only a few of its newest matches.
+        // For "recent" that's far short of a full season, so (like fixtures/live)
+        // also harvest the team's matches out of each of its competition pages —
+        // those carry the whole season's fixtures, finished ones included.
+        if (mode === "recent") {
+            const recentCap = numberValue(options && options.recentResultsPerTeam) || 200;
+            if (competitions.length === 0) {
+                finish(onSuccess, sortRecentMatches(dedupeMatches(teamRows)).slice(0, recentCap));
+                return;
+            }
+
+            fetchSportScoreCompetitionPagesByRows(competitions, pages => {
+                let rows = teamRows.slice();
+                pages.forEach(competitionPage => {
+                    const label = stringValue(competitionPage && competitionPage.label);
+                    rows = rows.concat(normalizeSportScoreMatchPage(competitionPage.html, label, options)
+                        .filter(match => matchBelongsToTeam(match, teamName)));
+                });
+                rows = filterSportScoreMatchesForMode(rows, "recent");
+                finish(onSuccess, sortRecentMatches(dedupeMatches(rows)).slice(0, recentCap));
+            });
+            return;
+        }
+
         if (competitions.length === 0) {
             finish(onSuccess, sortMatches(dedupeMatches(teamRows)));
             return;
@@ -2705,8 +2867,10 @@ function filterSportScoreMatchesForMode(matches, mode) {
             return isLiveMatch(match);
         if (mode === "fixtures")
             return !isFinishedMatch(match) && !isLiveMatch(match) && (numberValue(match && match.timestamp) === 0 || numberValue(match.timestamp) >= now - 3 * 60 * 60 * 1000);
-        if (mode === "recent")
-            return isFinishedMatch(match) && (numberValue(match && match.timestamp) === 0 || numberValue(match.timestamp) >= now - SPORTSCORE_RECENT_MATCH_MAX_AGE_MS);
+        if (mode === "recent") {
+            const recentFloor = now - recentYearToDateWindowMs();
+            return isFinishedMatch(match) && (numberValue(match && match.timestamp) === 0 || numberValue(match.timestamp) >= recentFloor);
+        }
         return true;
     });
 }
@@ -4003,7 +4167,7 @@ function formatStartTime(value, options) {
 }
 
 function formatConfiguredDateValue(date, options) {
-    const format = stringValue(options && options.matchDateFormat) || "dd.MM";
+    const format = stringValue(options && options.matchDateFormat) || "dd.MM.yy";
     if (format === "locale-short")
         return date.toLocaleDateString();
     if (format === "locale-long")

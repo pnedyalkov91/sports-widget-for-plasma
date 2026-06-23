@@ -30,8 +30,15 @@ Item {
     property int selectedIndex: 0
     property string emptyText: i18nc("@info:placeholder", "No recent results")
     property var collapsedGroups: ({})
+    // Groups whose data is currently being fetched (lazy expand), so the section
+    // header can show a spinner.
+    property var loadingGroups: ({})
 
     signal matchSelected(int index)
+    // Emitted when a group header is toggled. The host owns the collapsed map
+    // (collapsedGroups is bound from it) and lazily fetches a group on expand.
+    signal groupExpanded(string group)
+    signal groupCollapsed(string group)
 
     onResultsModelChanged: resultsList.expandedIndex = -1
 
@@ -39,13 +46,16 @@ Item {
         return Boolean(root.collapsedGroups[String(group || "")]);
     }
 
+    function isGroupLoading(group) {
+        return Boolean(root.loadingGroups[String(group || "")]);
+    }
+
     function toggleGroup(group) {
         const key = String(group || "");
-        const next = {};
-        for (let existingKey in root.collapsedGroups)
-            next[existingKey] = root.collapsedGroups[existingKey];
-        next[key] = !root.isGroupCollapsed(key);
-        root.collapsedGroups = next;
+        if (root.isGroupCollapsed(key))
+            root.groupExpanded(key);
+        else
+            root.groupCollapsed(key);
     }
 
     function isFavoriteTeam(teamName) {
@@ -64,8 +74,15 @@ Item {
         spacing: 0
         boundsBehavior: Flickable.StopAtBounds
         model: root.resultsModel
-        reuseItems: true
-        cacheBuffer: Kirigami.Units.gridUnit * 10
+        // Delegate heights here are variable (collapsed groups, placeholder rows,
+        // an inline-expanded match whose details load async). With item reuse the
+        // ListView estimates off-screen heights from recycled items and corrects
+        // contentHeight mid-scroll — which makes the scrollbar resize and the view
+        // jump. Disabling reuse keeps each realized row's measured height, and a
+        // moderate cache buffer avoids re-measuring at the scroll edges. The fixed
+        // non-expanded delegate height (below) keeps contentHeight stable.
+        reuseItems: false
+        cacheBuffer: Kirigami.Units.gridUnit * 20
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
         }
@@ -79,6 +96,7 @@ Item {
             text: section
             collapsible: true
             collapsed: root.isGroupCollapsed(section)
+            loading: root.isGroupLoading(section)
             onToggled: root.toggleGroup(section)
         }
 
@@ -87,45 +105,82 @@ Item {
             visible: resultsList.count === 0 && !root.loading
         }
 
-        delegate: LiveMatchDelegate {
+        delegate: Item {
+            id: recentRow
+
+            required property var model
+            required property int index
+
             width: resultsList.contentColumnWidth
-            visible: !root.isGroupCollapsed(model.leagueGroup)
-            height: visible ? implicitHeight : 0
-            enabled: visible
-            scoreRowHeight: String(model.stadium || "").length > 0 ? Kirigami.Units.gridUnit * 5.4 : Kirigami.Units.gridUnit * 4.6
-            sport: model.sport
-            league: model.league
-            homeTeam: model.homeTeam
-            awayTeam: model.awayTeam
-            homeScore: model.homeScore
-            awayScore: model.awayScore
-            homePenaltyScore: model.homePenaltyScore || ""
-            awayPenaltyScore: model.awayPenaltyScore || ""
-            status: model.status
-            minute: model.minute
-            startTime: model.startTime
-            timestamp: Number(model.timestamp || 0)
-            splitLeagueAndTimeLines: true
-            stadium: model.stadium || ""
-            homeBadge: model.homeBadge
-            awayBadge: model.awayBadge
-            poster: model.poster
-            popular: model.popular
-            showScore: model.showScore !== false
-            favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
-            selected: index === root.selectedIndex
-            expanded: visible && index === resultsList.expandedIndex
-            matchPath: model.matchPath || ""
-            liveUrl: model.liveUrl || ""
-            detailsProvider: model.detailsProvider || ""
-            espnEventId: model.espnEventId || ""
-            espnSport: model.espnSport || ""
-            espnLeague: model.espnLeague || ""
-            onClicked: {
-                root.matchSelected(index);
-                resultsList.expandedIndex = resultsList.expandedIndex === index ? -1 : index;
+            // Explicit row kind ("header" | "match" | "notice") so the discriminator
+            // is reliable with the model's dynamic roles — header rows only exist so
+            // the section header renders, notice rows say "no recent matches".
+            readonly property string rowType: String(recentRow.model.rowType || "match")
+            readonly property bool isNotice: rowType === "notice"
+            readonly property bool shown: rowType !== "header"
+                && !root.isGroupCollapsed(recentRow.model.leagueGroup)
+            readonly property real matchRowHeight: String(recentRow.model.stadium || "").length > 0 ? Kirigami.Units.gridUnit * 5.4 : Kirigami.Units.gridUnit * 4.6
+            visible: shown
+            height: !shown ? 0 : (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+                : (matchLoader.item && matchLoader.item.expanded ? matchLoader.item.implicitHeight : matchRowHeight))
+
+            PlasmaComponents.Label {
+                id: noticeLabel
+
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Kirigami.Units.gridUnit
+                visible: recentRow.isNotice
+                text: i18nc("@info:placeholder", "No recent matches")
+                color: Kirigami.Theme.disabledTextColor
+                wrapMode: Text.WordWrap
             }
-            onRequestExpand: resultsList.expandedIndex = index
+
+            Loader {
+                id: matchLoader
+
+                width: parent.width
+                active: recentRow.shown && !recentRow.isNotice
+                visible: active
+                sourceComponent: LiveMatchDelegate {
+                    width: recentRow.width
+                    scoreRowHeight: recentRow.matchRowHeight
+                    sport: recentRow.model.sport
+                    league: recentRow.model.league
+                    homeTeam: recentRow.model.homeTeam
+                    awayTeam: recentRow.model.awayTeam
+                    homeScore: recentRow.model.homeScore
+                    awayScore: recentRow.model.awayScore
+                    homePenaltyScore: recentRow.model.homePenaltyScore || ""
+                    awayPenaltyScore: recentRow.model.awayPenaltyScore || ""
+                    status: recentRow.model.status
+                    minute: recentRow.model.minute
+                    startTime: recentRow.model.startTime
+                    timestamp: Number(recentRow.model.timestamp || 0)
+                    splitLeagueAndTimeLines: true
+                    stadium: recentRow.model.stadium || ""
+                    homeBadge: recentRow.model.homeBadge
+                    awayBadge: recentRow.model.awayBadge
+                    poster: recentRow.model.poster
+                    popular: recentRow.model.popular
+                    showScore: recentRow.model.showScore !== false
+                    favorite: root.isFavoriteTeam(recentRow.model.homeTeam) || root.isFavoriteTeam(recentRow.model.awayTeam)
+                    selected: recentRow.index === root.selectedIndex
+                    expanded: recentRow.index === resultsList.expandedIndex
+                    matchPath: recentRow.model.matchPath || ""
+                    liveUrl: recentRow.model.liveUrl || ""
+                    detailsProvider: recentRow.model.detailsProvider || ""
+                    espnEventId: recentRow.model.espnEventId || ""
+                    espnSport: recentRow.model.espnSport || ""
+                    espnLeague: recentRow.model.espnLeague || ""
+                    onClicked: {
+                        root.matchSelected(recentRow.index);
+                        resultsList.expandedIndex = resultsList.expandedIndex === recentRow.index ? -1 : recentRow.index;
+                    }
+                    onRequestExpand: resultsList.expandedIndex = recentRow.index
+                }
+            }
         }
 
         property int expandedIndex: -1

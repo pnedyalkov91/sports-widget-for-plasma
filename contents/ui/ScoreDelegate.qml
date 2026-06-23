@@ -238,7 +238,7 @@ Rectangle {
 
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.max(scoreLabel.implicitHeight, infoIconContainer.height)
+                Layout.preferredHeight: scoreLabel.visible ? Math.max(scoreLabel.implicitHeight, infoIconContainer.height) : 0
 
                 PlasmaComponents.Label {
                     id: scoreLabel
@@ -248,6 +248,8 @@ Rectangle {
                     horizontalAlignment: Text.AlignHCenter
                     font.bold: true
                     font.pixelSize: Kirigami.Units.gridUnit
+                    // An upcoming match has no score yet — hide the bare "-" placeholder.
+                    visible: root.status !== "Upcoming" && text !== "-"
                 }
 
                 Item {
