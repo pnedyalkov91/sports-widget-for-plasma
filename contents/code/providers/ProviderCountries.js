@@ -1332,6 +1332,46 @@ function flagSource(countryCode) {
     return "file:///usr/share/locale/l10n/" + code + "/flag.png";
 }
 
+// Regional-indicator emoji flag for a country slug (e.g. "spain" -> 🇪🇸), or ""
+// when there is no ISO-2 mapping (incl. "world"/international, which use a globe).
+function flagEmoji(countrySlug) {
+    const code = COUNTRY_FLAG_CODES[String(countrySlug || "").trim().toLowerCase()];
+    if (!code || code.length !== 2)
+        return "";
+
+    const upper = code.toUpperCase();
+    const base = 0x1F1E6;
+    const first = upper.charCodeAt(0) - 65;
+    const second = upper.charCodeAt(1) - 65;
+    if (first < 0 || first > 25 || second < 0 || second > 25)
+        return "";
+
+    return String.fromCodePoint(base + first) + String.fromCodePoint(base + second);
+}
+
+// Acronym / special-case country labels that simple title-casing would get wrong.
+const COUNTRY_DISPLAY_OVERRIDES = {
+    "usa": "USA",
+    "uae": "UAE",
+    "united-states": "United States",
+    "world": "International"
+};
+
+// Human-readable country name for a slug: "england" -> "England",
+// "united-states" -> "United States", "usa" -> "USA". Falls back to title-casing
+// the hyphenated slug. Used so saved entries / summaries never show a bare slug.
+function countryDisplayName(countrySlug) {
+    const slug = String(countrySlug || "").trim().toLowerCase();
+    if (slug.length === 0)
+        return "";
+    if (COUNTRY_DISPLAY_OVERRIDES.hasOwnProperty(slug))
+        return COUNTRY_DISPLAY_OVERRIDES[slug];
+    return slug.split("-")
+        .filter(part => part.length > 0)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
 function normalizedTeamName(value) {
     return String(value || "")
         .toLowerCase()

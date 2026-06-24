@@ -23,6 +23,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "../../code/SportsApi.js" as SportsApi
 import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
+import "../../code/providers/ProviderCountries.js" as ProviderCountries
 import "../../code/providers/SportScoreSports.js" as SportScoreSports
 
 // Country detail subpage: a grid of the country's competitions as cards. Tapping
@@ -35,12 +36,20 @@ Item {
     required property string country
     property string countryLabel: ""
     property url flag: ""
+    readonly property string flagEmoji: ProviderCountries.flagEmoji(root.country)
 
     readonly property string sport: root.configRoot ? root.configRoot.normalizedSport() : ""
     readonly property int cardMinimumWidth: Kirigami.Units.gridUnit * 11
     readonly property int headerIconSize: Kirigami.Units.iconSizes.large
 
     property var competitions: []
+    property string competitionFilter: ""
+    // Debounced copy of competitionFilter used by the grid, so typing doesn't
+    // rebuild every card on each keystroke (matches CombinedSelectPage).
+    property string appliedFilter: ""
+    readonly property var displayedCompetitions: root.configRoot
+        ? root.configRoot.filtered(root.competitions, root.appliedFilter)
+        : root.competitions
     property bool loading: false
     property string loadError: ""
     // True only when the provider request itself failed (network/timeout), as
@@ -56,6 +65,15 @@ Item {
 
     WizardCache {
         id: wizardCache
+    }
+
+    // Delays applying the search filter to the grid, since each change rebuilds
+    // every visible card (Repeater model replacement).
+    Timer {
+        id: filterApplyTimer
+        interval: 300
+        repeat: false
+        onTriggered: root.appliedFilter = root.competitionFilter
     }
 
     function applyEmblemMap(map) {
@@ -176,11 +194,21 @@ Item {
                 }
             }
 
+            Text {
+                Layout.preferredWidth: root.headerIconSize
+                Layout.preferredHeight: root.headerIconSize
+                visible: root.flagEmoji.length > 0
+                text: root.flagEmoji
+                font.pixelSize: Math.round(root.headerIconSize * 0.9)
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+
             Image {
                 Layout.preferredWidth: root.headerIconSize
                 Layout.preferredHeight: root.headerIconSize
                 source: root.flag
-                visible: source.toString().length > 0
+                visible: root.flagEmoji.length === 0 && source.toString().length > 0
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 sourceSize.width: width
@@ -231,6 +259,26 @@ Item {
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
+                    type: Kirigami.MessageType.Positive
+                    // Session-wide summary of new additions (excluding already-saved),
+                    // matching the wizard pages and the league subpage. The
+                    // cfg_selected* / pendingEntries reads make this re-evaluate when
+                    // the staged selection changes (e.g. via the league overlay).
+                    text: {
+                        if (!root.configRoot)
+                            return "";
+                        void root.configRoot.cfg_selectedLeagues;
+                        void root.configRoot.cfg_selectedFavoriteTeams;
+                        void root.configRoot.cfg_selectedNationalTeams;
+                        void root.configRoot.pendingEntries;
+                        void root.configRoot.sessionAddedEntries;
+                        return root.configRoot.sessionSummaryText();
+                    }
+                    visible: text.length > 0
+                }
+
+                Kirigami.InlineMessage {
+                    Layout.fillWidth: true
                     // Only football/basketball/cricket/tennis use SportScore; other
                     // sports are ESPN-only, so don't blame SportScore there.
                     // Hidden while (re)loading so "Try again" shows progress first.
@@ -254,6 +302,28 @@ Item {
                     visible: root.competitions.length > 0
                 }
 
+                TextField {
+                    Layout.fillWidth: true
+                    visible: root.competitions.length > 0
+                    placeholderText: i18nc("@info:placeholder", "Search competitions")
+                    text: root.competitionFilter
+                    leftPadding: Kirigami.Units.gridUnit * 1.8
+                    onTextEdited: {
+                        root.competitionFilter = text;
+                        filterApplyTimer.restart();
+                    }
+
+                    Kirigami.Icon {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Kirigami.Units.smallSpacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Kirigami.Units.iconSizes.small
+                        height: width
+                        source: "search"
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     visible: root.loading
@@ -273,20 +343,20 @@ Item {
 
                 GridLayout {
                     Layout.fillWidth: true
-                    visible: root.competitions.length > 0
+                    visible: root.displayedCompetitions.length > 0
                     columns: Math.max(1, Math.floor((width + columnSpacing) / (root.cardMinimumWidth + columnSpacing)))
                     columnSpacing: Kirigami.Units.smallSpacing
                     rowSpacing: Kirigami.Units.smallSpacing
 
                     Repeater {
-                        model: root.competitions
+                        model: root.displayedCompetitions
 
                         delegate: SportChoiceCard {
                             required property var modelData
 
                             title: modelData.label
                             iconSource: root.competitionEmblem(modelData)
-                            iconName: "view-calendar-list"
+                            hideFallbackIcon: true
                             cardToolTipText: i18nc("@info:tooltip", "Open %1", modelData.label)
                             onClicked: {
                                 if (root.configRoot)
@@ -298,10 +368,13 @@ Item {
 
                 Label {
                     Layout.fillWidth: true
-                    visible: !root.loading && !root.loadFailed && root.competitions.length === 0
-                    text: root.loadError.length > 0
-                        ? root.loadError
-                        : i18nc("@info", "No competitions found for this country.")
+                    // Distinguish "no competitions at all" from "search matched none".
+                    visible: !root.loading && !root.loadFailed && root.displayedCompetitions.length === 0
+                    text: root.competitions.length > 0
+                        ? i18nc("@info", "No competitions match your search.")
+                        : (root.loadError.length > 0
+                            ? root.loadError
+                            : i18nc("@info", "No competitions found for this country."))
                     color: Kirigami.Theme.disabledTextColor
                     wrapMode: Text.WordWrap
                 }

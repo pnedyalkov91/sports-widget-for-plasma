@@ -33,6 +33,7 @@ ColumnLayout {
     property var configRoot
 
     readonly property string sport: root.configRoot ? root.configRoot.normalizedSport() : ""
+    readonly property bool browseDisabled: root.configRoot ? root.configRoot.browseDisabled : false
     readonly property var curatedCompetitions: PopularCatalog.popularCompetitions(root.sport)
     // Competitions discovered live from the matches feed (valid slugs). Used for
     // sports without a hand-validated curated list (basketball, cricket, tennis…).
@@ -126,11 +127,14 @@ ColumnLayout {
                 Layout.fillWidth: true
                 visible: true
                 type: Kirigami.MessageType.Information
-                text: i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams. Use Browse all for every country and international competition.")
+                text: root.browseDisabled
+                    ? i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams.")
+                    : i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams. Use Browse all for every country and international competition.")
             }
 
             Button {
                 Layout.fillWidth: true
+                visible: !root.browseDisabled
                 icon.name: "globe"
                 text: i18nc("@action:button", "Browse all leagues & countries…")
                 onClicked: {
@@ -161,7 +165,7 @@ ColumnLayout {
 
                         title: modelData.label
                         iconSource: root.competitionEmblem(modelData)
-                        iconName: "applications-sports-symbolic"
+                        hideFallbackIcon: true
                         cardToolTipText: i18nc("@info:tooltip", "Open %1", modelData.label)
                         onClicked: {
                             if (root.configRoot)

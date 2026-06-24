@@ -18,6 +18,7 @@
 import "../../code/SportVisuals.js" as SportVisuals
 import "../../code/SportsApi.js" as SportsApi
 import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
+import "../../code/providers/ProviderCountries.js" as ProviderCountries
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -30,9 +31,13 @@ KCM.SimpleKCM {
 
     implicitHeight: Kirigami.Units.gridUnit * 22
     readonly property bool wizardFirstStepActive: root.pageIndex === 1 && wizardLoader.item && wizardLoader.item.pageIndex === 0
-    verticalScrollBarPolicy: root.wizardFirstStepActive ? Qt.ScrollBarAlwaysOff : Qt.ScrollBarAsNeeded
+    // While a wizard subpage overlay (league/country) covers the page, it scrolls
+    // with its own ScrollView — drop the outer KCM scrollbar so only one shows.
+    readonly property bool wizardOverlayActive: root.pageIndex === 1 && wizardLoader.item && wizardLoader.item.overlayActive
+    readonly property bool suppressOuterScroll: root.wizardFirstStepActive || root.wizardOverlayActive
+    verticalScrollBarPolicy: root.suppressOuterScroll ? Qt.ScrollBarAlwaysOff : Qt.ScrollBarAsNeeded
     horizontalScrollBarPolicy: Qt.ScrollBarAlwaysOff
-    flickable.interactive: !root.wizardFirstStepActive
+    flickable.interactive: !root.suppressOuterScroll
     flickable.flickableDirection: root.wizardFirstStepActive ? Flickable.HorizontalFlick : Flickable.VerticalFlick
 
     onWizardFirstStepActiveChanged: {
@@ -287,7 +292,12 @@ KCM.SimpleKCM {
 
     function displayCountryLabel(entry) {
         entry = entry || {};
-        return String(entry.customCountryLabel || entry.countryLabel || entry.country || "").trim();
+        const explicit = String(entry.customCountryLabel || entry.countryLabel || "").trim();
+        if (explicit.length > 0)
+            return explicit;
+        // Fall back to a properly-cased name for the country slug, so saved entries
+        // never show a bare lowercase slug (e.g. "usa" -> "USA").
+        return ProviderCountries.countryDisplayName(entry.country);
     }
 
     function displayFavoriteTeam(entry) {

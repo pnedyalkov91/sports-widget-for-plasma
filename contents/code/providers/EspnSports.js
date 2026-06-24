@@ -48,6 +48,8 @@ const SPORTS = [
             { label: "Eredivisie", league: "ned.1", country: "netherlands" },
             { label: "Primeira Liga", league: "por.1", country: "portugal" },
             { label: "Major League Soccer", league: "usa.1", country: "usa" },
+            { label: "Liga MX", league: "mex.1", country: "mexico" },
+            { label: "NWSL", league: "usa.nwsl", country: "usa" },
             { label: "EFL Championship", league: "eng.2", country: "england" },
             { label: "UEFA Champions League", league: "uefa.champions", country: "world" },
             { label: "UEFA Europa League", league: "uefa.europa", country: "world" },
@@ -59,8 +61,11 @@ const SPORTS = [
         leagues: [
             { label: "NBA", league: "nba", country: "usa" },
             { label: "WNBA", league: "wnba", country: "usa" },
+            { label: "NBA G League", league: "nba-development", country: "usa" },
             { label: "NCAA Men's", league: "mens-college-basketball", country: "usa" },
-            { label: "NCAA Women's", league: "womens-college-basketball", country: "usa" }
+            { label: "NCAA Women's", league: "womens-college-basketball", country: "usa" },
+            { label: "NBL", league: "nbl", country: "australia" },
+            { label: "FIBA World Cup", league: "fiba", country: "world" }
         ]
     },
     {
@@ -82,21 +87,26 @@ const SPORTS = [
         label: "American Football", value: "american-football", espnSport: "football", kind: "team-league",
         leagues: [
             { label: "NFL", league: "nfl", country: "usa" },
-            { label: "NCAA Football", league: "college-football", country: "usa" }
+            { label: "NCAA Football", league: "college-football", country: "usa" },
+            { label: "CFL", league: "cfl", country: "canada" },
+            { label: "UFL", league: "ufl", country: "usa" },
+            { label: "XFL", league: "xfl", country: "usa" }
         ]
     },
     {
         label: "Baseball", value: "baseball", espnSport: "baseball", kind: "team-league",
         leagues: [
             { label: "MLB", league: "mlb", country: "usa" },
-            { label: "College Baseball", league: "college-baseball", country: "usa" }
+            { label: "College Baseball", league: "college-baseball", country: "usa" },
+            { label: "World Baseball Classic", league: "world-baseball-classic", country: "world" }
         ]
     },
     {
         label: "Ice Hockey", value: "hockey", espnSport: "hockey", kind: "team-league",
         leagues: [
             { label: "NHL", league: "nhl", country: "usa" },
-            { label: "NCAA Men's Hockey", league: "mens-college-hockey", country: "usa" }
+            { label: "NCAA Men's Hockey", league: "mens-college-hockey", country: "usa" },
+            { label: "NCAA Women's Hockey", league: "womens-college-hockey", country: "usa" }
         ]
     },
     {
@@ -105,7 +115,9 @@ const SPORTS = [
             { label: "PGA Tour", league: "pga", country: "world" },
             { label: "LPGA", league: "lpga", country: "world" },
             { label: "DP World Tour", league: "eur", country: "world" },
-            { label: "LIV Golf", league: "liv", country: "world" }
+            { label: "LIV Golf", league: "liv", country: "world" },
+            { label: "PGA Tour Champions", league: "champions-tour", country: "world" },
+            { label: "Korn Ferry Tour", league: "ntw", country: "world" }
         ]
     },
     {
@@ -113,6 +125,8 @@ const SPORTS = [
         leagues: [
             { label: "Formula 1", league: "f1", country: "world" },
             { label: "NASCAR Cup Series", league: "nascar-premier", country: "usa" },
+            { label: "NASCAR Xfinity Series", league: "nascar-secondary", country: "usa" },
+            { label: "NASCAR Truck Series", league: "nascar-truck", country: "usa" },
             { label: "IndyCar", league: "irl", country: "usa" }
         ]
     },
@@ -124,20 +138,16 @@ const SPORTS = [
         ]
     },
     {
+        // "Rugby" unifies rugby union and rugby league. The league-feed entries use
+        // espnSport "rugby"; the single rugby-league feed (numeric id 3) carries a
+        // per-league espnSport override since it lives under a different ESPN path
+        // ("rugby-league") — there are no separate NRL / Super League slugs.
         label: "Rugby", value: "rugby", espnSport: "rugby", kind: "team-league",
         leagues: [
             { label: "Premiership Rugby", league: "267979", country: "england" },
             { label: "United Rugby Championship", league: "270557", country: "world" },
-            { label: "Six Nations", league: "180659", country: "world" }
-        ]
-    },
-    {
-        // ESPN exposes a single, generic rugby-league feed (numeric id 3); there
-        // are no separate NRL / Super League league paths (those slugs 400). The
-        // one feed carries the league's fixtures, results and standings.
-        label: "Rugby League", value: "rugby-league", espnSport: "rugby-league", kind: "team-league",
-        leagues: [
-            { label: "Rugby League", league: "3", country: "world" }
+            { label: "Six Nations", league: "180659", country: "world" },
+            { label: "Rugby League", league: "3", country: "world", espnSport: "rugby-league" }
         ]
     },
     {
@@ -180,6 +190,14 @@ const SPORTS = [
 // Sports SportScore already provides; for these ESPN is only a fallback, not a
 // new sport in the picker.
 const SHARED_SPORTS = ["football", "basketball", "cricket", "tennis"];
+
+// ESPN-native sports whose whole league set is the curated "Top" list — there is
+// no meaningful per-country catalog to browse, so the wizard skips the country
+// step and ends on the Top page for them.
+const NO_COUNTRY_BROWSE_SPORTS = [
+    "american-football", "baseball", "hockey", "golf", "racing", "mma", "rugby",
+    "australian-football", "field-hockey", "volleyball", "water-polo"
+];
 
 // Maps a SportScore competition identity to an ESPN league, so SportScore's saved
 // entries can fall back to ESPN. Keyed by the SportScore league slug.
@@ -286,6 +304,12 @@ function isNative(sport) {
     return supports(sport) && SHARED_SPORTS.indexOf(normalizedSport(sport)) < 0;
 }
 
+// True when the sport offers a per-country browse flow. ESPN-native sports with a
+// fixed, fully-curated league set return false so the wizard ends on the Top page.
+function hasCountryBrowse(sport) {
+    return NO_COUNTRY_BROWSE_SPORTS.indexOf(normalizedSport(sport)) < 0;
+}
+
 function espnSportFor(sport) {
     const entry = sportEntry(sport);
     return entry ? entry.espnSport : "";
@@ -315,7 +339,9 @@ function leaguesFor(sport) {
         value: league.league,
         slug: league.league,
         country: league.country || "world",
-        espnSport: entry.espnSport,
+        // A league may override the sport's ESPN path (e.g. the rugby-league feed
+        // under the unified "Rugby" sport lives at espnSport "rugby-league").
+        espnSport: league.espnSport || entry.espnSport,
         path: "/" + entry.value + "/competition/" + league.league + "/"
     }));
 }
@@ -391,13 +417,24 @@ function espnLeagueForEntry(options) {
     const league = stringValue(options.league).toLowerCase();
     const country = stringValue(options.country).toLowerCase();
 
+    // Backward compat: "Rugby League" used to be its own sport; it is now a league
+    // under the unified "Rugby". Resolve such legacy saved entries to its feed.
+    if (sport === "rugby-league")
+        return { espnSport: "rugby-league", league: league.length > 0 ? league : "3" };
+
     // ESPN-native sport: the entry's league IS an ESPN league slug already.
     if (isNative(sport)) {
         const entry = sportEntry(sport);
-        if (league.length > 0)
+        if (league.length > 0) {
+            // Honor a per-league ESPN path override (e.g. rugby-league under "Rugby").
+            for (let i = 0; i < entry.leagues.length; i += 1) {
+                if (stringValue(entry.leagues[i].league).toLowerCase() === league && entry.leagues[i].espnSport)
+                    return { espnSport: entry.leagues[i].espnSport, league };
+            }
             return { espnSport: entry.espnSport, league };
+        }
         if (entry.leagues.length > 0)
-            return { espnSport: entry.espnSport, league: entry.leagues[0].league };
+            return { espnSport: entry.leagues[0].espnSport || entry.espnSport, league: entry.leagues[0].league };
         return null;
     }
 

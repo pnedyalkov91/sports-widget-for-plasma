@@ -996,7 +996,7 @@ ColumnLayout {
                     SportChoiceCard {
                         title: modelData.label
                         iconSource: root.competitionEmblem(modelData)
-                        iconName: "view-calendar-list"
+                        hideFallbackIcon: true
                         cardToolTipText: i18nc("@info:tooltip", "Open %1", modelData.label)
                         selected: root.configRoot && root.configRoot.isLeagueSelected(modelData.value)
                         onClicked: root.configRoot.openLeaguePage(modelData, root.competitionEmblem(modelData), "select")

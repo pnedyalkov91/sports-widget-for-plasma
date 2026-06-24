@@ -29,6 +29,11 @@ ItemDelegate {
     property url iconSource: ""
     property string iconEmoji: ""
     property string flagSource: ""
+    // When true, suppress the name-based fallback icon (the generic placeholder
+    // shown when there is no real emblem/flag/emoji). A real emblem in iconSource
+    // still renders. Used by competition cards so they show only team/league
+    // emblems, never a generic icon.
+    property bool hideFallbackIcon: false
     property string infoText: ""
     property string cardToolTipText: root.title
     property bool selected: false
@@ -77,7 +82,7 @@ ItemDelegate {
         Kirigami.Icon {
             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
             Layout.preferredHeight: Layout.preferredWidth
-            visible: root.flagSource.length === 0 && root.iconEmoji.length === 0 && !root.remoteIconSource
+            visible: !root.hideFallbackIcon && root.flagSource.length === 0 && root.iconEmoji.length === 0 && !root.remoteIconSource
             source: root.iconSource.toString().length > 0 ? root.iconSource : root.iconName
             isMask: root.iconSource.toString().length > 0 && !root.remoteIconSource
             color: root.selected ? Kirigami.Theme.highlightColor : Kirigami.Theme.textColor

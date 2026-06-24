@@ -17,7 +17,9 @@
 
 import "../../code/SportVisuals.js" as SportVisuals
 import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
+import "../../code/providers/ProviderCountries.js" as ProviderCountries
 import "../../code/providers/SportScoreSports.js" as SportScoreSports
+import "../../code/providers/EspnSports.js" as EspnSports
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -43,21 +45,33 @@ Item {
     property string cfg_providerCountrySport: ""
     property var cfg_providerCountryOptions: []
     property var pendingEntries: []
+    // Entries followed instantly during this wizard session (the "favorite" flow
+    // saves competitions/teams straight to the saved list). Tracked so the summary
+    // can show them; entries saved before this session stay excluded.
+    property var sessionAddedEntries: []
     readonly property bool multiSelectEnabled: root.editingIndex < 0
-    readonly property bool tennisMode: {
-        const s = String(root.cfg_selectedSports || "").split(",")[0].trim().toLowerCase();
-        return s === "tennis";
+    // Sports whose whole league set is the curated "Top" list (fixed-league ESPN
+    // sports): the wizard skips the Country + Competition browse steps and ends on
+    // the Top page. Everything else (incl. tennis, now SportScore-browsable) uses
+    // the full flow.
+    readonly property bool browseDisabled: {
+        const s = String(root.cfg_selectedSports || "").split(",")[0].trim();
+        return s.length > 0 && !EspnSports.hasCountryBrowse(s);
     }
-    // Non-tennis flow: Sport(0) → Top/Popular(1) → Country(2) → Competition(3).
-    // Tennis skips Popular and Country: Sport(0) → Players(1).
-    readonly property int pageCount: root.tennisMode ? 2 : 4
-    readonly property int combinedPageIndex: root.tennisMode ? 1 : 3
-    readonly property int countryPageIndex: root.tennisMode ? -1 : 2
-    readonly property bool onPopularPage: !root.tennisMode && root.pageIndex === 1
+    // Full flow: Sport(0) → Top/Popular(1) → Country(2) → Competition(3).
+    // Browse-disabled sports stop after Top: Sport(0) → Top(1).
+    readonly property int pageCount: root.browseDisabled ? 2 : 4
+    readonly property int combinedPageIndex: 3
+    readonly property int countryPageIndex: root.browseDisabled ? -1 : 2
+    readonly property bool onPopularPage: root.pageIndex === 1
     // On the country page the competition picking happens in the country subpage
-    // overlay (immediate add), so this page is the terminal step for non-tennis.
-    readonly property bool onCountryPage: !root.tennisMode && root.pageIndex === root.countryPageIndex
+    // overlay (immediate add), so it is a terminal step for the browse flow.
+    readonly property bool onCountryPage: !root.browseDisabled && root.pageIndex === root.countryPageIndex
     readonly property string currentProvider: settingsRoot ? settingsRoot.currentProvider : ""
+    // True while a full-page subpage overlay (league or country) covers the wizard.
+    // The host KCM uses this to drop its outer scrollbar so only the overlay's own
+    // ScrollView scrolls (avoids a double scrollbar).
+    readonly property bool overlayActive: root.openedLeague !== null || root.openedCountry.length > 0
 
     signal closeRequested()
     signal finishRequested(var entries)
@@ -116,21 +130,6 @@ Item {
 
     function favoriteOptions() {
         return [];
-    }
-
-    // Shown above the page-progress dots so the user can see which sport/country
-    // they're currently configuring, e.g. "Football › Spain".
-    function wizardBreadcrumbText() {
-        const parts = [];
-
-        const sport = root.firstSport();
-        if (sport.length > 0)
-            parts.push(root.optionLabel(root.sportOptions(), sport) || sport);
-
-        if (root.pageIndex >= root.combinedPageIndex && root.cfg_country.length > 0)
-            parts.push(root.countryLabel());
-
-        return parts.join(" › ");
     }
 
     function countryLabel() {
@@ -217,19 +216,33 @@ Item {
         return false;
     }
 
+    // Stable identity for a saved/working entry, matching settingsRoot.sameEntry's
+    // fields, so session-added entries can be tracked in a list.
+    function entryKey(entry) {
+        entry = entry || {};
+        const type = root.entryType(entry);
+        const tail = type === "team" ? String(entry.favoriteTeam || "").trim().toLowerCase() : String(entry.league || "").trim().toLowerCase();
+        return [String(entry.sport || "").trim().toLowerCase(), String(entry.country || "").trim().toLowerCase(), type, tail].join("|");
+    }
+
     function toggleFavorite(entry) {
         if (!root.settingsRoot || !entry)
             return;
 
+        const key = root.entryKey(entry);
         const saved = root.settingsRoot.savedLeagues();
         for (let index = 0; index < saved.length; index += 1) {
             if (root.settingsRoot.sameEntry(saved[index], entry)) {
                 saved.splice(index, 1);
                 root.settingsRoot.saveLeagues(saved);
+                root.sessionAddedEntries = root.sessionAddedEntries.filter(item => root.entryKey(item) !== key);
                 return;
             }
         }
         root.settingsRoot.saveOrReplaceLeague(entry, -1);
+        // Record it (with the labels the summary needs) as added this session.
+        if (!root.sessionAddedEntries.some(item => root.entryKey(item) === key))
+            root.sessionAddedEntries = root.sessionAddedEntries.concat([entry]);
     }
 
     function filtered(options, filterText) {
@@ -480,6 +493,7 @@ Item {
 
     function hasDraftSelections() {
         return root.pendingEntries.length > 0
+            || (Array.isArray(root.sessionAddedEntries) && root.sessionAddedEntries.length > 0)
             || root.selectedLeagueValues().length > 0
             || root.selectedNationalTeamValues().length > 0
             || root.selectedFavoriteTeamValues().length > 0
@@ -490,33 +504,35 @@ Item {
         return root.pendingEntries.concat(root.currentEntries());
     }
 
-    function selectedItemsSummaryText() {
-        const leagues = root.selectedLeagueValues();
-        const teamValues = root.selectedNationalTeamValues().concat(root.selectedFavoriteTeamValues())
-            .filter((value, index, array) => array.indexOf(value) === index);
-        const parts = [];
+    // Summary of new additions in this wizard session — grouped by
+    // "<sport> - <country>". Two sources, deduped by entryKey:
+    //   • sessionAddedEntries — competitions/teams followed instantly this session;
+    //   • staged current-sport picks (cfg_selected*) and entries banked via
+    //     "Add Another Sport", minus anything saved before this wizard opened.
+    function sessionSummaryText() {
+        const staged = root.allPendingEntries().filter(entry => {
+            if (!root.settingsRoot)
+                return true;
+            const saved = root.settingsRoot.savedLeagues();
+            for (let index = 0; index < saved.length; index += 1) {
+                if (root.editingIndex >= 0 && index === root.editingIndex)
+                    continue;
+                if (root.settingsRoot.sameEntry(entry, saved[index]))
+                    return false;
+            }
+            return true;
+        });
 
-        if (leagues.length > 0) {
-            const leagueNames = leagues.map(value => ProviderCatalog.leagueLabel(value) || root.optionLabel(root.leagueOptions(), value) || value);
-            const preview = leagueNames.slice(0, 3).join(", ");
-            const suffix = leagueNames.length > 3 ? i18nc("@label", " and %1 more", leagueNames.length - 3) : "";
-            parts.push(i18nc("@info", "Competitions (%1): %2%3", leagues.length, preview, suffix));
-        }
-
-        if (teamValues.length > 0) {
-            const preview = teamValues.slice(0, 3).join(", ");
-            const suffix = teamValues.length > 3 ? i18nc("@label", " and %1 more", teamValues.length - 3) : "";
-            const usesPlayers = SportScoreSports.usesPlayers(root.normalizedSport());
-            parts.push(usesPlayers
-                ? i18nc("@info", "Players (%1): %2%3", teamValues.length, preview, suffix)
-                : i18nc("@info", "Teams (%1): %2%3", teamValues.length, preview, suffix));
-        }
-
-        return parts.join(" | ");
-    }
-
-    function pendingEntriesSummaryText() {
-        const entries = Array.isArray(root.pendingEntries) ? root.pendingEntries : [];
+        const seen = {};
+        const entries = [];
+        const sessionAdded = Array.isArray(root.sessionAddedEntries) ? root.sessionAddedEntries : [];
+        sessionAdded.concat(staged).forEach(entry => {
+            const key = root.entryKey(entry);
+            if (seen[key])
+                return;
+            seen[key] = true;
+            entries.push(entry);
+        });
         if (entries.length === 0)
             return "";
 
@@ -524,21 +540,25 @@ Item {
         const groups = {};
         entries.forEach(entry => {
             const sport = SportVisuals.label(entry.sport || "");
-            if (!groups[sport]) {
-                groups[sport] = [];
-                order.push(sport);
+            const explicit = String(entry.countryLabel || root.optionLabel(root.countryOptions(), entry.country) || "").trim();
+            const country = explicit.length > 0 ? explicit : ProviderCountries.countryDisplayName(entry.country);
+            const key = country.length > 0 ? sport + " - " + country : sport;
+            if (!groups[key]) {
+                groups[key] = [];
+                order.push(key);
             }
             const title = root.entryTitle(entry);
             if (title.length > 0)
-                groups[sport].push(title);
+                groups[key].push(title);
         });
 
-        return order.map(sport => {
-            const names = groups[sport];
+        // One "<sport> - <country> - <items>" group per line.
+        return order.map(key => {
+            const names = groups[key];
             const preview = names.slice(0, 3).join(", ");
             const suffix = names.length > 3 ? i18nc("@label", " and %1 more", names.length - 3) : "";
-            return sport + ": " + preview + suffix;
-        }).join(" | ");
+            return key + " - " + preview + suffix;
+        }).join("\n");
     }
 
     function isNationalTeamLabel(teamName, countryLabel) {
@@ -551,6 +571,9 @@ Item {
     }
 
     function initializeDraft() {
+        // Fresh session: forget instant-follow tracking from a previous wizard open.
+        root.sessionAddedEntries = [];
+
         const entry = root.initialEntry || {};
         if (Object.keys(entry).length > 0) {
             const isTeam = String(entry.type || "").trim() === "team"
@@ -621,22 +644,6 @@ Item {
             }
         }
 
-        Label {
-            id: wizardBreadcrumb
-
-            Layout.fillWidth: true
-            Layout.alignment: Qt.AlignHCenter
-            Layout.preferredHeight: Kirigami.Units.gridUnit * 1.2
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            // Always takes up space (even with no text) so the dots row below
-            // doesn't jump when the breadcrumb appears/disappears.
-            text: root.wizardBreadcrumbText()
-            color: Kirigami.Theme.disabledTextColor
-            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
-            elide: Text.ElideRight
-        }
-
         RowLayout {
             Layout.fillWidth: true
 
@@ -648,8 +655,6 @@ Item {
                 onClicked: {
                     if (root.pageIndex > 0) {
                         root.pageIndex -= 1;
-                        if (root.tennisMode && root.pageIndex === 0)
-                            root.cfg_country = "";
                     } else if (root.hasDraftSelections()) {
                         discardSelectionsDialog.open();
                     } else {
@@ -660,25 +665,6 @@ Item {
 
             Item {
                 Layout.fillWidth: true
-
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: Kirigami.Units.smallSpacing * 1.5
-
-                    Repeater {
-                        model: root.pageCount
-
-                        delegate: Rectangle {
-                            required property int index
-
-                            Layout.preferredWidth: Kirigami.Units.smallSpacing * 1.4
-                            Layout.preferredHeight: Layout.preferredWidth
-                            radius: width / 2
-                            color: index === root.pageIndex ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-                            opacity: index === root.pageIndex ? 1 : 0.45
-                        }
-                    }
-                }
             }
 
             Button {
@@ -701,25 +687,21 @@ Item {
             Button {
                 id: nextButton
 
-                icon.name: (root.onPopularPage || root.onCountryPage || root.pageIndex === root.pageCount - 1) ? "dialog-ok-apply" : "go-next"
-                text: (root.onPopularPage || root.onCountryPage || root.pageIndex === root.pageCount - 1) ? i18nc("@action:button", "Done") : i18nc("@action:button", "Next")
+                // On the Top/Country pages favourites are saved instantly and the
+                // dialog's own Apply/OK persists everything, so no "Done" button is
+                // needed there — hide it. It only appears to advance ("Next") or to
+                // open the review on the staged-flow's final page.
+                visible: !root.onPopularPage && !root.onCountryPage
+                icon.name: root.pageIndex === root.pageCount - 1 ? "dialog-ok-apply" : "go-next"
+                text: root.pageIndex === root.pageCount - 1 ? i18nc("@action:button", "Done") : i18nc("@action:button", "Next")
                 enabled: root.canAdvance()
                 onClicked: {
                     if (!root.canAdvance())
                         return;
 
-                    // On the Top page and the country page favourites are added
-                    // instantly (via their subpages), so "Done" simply closes.
-                    if (root.onPopularPage || root.onCountryPage) {
-                        root.closeRequested();
-                        return;
-                    }
-
                     if (root.pageIndex === root.pageCount - 1) {
                         reviewDialog.open();
                     } else {
-                        if (root.tennisMode && root.pageIndex === 0)
-                            root.cfg_country = "world";
                         root.pageIndex += 1;
                     }
                 }
@@ -735,8 +717,20 @@ Item {
         anchors.left: parent.left
         anchors.right: parent.right
         type: Kirigami.MessageType.Information
-        text: i18nc("@info", "Already added: %1. Click Done to save everything.", root.pendingEntriesSummaryText())
-        visible: root.pendingEntries.length > 0
+        // Session summary of new additions (staged + banked), shown on every page so
+        // the user always sees what they have added so far, including countries. The
+        // cfg_selected* / pendingEntries reads make the binding track staged changes.
+        readonly property string summary: {
+            void root.cfg_selectedLeagues;
+            void root.cfg_selectedFavoriteTeams;
+            void root.cfg_selectedNationalTeams;
+            void root.pendingEntries;
+            void root.sessionAddedEntries;
+            return root.sessionSummaryText();
+        }
+        text: i18nc("@info", "Added so far:") + "\n" + summary + "\n"
+            + i18nc("@info", "Click Apply (or OK) to save everything.")
+        visible: summary.length > 0
     }
 
     Kirigami.InlineMessage {
@@ -751,25 +745,11 @@ Item {
         visible: root.pageIndex === root.pageCount - 1 && text.length > 0
     }
 
-    Kirigami.InlineMessage {
-        id: selectedItemsInlineMessage
-
-        anchors.top: duplicateInlineMessage.visible
-            ? duplicateInlineMessage.bottom
-            : (pendingEntriesInlineMessage.visible ? pendingEntriesInlineMessage.bottom : header.bottom)
-        anchors.topMargin: Kirigami.Units.smallSpacing
-        anchors.left: parent.left
-        anchors.right: parent.right
-        type: Kirigami.MessageType.Information
-        text: root.selectedItemsSummaryText()
-        visible: root.pageIndex === root.pageCount - 1 && text.length > 0
-    }
-
     Dialog {
         id: discardSelectionsDialog
 
         modal: true
-        title: i18nc("@title:window", "Discard Selections?")
+        title: i18nc("@title:window", "Leave the wizard?")
         standardButtons: Dialog.NoButton
 
         contentItem: ColumnLayout {
@@ -778,7 +758,7 @@ Item {
 
             Label {
                 Layout.fillWidth: true
-                text: i18nc("@info", "If you go back now, your selected competitions and teams will be lost, including any sports you've already added in this wizard.")
+                text: i18nc("@info", "Are you sure? Competitions and teams you have enabled are kept, but any picks you have not yet confirmed will be discarded.")
                 wrapMode: Text.WordWrap
             }
 
@@ -891,18 +871,16 @@ Item {
     StackLayout {
         id: pageStack
 
-        anchors.top: selectedItemsInlineMessage.visible
-            ? selectedItemsInlineMessage.bottom
-            : (duplicateInlineMessage.visible
-                ? duplicateInlineMessage.bottom
-                : (pendingEntriesInlineMessage.visible ? pendingEntriesInlineMessage.bottom : header.bottom))
+        anchors.top: duplicateInlineMessage.visible
+            ? duplicateInlineMessage.bottom
+            : (pendingEntriesInlineMessage.visible ? pendingEntriesInlineMessage.bottom : header.bottom)
         anchors.topMargin: Kirigami.Units.largeSpacing
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        // Items: Sport(0), Popular(1), Country(2), Competition(3). Tennis maps
-        // its second page straight to Competition (skipping Popular + Country).
-        currentIndex: root.tennisMode ? (root.pageIndex === 0 ? 0 : 3) : root.pageIndex
+        // Items: Sport(0), Popular(1), Country(2), Competition(3). pageIndex maps
+        // 1:1; browse-disabled sports simply never advance past Popular(1).
+        currentIndex: root.pageIndex
 
         SportSelectPage {
             configRoot: root
@@ -968,6 +946,21 @@ Item {
         root.openedCountry = "";
         root.openedCountryLabel = "";
         root.openedCountryFlag = "";
+    }
+
+    // Stage the current sport's selections and restart the wizard at the Sport
+    // picker, so several sports can be added in one session. Mirrors the
+    // "Add Another Sport" button on the last wizard page. Invoked from a subpage
+    // overlay (league/country), so close any open overlay first.
+    function addAnotherSport() {
+        root.closeLeaguePage();
+        root.closeCountryPage();
+        // In the browse ("select") flow the staged picks live in cfg_selected*;
+        // fold them into pendingEntries. In the "favorite" flow they are already
+        // saved instantly, so currentEntries() is empty and this is a no-op.
+        root.pendingEntries = root.pendingEntries.concat(root.currentEntries());
+        root.selectSport("");
+        root.pageIndex = 0;
     }
 
     Component {

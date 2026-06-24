@@ -280,6 +280,17 @@ Item {
             }
 
             ToolButton {
+                icon.name: "list-add"
+                text: i18nc("@action:button", "Add Another Sport")
+                display: AbstractButton.TextBesideIcon
+                visible: root.configRoot && root.configRoot.multiSelectEnabled
+                onClicked: {
+                    if (root.configRoot)
+                        root.configRoot.addAnotherSport();
+                }
+            }
+
+            ToolButton {
                 icon.name: "dialog-close"
                 text: i18nc("@action:button", "Close")
                 display: AbstractButton.IconOnly
@@ -314,6 +325,16 @@ Item {
                     text: root.commitMode === "select"
                         ? i18nc("@info", "Your picks are added to this sport's selection. They are saved when you finish the wizard and click Apply (or OK).")
                         : i18nc("@info", "Changes here are not applied immediately. Click Apply (or OK) at the bottom of the window to save them.")
+                }
+
+                Kirigami.InlineMessage {
+                    Layout.fillWidth: true
+                    type: Kirigami.MessageType.Positive
+                    // savedRevision bumps on every follow/unfollow, re-evaluating this.
+                    // Shows the session-wide summary (all sports/countries added,
+                    // excluding already-saved items) so it matches the wizard pages.
+                    text: root.savedRevision >= 0 && root.configRoot ? root.configRoot.sessionSummaryText() : ""
+                    visible: text.length > 0
                 }
 
                 Kirigami.InlineMessage {

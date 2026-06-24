@@ -21,6 +21,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "../../code/SportsApi.js" as SportsApi
 import "../../code/providers/ProviderCatalog.js" as ProviderCatalog
+import "../../code/providers/ProviderCountries.js" as ProviderCountries
 import "../../code/providers/SportScoreSports.js" as SportScoreSports
 
 SportStepPage {
@@ -34,13 +35,13 @@ SportStepPage {
     // simply returned no countries.
     property bool countryLoadFailed: false
     property int countryRequestToken: 0
-    readonly property bool pageActive: root.configRoot && !root.configRoot.tennisMode && root.configRoot.pageIndex === root.configRoot.countryPageIndex
+    readonly property bool pageActive: root.configRoot && root.configRoot.countryPageIndex >= 0 && root.configRoot.pageIndex === root.configRoot.countryPageIndex
     readonly property bool tennisMode: root.configRoot && root.configRoot.normalizedSport() === "tennis"
     readonly property var displayedOptions: root.pageActive && root.configRoot && !root.loadingCountries ? root.configRoot.filtered(root.configRoot.countryOptions(), root.countryFilter) : []
 
     title: i18nc("@title:group", "Country")
     subtitle: root.tennisMode
-        ? i18nc("@info", "SportScore lists tennis competitions and players internationally.")
+        ? i18nc("@info", "Open a region to follow its tennis competitions and players.")
         : i18nc("@info", "Open a country to follow its leagues and teams.")
     filterText: root.countryFilter
     filterPlaceholder: i18nc("@info:placeholder", "Search countries")
@@ -63,7 +64,7 @@ SportStepPage {
         text: root.showCountryError
             ? i18nc("@info", "SportScore is not responding right now, so the list of countries could not be loaded. Please try again later.")
             : (root.tennisMode
-                ? i18nc("@info", "Tennis is organised internationally, so there is no country to choose — continue to pick competitions and players.")
+                ? i18nc("@info", "Open International to browse the ATP, WTA and Grand Slam competitions and follow players.")
                 : i18nc("@info", "Open a country to browse its competitions and follow the ones you want. You can follow competitions from several countries."))
         actions: root.showCountryError ? [retryCountriesAction] : []
     }
@@ -206,9 +207,15 @@ SportStepPage {
         model: root.displayedOptions
 
         delegate: SportChoiceCard {
+            // Prefer an emoji flag; fall back to the l10n image / named icon.
+            readonly property string countryEmoji: String(modelData.iconEmoji || "").length > 0
+                ? String(modelData.iconEmoji)
+                : ProviderCountries.flagEmoji(modelData.value)
+
             title: modelData.label
-            flagSource: String(modelData.icon || "").indexOf("file://") === 0 ? modelData.icon : ""
-            iconName: String(modelData.icon || "").indexOf("file://") === 0 ? "" : modelData.icon || ""
+            iconEmoji: countryEmoji
+            flagSource: countryEmoji.length === 0 && String(modelData.icon || "").indexOf("file://") === 0 ? modelData.icon : ""
+            iconName: countryEmoji.length === 0 && String(modelData.icon || "").indexOf("file://") === 0 ? "" : (countryEmoji.length > 0 ? "" : modelData.icon || "")
             infoText: modelData.infoText || ""
             cardToolTipText: i18nc("@info:tooltip", "Open %1", modelData.label)
             selected: root.configRoot && root.configRoot.cfg_country === modelData.value

@@ -38,17 +38,30 @@ function countryOptions(providerId, sport) {
     const normalized = SportScoreSports.normalizedSport(sport);
     // ESPN-native sports: countries come from their ESPN leagues.
     if (EspnSports.isNative(normalized))
-        return EspnSports.countriesFor(normalized);
+        return withFlagEmoji(EspnSports.countriesFor(normalized));
     if (normalized === "basketball")
-        return ProviderCountries.basketballCountryOptions();
+        return withFlagEmoji(ProviderCountries.basketballCountryOptions());
     if (normalized === "cricket")
-        return ProviderCountries.cricketCountryOptions();
+        return withFlagEmoji(ProviderCountries.cricketCountryOptions());
     const defaults = SportScoreSports.defaultCountryOptions(sport);
     if (defaults.length > 0)
-        return defaults;
+        return withFlagEmoji(defaults);
     if (SportScoreSports.supports(sport))
-        return ProviderCountries.footballCountryOptions(true);
+        return withFlagEmoji(ProviderCountries.footballCountryOptions(true));
     return [];
+}
+
+// Attach a regional-indicator emoji flag (iconEmoji) to each country option so the
+// UI can show emoji flags instead of distro-specific l10n PNGs. Leaves the original
+// icon in place as a fallback (e.g. globe for "world", which has no emoji).
+function withFlagEmoji(options) {
+    return (Array.isArray(options) ? options : []).map(option => {
+        const copy = Object.assign({}, option || {});
+        const emoji = ProviderCountries.flagEmoji(copy.value);
+        if (emoji.length > 0)
+            copy.iconEmoji = emoji;
+        return copy;
+    });
 }
 
 

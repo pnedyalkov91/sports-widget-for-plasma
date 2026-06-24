@@ -3531,7 +3531,10 @@ function sportScoreCompetitionLinks(html, country, sport) {
     const wantedCountry = ProviderCatalog.slugForValue(country);
     while ((match = expression.exec(page)) !== null) {
         const rowCountry = ProviderCatalog.slugForValue(match[2]);
-        if (wantedCountry !== "world" && rowCountry !== wantedCountry)
+        // The "International Tournaments" (world) view must show only genuinely
+        // international competitions — SportScore tags those with the "world" country
+        // segment — not every country's leagues from the global overview page.
+        if (rowCountry !== wantedCountry)
             continue;
 
         const path = htmlDecode(match[1]);
