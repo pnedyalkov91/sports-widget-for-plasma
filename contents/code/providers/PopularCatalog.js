@@ -163,6 +163,13 @@ function popularCompetitions(sport) {
         return toCompetitionOptions(value, BASKETBALL_COMPETITIONS);
     case "cricket":
         return toCompetitionOptions(value, CRICKET_COMPETITIONS);
+    case "tennis":
+        // Tennis is a SportScore "shared" sport, so it has no curated SportScore
+        // top list and SportScore's live competition scrape is flaky. ESPN reliably
+        // serves ATP/WTA, so use its catalog as the Top list (entries already carry
+        // the {label,value,slug,country,path} shape the cards/subpages expect, and
+        // resolve straight to ESPN via EspnSports.espnLeagueForEntry).
+        return EspnSports.leaguesFor("tennis");
     default:
         // ESPN-native sports: their leagues are the "Top" competitions.
         if (EspnSports.isNative(value))

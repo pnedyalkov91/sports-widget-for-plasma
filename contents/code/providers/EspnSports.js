@@ -328,6 +328,15 @@ function usesTeams(sport) {
     return kind(sport) === "team-league";
 }
 
+// Individual sports whose followable "competitors" are single players, not teams.
+// ESPN exposes these as ranked athletes (its rankings feed) rather than a roster,
+// so the wizard offers players to follow instead of teams.
+const PLAYER_SPORTS = ["tennis"];
+
+function usesPlayers(sport) {
+    return PLAYER_SPORTS.indexOf(normalizedSport(sport)) >= 0;
+}
+
 // Leagues for a sport as competition-style options the wizard can render:
 // { label, value (=ESPN league slug), slug, country, espnSport, path }.
 function leaguesFor(sport) {

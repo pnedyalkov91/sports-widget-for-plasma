@@ -607,6 +607,20 @@ function fetchEspnLiveMatchDetails(options, onSuccess) {
     const espnSport = stringValue(options && options.espnSport);
     const espnLeague = stringValue(options && options.espnLeague);
     const eventId = stringValue(options && options.espnEventId);
+
+    // Tennis: ESPN has no match-details endpoint, but the scoreboard row already
+    // carries the set-by-set breakdown (espnTennisSets), so surface that directly.
+    if (sport === "tennis") {
+        const sets = options && options.espnTennisSets;
+        finish(onSuccess, Object.assign(emptyLiveMatchDetails(), {
+            sourceProvider: "ESPN",
+            statsProvider: "ESPN",
+            competition: stringValue(options && options.league),
+            tennisSets: sets && Array.isArray(sets.rows) && sets.rows.length > 0 ? sets : null
+        }));
+        return;
+    }
+
     if (sport !== "football" || espnSport.length === 0 || espnLeague.length === 0 || eventId.length === 0) {
         finish(onSuccess, emptyLiveMatchDetails());
         return;
@@ -1154,8 +1168,124 @@ function normalizeEspnEvent(event, sportValue, options) {
     };
 }
 
+// Sets won by a tennis competitor = the linescores (per-set games) they won. ESPN
+// gives no aggregate "sets" field, so derive it; falls back to the flat score when
+// linescores are absent.
+function espnTennisSetsWon(competitor) {
+    const lines = arrayValue(competitor && competitor.linescores);
+    if (lines.length > 0)
+        return lines.filter(line => line && line.winner === true).length;
+    return numberValue(competitor && competitor.score);
+}
+
+// Per-set "games (tiebreak)" string for one competitor's set, e.g. "6" or "7(3)".
+function espnTennisSetCell(line) {
+    const games = stringValue(line && line.value);
+    const tb = line && line.tiebreak !== undefined && line.tiebreak !== null ? stringValue(line.tiebreak) : "";
+    return tb.length > 0 ? games + "(" + tb + ")" : games;
+}
+
+// Set-by-set details for an ESPN tennis match, in the SAME shape the UI's details
+// panel expects from SportScore (sportScoreTennisSets): { title, rows:[{ label,
+// homeValue, awayValue }] }, one row per set. Lets ESPN tennis matches show their
+// set breakdown even though ESPN has no separate match-details endpoint.
+function espnTennisSetsDetails(home, away) {
+    const homeLines = arrayValue(home && home.linescores);
+    const awayLines = arrayValue(away && away.linescores);
+    const count = Math.max(homeLines.length, awayLines.length);
+    if (count === 0)
+        return null;
+    const rows = [];
+    for (let i = 0; i < count; i += 1) {
+        const homeValue = espnTennisSetCell(homeLines[i]);
+        const awayValue = espnTennisSetCell(awayLines[i]);
+        if (homeValue.length > 0 || awayValue.length > 0)
+            rows.push({ label: "Set " + (i + 1), homeValue, awayValue });
+    }
+    return rows.length > 0 ? { title: "Set-by-set scoreboard", rows } : null;
+}
+
+// One ESPN tennis match (a competition inside an event's groupings) → a match row
+// in the same shape as the football path, plus tennisSets for the per-set display.
+function normalizeEspnTennisMatch(competition, tournamentName, sportValue, options) {
+    const competitors = arrayValue(competition && competition.competitors);
+    if (competitors.length < 2)
+        return null;
+    let home = competitors.find(side => stringValue(side && side.homeAway) === "home") || competitors[0];
+    let away = competitors.find(side => stringValue(side && side.homeAway) === "away") || competitors[1];
+    if (home === away)
+        away = competitors[1] === home ? competitors[0] : competitors[1];
+
+    const homeAthlete = (home && home.athlete) || {};
+    const awayAthlete = (away && away.athlete) || {};
+    const homeName = stringValue(homeAthlete.displayName || homeAthlete.fullName);
+    const awayName = stringValue(awayAthlete.displayName || awayAthlete.fullName);
+    if (homeName.length === 0 || awayName.length === 0)
+        return null;
+
+    const statusType = (competition.status && competition.status.type) || {};
+    const status = espnStatusFromState(statusType.state, statusType.completed);
+    const statusText = stringValue(statusType.shortDetail || statusType.detail || statusType.description);
+    const timestamp = Date.parse(stringValue(competition.date));
+    const round = stringValue(competition.round && (competition.round.displayName || competition.round.name));
+
+    return {
+        id: "espn-" + stringValue(competition.id),
+        sport: sportValue,
+        league: tournamentName || stringValue(options && options.leagueLabel),
+        homeTeam: homeName,
+        awayTeam: awayName,
+        homeScore: status === "Upcoming" ? "" : stringValue(espnTennisSetsWon(home)),
+        awayScore: status === "Upcoming" ? "" : stringValue(espnTennisSetsWon(away)),
+        status,
+        statusText,
+        minute: status === "Live" ? statusText : "",
+        startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        matchday: round,
+        group: round,
+        stadium: stringValue(competition.venue && competition.venue.fullName),
+        homeBadge: stringValue(homeAthlete.flag && homeAthlete.flag.href),
+        awayBadge: stringValue(awayAthlete.flag && awayAthlete.flag.href),
+        poster: "",
+        popular: false,
+        matchPath: "",
+        liveUrl: "",
+        // Set-by-set breakdown (details-panel shape) carried on the row, so the
+        // details panel can show it without a separate fetch — ESPN has no tennis
+        // match-details endpoint. Surfaced by fetchEspnLiveMatchDetails.
+        espnTennisSets: espnTennisSetsDetails(home, away),
+        detailsProvider: "espn",
+        statsProvider: "espn",
+        sourceProvider: "ESPN",
+        espnEventId: stringValue(competition.id),
+        espnSport: stringValue(options && options.espnSport),
+        espnLeague: stringValue(options && options.espnLeague)
+    };
+}
+
+// Tennis scoreboards nest matches under event.groupings[].competitions[] (each
+// event is a tournament), unlike the flat team-sport scoreboard. Flatten them.
+function normalizeEspnTennisScoreboard(payload, sportValue, options) {
+    let rows = [];
+    arrayValue(payload && payload.events).forEach(event => {
+        const tournament = stringValue(event && event.name);
+        arrayValue(event && event.groupings).forEach(grouping => {
+            arrayValue(grouping && grouping.competitions).forEach(competition => {
+                const row = normalizeEspnTennisMatch(competition, tournament, sportValue, options);
+                if (row)
+                    rows.push(row);
+            });
+        });
+    });
+    return rows;
+}
+
 function normalizeEspnScoreboard(payload, sportValue, leagueLabel, options) {
     const merged = Object.assign({ leagueLabel: leagueLabel }, options || {});
+    if (normalizedSport(sportValue) === "tennis")
+        return normalizeEspnTennisScoreboard(payload, sportValue, merged);
+
     const league = stringValue((payload && payload.leagues && payload.leagues[0] && payload.leagues[0].name)) || leagueLabel;
     return arrayValue(payload && payload.events)
         .map(event => {
@@ -1190,6 +1320,17 @@ const ESPN_MODE_MATCH_LIMIT = 40;
 // can hold many more. Still bounded so a huge tournament can't flood the models.
 const ESPN_RECENT_MODE_MATCH_LIMIT = 300;
 
+// When the entry follows a single team/player, keep only that competitor's
+// matches out of the league scoreboard. Essential for player sports (tennis): the
+// ATP/WTA scoreboard carries every match, but a followed player wants just theirs.
+// For whole-competition entries (no favoriteTeam) this is a no-op.
+function filterEspnRowsForEntry(rows, options) {
+    const team = stringValue(options && options.favoriteTeam);
+    if (team.length === 0)
+        return arrayValue(rows);
+    return arrayValue(rows).filter(row => matchBelongsToTeam(row, team));
+}
+
 // Sort + return only the rows for one mode out of a fully-normalized scoreboard.
 function espnRowsForMode(rows, mode, limit) {
     const filtered = filterEspnMatchesForMode(rows, mode);
@@ -1210,7 +1351,7 @@ function espnYearStartDate() {
 // live/fixtures only; "recent" is routed to its own year-to-date fetch upstream
 // (see fetchEspnScoreboard) and never reaches here.
 function deliverEspnMode(espnSport, league, mode, options, rows, onSuccess) {
-    finish(onSuccess, espnRowsForMode(rows, mode));
+    finish(onSuccess, espnRowsForMode(filterEspnRowsForEntry(rows, options), mode));
 }
 
 // Short-lived cache + in-flight de-dup, both keyed by espnSport|league. A saved
@@ -1238,7 +1379,7 @@ function fetchEspnScoreboardWindow(espnSport, league, dates, mode, options, onSu
         } catch (error) {
             rows = [];
         }
-        finish(onSuccess, espnRowsForMode(rows, mode, modeLimit));
+        finish(onSuccess, espnRowsForMode(filterEspnRowsForEntry(rows, options), mode, modeLimit));
     }, error => finish(onError, error || "Unable to load ESPN scoreboard"), { ignoreCooldown: true });
 }
 
@@ -1566,6 +1707,55 @@ function fetchEspnTeams(espnSport, league, options, onSuccess, onError) {
         rows.sort((a, b) => stringValue(a.label).localeCompare(stringValue(b.label)));
         finish(onSuccess, rows);
     }, error => finish(onError, error || "Unable to load ESPN teams"), { ignoreCooldown: true });
+}
+
+// Tennis (and other player sports) have no roster, but ESPN's rankings feed lists
+// the currently ranked athletes for a tour. Return them in the SAME row shape as
+// fetchEspnTeams so the wizard's team UI / follow flow works unchanged — a followed
+// player is stored as a "team" entry whose favoriteTeam is the player's name, which
+// the scoreboard path filters on (see espnRowsForMode). Rows keep ranking order.
+function fetchEspnTennisPlayers(espnSport, league, options, onSuccess, onError) {
+    if (stringValue(espnSport).length === 0 || stringValue(league).length === 0) {
+        finish(onSuccess, []);
+        return;
+    }
+    const url = ESPN_SITE_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/rankings";
+    requestText(cacheBustedUrl(url), text => {
+        let rows = [];
+        try {
+            const payload = JSON.parse(text);
+            const ranks = arrayValue(payload && payload.rankings && payload.rankings[0] && payload.rankings[0].ranks);
+            const seen = {};
+            ranks.forEach(rank => {
+                const athlete = (rank && rank.athlete) || {};
+                const label = stringValue(athlete.displayName || athlete.fullName
+                    || (stringValue(athlete.firstName) + " " + stringValue(athlete.lastName)).trim());
+                const slug = ProviderCatalog.slugForValue(athlete.id || label);
+                if (label.length === 0 || seen[slug || label.toLowerCase()])
+                    return;
+                seen[slug || label.toLowerCase()] = true;
+                const headshot = athlete.headshot && typeof athlete.headshot === "object"
+                    ? stringValue(athlete.headshot.href) : stringValue(athlete.headshot);
+                rows.push({
+                    label: label,
+                    value: label,
+                    slug: slug,
+                    teamSlug: slug,
+                    teamPath: "",
+                    // Prefer the headshot; fall back to the country flag so the row is
+                    // never iconless. The UI's "im-user" placeholder covers neither.
+                    badge: headshot.length > 0 ? headshot
+                        : (athlete.flag && typeof athlete.flag === "object" ? stringValue(athlete.flag.href) : ""),
+                    country: stringValue(athlete.citizenshipCountry && athlete.citizenshipCountry.name)
+                        || stringValue(athlete.flagAltText) || stringValue(options && options.country)
+                });
+            });
+        } catch (error) {
+            rows = [];
+        }
+        // Keep ranking order (rows already pushed #1..#N); no alpha sort here.
+        finish(onSuccess, rows);
+    }, error => finish(onError, error || "Unable to load ESPN tennis players"), { ignoreCooldown: true });
 }
 
 // Maps an ESPN play "type.type" to the same incident kind vocabulary
@@ -2220,6 +2410,15 @@ function fetchSportScoreCompetitionPageTeams(options, onSuccess, onError) {
 
 function fetchCompetitionTeams(options, onSuccess, onError) {
     const plan = espnPlan(options);
+
+    // Player sports (tennis): there is no roster, so offer ESPN's ranked players to
+    // follow instead. The competition's Top page already comes from ESPN (ATP/WTA),
+    // so this is ESPN-only — never SportScore.
+    if (plan && EspnSports.usesPlayers(options && (options.sports || options.sport))) {
+        fetchEspnTennisPlayers(plan.espnSport, plan.league, options, onSuccess, onError);
+        return;
+    }
+
     const espnRunner = plan ? (onRows, onErr) => fetchEspnTeams(plan.espnSport, plan.league, options, onRows, onErr) : null;
 
     // ESPN-native sports have no SportScore standings to derive teams from.

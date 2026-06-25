@@ -34,12 +34,18 @@ ColumnLayout {
 
     readonly property string sport: root.configRoot ? root.configRoot.normalizedSport() : ""
     readonly property bool browseDisabled: root.configRoot ? root.configRoot.browseDisabled : false
+    // Tennis shows its full ATP/WTA list right here, and "Browse all" only leads to
+    // an International page with the same two competitions — so hide it for tennis
+    // too, just like the fixed-league ESPN-native sports.
+    readonly property bool hideBrowse: root.browseDisabled || root.sport === "tennis"
     readonly property var curatedCompetitions: PopularCatalog.popularCompetitions(root.sport)
     // Competitions discovered live from the matches feed (valid slugs). Used for
     // sports without a hand-validated curated list (basketball, cricket, tennis…).
     property var derivedCompetitions: []
     readonly property var popularCompetitions: {
-        if (root.sport === "football")
+        // Football and tennis have a reliable curated list (tennis = ESPN ATP/WTA),
+        // so keep it instead of the flakier SportScore-derived competitions.
+        if (root.sport === "football" || root.sport === "tennis")
             return root.curatedCompetitions;
         if (Array.isArray(root.derivedCompetitions) && root.derivedCompetitions.length > 0)
             return root.derivedCompetitions;
@@ -127,14 +133,14 @@ ColumnLayout {
                 Layout.fillWidth: true
                 visible: true
                 type: Kirigami.MessageType.Information
-                text: root.browseDisabled
+                text: root.hideBrowse
                     ? i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams.")
                     : i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams. Use Browse all for every country and international competition.")
             }
 
             Button {
                 Layout.fillWidth: true
-                visible: !root.browseDisabled
+                visible: !root.hideBrowse
                 icon.name: "globe"
                 text: i18nc("@action:button", "Browse all leagues & countries…")
                 onClicked: {

@@ -23,6 +23,7 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import "../../code/SportsApi.js" as SportsApi
 import "../../code/providers/SportScoreSports.js" as SportScoreSports
+import "../../code/providers/EspnSports.js" as EspnSports
 
 // League detail subpage: enable the whole competition and/or follow individual
 // teams in it (teams + emblems from the standings JSON API, cached). Opened as a
@@ -40,6 +41,9 @@ Item {
     property string commitMode: "favorite"
 
     readonly property string sport: root.configRoot ? root.configRoot.normalizedSport() : ""
+    // Player sports (tennis) follow individual players, not teams; the followable
+    // list and its labels switch to "Players" accordingly.
+    readonly property bool usesPlayers: EspnSports.usesPlayers(root.sport)
     readonly property string slug: root.league ? String(root.league.value || root.league.slug || "") : ""
     readonly property string country: root.league ? String(root.league.country || "") : ""
     readonly property string label: root.league ? String(root.league.label || "") : ""
@@ -344,7 +348,9 @@ Item {
                     // Hidden while (re)loading so "Try again" shows progress first.
                     visible: root.loadFailed && !root.loading && SportScoreSports.supports(root.sport)
                     type: Kirigami.MessageType.Error
-                    text: i18nc("@info", "SportScore is not responding right now, so this competition's teams could not be loaded. Please try again later.")
+                    text: root.usesPlayers
+                        ? i18nc("@info", "The provider is not responding right now, so this competition's players could not be loaded. Please try again later.")
+                        : i18nc("@info", "SportScore is not responding right now, so this competition's teams could not be loaded. Please try again later.")
                     actions: [
                         Kirigami.Action {
                             icon.name: "view-refresh"
@@ -410,7 +416,9 @@ Item {
                         visible: root.savedRevision >= 0 && root.followedTeams().length === 0
                         text: root.leagueEnabled()
                             ? i18nc("@info", "Following the whole competition.")
-                            : i18nc("@info", "No teams followed")
+                            : (root.usesPlayers
+                                ? i18nc("@info", "No players followed")
+                                : i18nc("@info", "No teams followed"))
                         color: Kirigami.Theme.disabledTextColor
                         wrapMode: Text.WordWrap
                     }
@@ -420,11 +428,13 @@ Item {
                     Layout.fillWidth: true
                 }
 
-                // --- Teams ----------------------------------------------
+                // --- Teams / Players ------------------------------------
                 Kirigami.Heading {
                     Layout.fillWidth: true
                     level: 4
-                    text: i18nc("@title:group", "Teams")
+                    text: root.usesPlayers
+                        ? i18nc("@title:group", "Players")
+                        : i18nc("@title:group", "Teams")
                 }
 
                 RowLayout {
@@ -439,7 +449,9 @@ Item {
                     }
 
                     Label {
-                        text: i18nc("@info", "Loading teams…")
+                        text: root.usesPlayers
+                            ? i18nc("@info", "Loading players…")
+                            : i18nc("@info", "Loading teams…")
                         color: Kirigami.Theme.disabledTextColor
                     }
                 }
@@ -461,7 +473,9 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     visible: !root.loading && Array.isArray(root.teams) && root.teams.length === 0
-                    text: i18nc("@info", "No teams are available for this competition from the provider.")
+                    text: root.usesPlayers
+                        ? i18nc("@info", "No players are available for this competition from the provider.")
+                        : i18nc("@info", "No teams are available for this competition from the provider.")
                     color: Kirigami.Theme.disabledTextColor
                     wrapMode: Text.WordWrap
                 }
