@@ -27,6 +27,8 @@ Kirigami.FormLayout {
     required property var configRoot
 
     readonly property string calendarIcsFileHint: "~/.local/share/sports-widget-for-plasma/sports-matches.ics"
+    readonly property string calendarPluginDownloadUrl: "https://github.com/pnedyalkov91/sports-widget-for-plasma/raw/main/plugin/sports-calendar-plugin.tar.gz"
+    readonly property string calendarPluginMd5: "8cb3cf8a7e1cff8cf501861d38341553"
 
     // Detect whether the native Plasma calendar plugin is installed, by checking
     // the Qt plugin paths plasmashell scans. "unknown" until the check returns.
@@ -62,7 +64,7 @@ Kirigami.FormLayout {
         visible: true
         showCloseButton: true
         type: Kirigami.MessageType.Information
-        text: i18nc("@info", "Upcoming fixtures from the competitions and teams you follow are shown directly in the Plasma calendar (the date/clock pop-up), kept in sync automatically. This runs entirely in memory and never uses Akonadi, so it cannot slow down or freeze Plasma.")
+        text: i18nc("@info", "Upcoming fixtures from the competitions and teams you follow are shown directly in the Plasma calendar (the date/clock pop-up), kept in sync automatically.")
     }
 
     Kirigami.InlineMessage {
@@ -72,31 +74,6 @@ Kirigami.FormLayout {
         showCloseButton: true
         type: Kirigami.MessageType.Information
         text: i18nc("@info", "Calendar sync is off by default for each saved competition/team to avoid spam. Enable it per entry in the \"Competitions & teams\" tab.")
-    }
-
-    Kirigami.InlineMessage {
-        Layout.fillWidth: true
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
-        visible: calendarTab.calendarPluginState === "installed"
-        showCloseButton: true
-        type: Kirigami.MessageType.Positive
-        text: i18nc("@info", "Calendar plugin detected. If matches still don't appear, make sure the \"Sports Widget matches\" plugin is enabled in the Plasma calendar settings.")
-    }
-
-    Kirigami.InlineMessage {
-        Layout.fillWidth: true
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
-        visible: calendarTab.calendarPluginState === "missing"
-        showCloseButton: true
-        type: Kirigami.MessageType.Warning
-        text: i18nc("@info", "The native calendar plugin is not installed, so matches won't appear in the Plasma calendar yet. Build and install it from the widget's plugin/ folder, then restart Plasma.")
-        actions: [
-            Kirigami.Action {
-                text: i18nc("@action:button", "View README") // qmllint disable unqualified
-                icon.name: "internet-web-browser"
-                onTriggered: Qt.openUrlExternally("https://github.com/pnedyalkov91/sports-widget-for-plasma/blob/main/plugin/README.md")
-            }
-        ]
     }
 
     ComboBox {
@@ -149,6 +126,36 @@ Kirigami.FormLayout {
             calendarTab.configRoot.cfg_calendarIcsExportEnabled = mode === "ics" || mode === "akonadi";
             calendarTab.configRoot.cfg_calendarAkonadiEnabled = mode === "akonadi";
         }
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+        visible: calendarTab.calendarPluginState === "installed"
+        showCloseButton: true
+        type: Kirigami.MessageType.Positive
+        text: i18nc("@info", "Calendar plugin detected. If matches still don't appear, make sure the \"Sports Widget matches\" plugin is enabled in the Plasma calendar settings.")
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+        visible: calendarTab.calendarPluginState === "missing"
+        showCloseButton: true
+        type: Kirigami.MessageType.Warning
+        text: i18nc("@info", "The native calendar plugin is not installed, so matches won't appear in the Plasma calendar yet. Download and install it from the widget's plugin/ folder, then restart Plasma. Before installing, verify the downloaded archive's MD5 checksum matches:\n%1", calendarTab.calendarPluginMd5)
+        actions: [
+            Kirigami.Action {
+                text: i18nc("@action:button", "Download plugin") // qmllint disable unqualified
+                icon.name: "download"
+                onTriggered: Qt.openUrlExternally(calendarTab.calendarPluginDownloadUrl)
+            },
+            Kirigami.Action {
+                text: i18nc("@action:button", "View README") // qmllint disable unqualified
+                icon.name: "internet-web-browser"
+                onTriggered: Qt.openUrlExternally("https://github.com/pnedyalkov91/sports-widget-for-plasma/blob/main/plugin/README.md")
+            }
+        ]
     }
 
     Kirigami.InlineMessage {

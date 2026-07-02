@@ -1,89 +1,46 @@
 # Sports Widget - Plasma calendar plugin
 
-This is a small native **Plasma calendar-events plugin** that shows the matches you
-follow in the Sports widget directly in the Plasma calendar (the date/clock pop-up),
-exactly like the [GnomeFootball](https://github.com/carlosjdelgado/GnomeFootball)
-extension does for GNOME.
+This is a small native **Plasma calendar-events plugin** that shows the matches you follow in the Sports widget directly in the Plasma calendar (the date/clock pop-up).
 
-## Why it exists
+## Download & install
 
-The widget used to write an iCalendar (`.ics`) file and register it as an Akonadi
-resource so matches would appear in the Plasma calendar. On some systems that made
-plasmashell's PIM/Akonadi stack reconcile and re-index every event on each update,
-which **froze Plasma for 25–30 s (sometimes permanently)**.
+Download the plugin archive:
 
-This plugin avoids that completely:
+https://github.com/pnedyalkov91/sports-widget-for-plasma/raw/main/plugin/sports-calendar-plugin.tar.gz
 
-- The widget writes a small, **inert JSON snapshot** of upcoming matches
-  (`~/.local/share/sports-widget-for-plasma/sports-matches.json`). Nothing parses,
-  reconciles or indexes it.
-- This plugin reads that JSON and feeds the matches to the Plasma calendar
-  **in memory**, via `CalendarEvents::CalendarEventsPlugin::dataReady()`.
-- **No `.ics`, no Akonadi resource, no PIM indexer** - so it cannot hang plasmashell.
-
-## Build & install
-
-Requires the KF6 `CalendarEvents` development headers
-(`/usr/include/KF6/KDeclarative/CalendarEvents`), Qt 6 and a C++ compiler.
+Note: Before installing, please verify the downloaded archive's MD5 checksum matches:
+8cb3cf8a7e1cff8cf501861d38341553 
 
 ```sh
-cd plugin
+tar -xzf sports-calendar-plugin.tar.gz
+cd <extracted folder>
 sh install.sh
-# installs to ~/.local/lib64/qt6/plugins/plasmacalendarplugins/sportsmatchesevents.so
 ```
 
-### Make it discoverable (two requirements)
+Then restart Plasma and enable **"Sports Widget matches"** under right-click the Digital Clock -> Configure ->  Calendar. Finally, enable the calendar option in the widget
+settings (Notifications -> Calendar), which also shows whether this plugin is
+detected.
 
-Plasma only loads a calendar plugin if **(a)** the `.so` is on Qt's plugin path and
-**(b)** it's listed in `enabledCalendarPlugins`.
+**1. Enable the plugin in the Digital Clock settings:**
 
-1. **Plugin path.** `install.sh` installs to the system path
-   (`/usr/lib64/qt6/plugins/plasmacalendarplugins`, via sudo) by default, which Qt
-   always scans. To install per-user instead (`SYSTEM_INSTALL=0 sh install.sh`), Qt
-   must also scan `~/.local/lib64/qt6/plugins`, so export `QT_PLUGIN_PATH` for the
-   session - e.g. drop a line in `~/.config/plasma-workspace/env/qt-plugin-path.sh`:
+![Digital Clock settings - Calendar add-ons](../screenshots/calendar/digital-clock-settings.png)
 
-   ```sh
-   export QT_PLUGIN_PATH="$HOME/.local/lib64/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
-   ```
+**2. Enable calendar sync in the widget settings:**
 
-2. **Enable it.** Right-click the clock → Configure → Calendar → tick
-   **"Sports Widget matches"**. (This adds `sportsmatchesevents` to
-   `enabledCalendarPlugins` in `plasma-org.kde.plasma.desktop-appletsrc`.)
+![Widget settings - Notifications - Calendar](../screenshots/calendar/widget-settings.png)
 
-Then reload plasmashell:
+![Widget settings - Notifications - Calendar - Add matches to calendar](../screenshots/calendar/widget-settings-calendar.png)
 
-```sh
-kquitapp6 plasmashell; kstart plasmashell
-```
-
-Finally enable the calendar option in the widget settings (Notifications → Calendar).
-That page also shows whether this plugin is detected.
-
-## Uninstall
+If you want to uninstall it, please run:
 
 ```sh
 sh uninstall.sh
-kquitapp6 plasmashell; kstart plasmashell
 ```
-
-It removes the `.so` and its config QML from the system and per-user Qt plugin
-paths and removes `sportsmatchesevents` from `enabledCalendarPlugins`. Widget data
-is left untouched.
-
-## Akonadi (optional, unstable)
-
-The widget also has an opt-in switch to register the exported `.ics` as a live
-Akonadi/KDE PIM calendar. It is **not recommended** - on some systems Akonadi
-re-indexes every event on each update and can freeze Plasma - which is exactly why
-this in-memory plugin exists and is the default. The Akonadi path lives in the
-widget (`CalendarSync.resourceEnsureScript` / `resourceOfflineScript`), not in this
-plugin.
 
 ## Files
 
 - `sportsmatchesevents.h` / `.cpp` - the plugin implementation.
 - `SportsMatchesEventsConfig.qml` - the config page shown in Plasma calendar settings.
 - `metadata.json` - plugin metadata (embedded into the `.so`).
-- `install.sh` - compiles with `g++` + `moc` and installs the plugin + config QML.
+- `install.sh` - installs the plugin + config QML.
 - `uninstall.sh` - removes the installed plugin and disables it.

@@ -1,0 +1,2199 @@
+# Bulgarian translations for Sports Widget for Plasma package.
+# Copyright (C) 2026 THE Sports Widget for Plasma'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the Sports Widget for Plasma package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Sports Widget for Plasma\n"
+"Report-Msgid-Bugs-To: https://github.com/pnedyalkov91/sports-widget-for-"
+"plasma/issues\n"
+"POT-Creation-Date: 2026-07-02 18:06+0300\n"
+"PO-Revision-Date: 2026-07-02 18:06+0300\n"
+"Last-Translator: \n"
+"Language-Team: Bulgarian <kde-i18n-doc@kde.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: contents/ui/FullRepresentation.qml:65
+msgctxt "@info last item of a provider list"
+msgid " and %1"
+msgstr " и %1"
+
+#: contents/ui/config/SportWizardPage.qml:487
+#: contents/ui/config/SportWizardPage.qml:559
+msgctxt "@label"
+msgid " and %1 more"
+msgstr " и още %1"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:133
+msgctxt "@info"
+msgid ""
+"\"All future matches\" counts every upcoming fixture that is fetched, so the "
+"panel number can be higher than the widget list, which shows at most "
+"\"Matches per team/competition\" fixtures per competition (Widget → "
+"Scheduled)."
+msgstr "„Всички предстоящи мачове“ отчита всяка предстояща среща, която е извлечена, така че числото в панела може да е по-голямо от списъка в приспособлението, който показва най-много „Мачове за отбор/турнир“ срещи за турнир (Приспособление → Насрочени)."
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:128
+msgctxt "@info"
+msgid ""
+"\"All future matches\" is still limited by the Scheduled tab options: at "
+"most \"Matches per team/competition\" fixtures are listed per competition, "
+"within \"Schedules days ahead\". Raise those to list more."
+msgstr "„Всички предстоящи мачове“ все пак е ограничено от настройките в раздел „Насрочени“: показват се най-много „Мачове за отбор/турнир“ срещи за турнир, в рамките на „Дни напред за насрочени“. Увеличете тези стойности, за да видите повече."
+
+#: contents/ui/TableTab.qml:88
+msgctxt "@label"
+msgid "%1 Table"
+msgstr "Таблица на %1"
+
+#: contents/ui/FullRepresentation.qml:63
+msgctxt "@info two data providers joined"
+msgid "%1 and %2"
+msgstr "%1 и %2"
+
+#: contents/ui/LiveMatchDetails.qml:255
+msgctxt "@info:placeholder"
+msgid "%1 does not provide detailed match statistics for this match."
+msgstr "%1 не предоставя подробна статистика за този мач."
+
+#: contents/ui/RoundSectionHeader.qml:101
+msgctxt "@label number of live matches"
+msgid "%1 live"
+msgid_plural "%1 live"
+msgstr[0] "%1 на живо"
+msgstr[1] "%1 на живо"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:329
+msgctxt "@info:font preview; %1 is point size, %2 is family"
+msgid "%1 pt %2"
+msgstr "%1 pt %2"
+
+#: contents/ui/main.qml:936
+msgctxt "@label"
+msgid "%1 saved team"
+msgid_plural "%1 saved teams"
+msgstr[0] "%1 запазен отбор"
+msgstr[1] "%1 запазени отбора"
+
+#: contents/ui/config/CombinedSelectPage.qml:950
+#: contents/ui/config/CombinedSelectPage.qml:1034
+msgctxt "@label"
+msgid "%1 selected"
+msgstr "%1 избрани"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:228
+msgctxt "@label %1 and %2 are team names"
+msgid "%1 vs %2"
+msgstr "%1 срещу %2"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:94
+msgctxt "@item:inlistbox"
+msgid "2026-05-22"
+msgstr "2026-05-22"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:147
+msgctxt "@item:inlistbox"
+msgid "20:30"
+msgstr "20:30"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:150
+msgctxt "@item:inlistbox"
+msgid "20:30:05"
+msgstr "20:30:05"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:97
+msgctxt "@item:inlistbox"
+msgid "22 May"
+msgstr "22 май"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:85
+msgctxt "@item:inlistbox"
+msgid "22.05"
+msgstr "22.05"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:91
+msgctxt "@item:inlistbox"
+msgid "22.05.2026"
+msgstr "22.05.2026"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:88
+msgctxt "@item:inlistbox"
+msgid "22.05.26"
+msgstr "22.05.26"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:153
+msgctxt "@item:inlistbox"
+msgid "8:30 PM"
+msgstr "20:30"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:156
+msgctxt "@item:inlistbox"
+msgid "8:30:05 PM"
+msgstr "20:30:05"
+
+#: contents/ui/FullRepresentation.qml:1527
+msgctxt "@label:abbreviation goals against"
+msgid "A"
+msgstr "З"
+
+#: contents/ui/config/SavedLeaguesList.qml:349
+msgctxt "@action:button"
+msgid "Add"
+msgstr "Добавяне"
+
+#: contents/ui/config/LeagueSubPage.qml:292
+#: contents/ui/config/SportWizardPage.qml:675
+msgctxt "@action:button"
+msgid "Add Another Sport"
+msgstr "Добавяне на друг спорт"
+
+#: contents/ui/config/SavedLeaguesList.qml:308
+msgctxt "@action:button"
+msgid "Add Sport"
+msgstr "Добавяне на спорт"
+
+#: contents/ui/config/SportWizardPage.qml:632
+msgctxt "@title:group"
+msgid "Add Sport"
+msgstr "Добавяне на спорт"
+
+#: contents/ui/FullRepresentation.qml:616
+msgctxt "@action:button"
+msgid "Add a Sport"
+msgstr "Добавяне на спорт"
+
+#: contents/ui/main.qml:217
+msgctxt "@action:button"
+msgid "Add a sport"
+msgstr "Добавяне на спорт"
+
+#: contents/ui/FullRepresentation.qml:607
+msgctxt "@info"
+msgid "Add a sport and league to show schedules, tables and fixtures."
+msgstr "Добавете спорт и лига, за да виждате разписания, таблици и срещи."
+
+#: contents/ui/main.qml:1723
+msgctxt "@info:status"
+msgid "Add a sport in the widget settings."
+msgstr "Добавете спорт в настройките на приспособлението."
+
+#: contents/ui/config/SavedLeaguesList.qml:304
+msgctxt "@info"
+msgid "Add a sport to follow its competitions and teams."
+msgstr "Добавете спорт, за да следите неговите турнири и отбори."
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:82
+msgctxt "@label:listbox"
+msgid "Add matches to calendar:"
+msgstr "Добавяне на мачове в календара:"
+
+#: contents/ui/config/SportWizardPage.qml:732
+msgctxt "@info"
+msgid "Added so far:"
+msgstr "Добавени до момента:"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:100
+msgctxt "@item:inlistbox"
+msgid "Akonadi (unstable, not recommended)"
+msgstr "Akonadi (нестабилно, не се препоръчва)"
+
+#: contents/ui/config/ConfigSport.qml:378
+#: contents/ui/config/ConfigSport.qml:398
+#: contents/ui/config/ConfigSport.qml:429
+#: contents/ui/config/SportWizardPage.qml:414 contents/ui/main.qml:113
+#: contents/ui/main.qml:605 contents/ui/main.qml:954 contents/ui/main.qml:2187
+msgctxt "@label"
+msgid "All competitions"
+msgstr "Всички турнири"
+
+#: contents/ui/config/ConfigSport.qml:215
+#: contents/ui/config/SportWizardPage.qml:139
+msgctxt "@label"
+msgid "All countries"
+msgstr "Всички държави"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:120
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:115
+msgctxt "@item:inlistbox scheduled matches window"
+msgid "All future matches"
+msgstr "Всички предстоящи мачове"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:167
+msgctxt "@info"
+msgid ""
+"Also writes a standard iCalendar (.ics) file you can import into or "
+"subscribe to from any calendar app (Google Calendar, Thunderbird, GNOME, "
+"mobile…). It is only a file - it is never registered with Akonadi, so it "
+"cannot affect Plasma. File:\n"
+"%1"
+msgstr "Записва и стандартен файл iCalendar (.ics), който можете да импортирате или да се абонирате за него от всяко календарно приложение (Google Calendar, Thunderbird, GNOME, мобилни…). Това е само файл - никога не се регистрира в Akonadi, така че не може да засегне Plasma. Файл:\n%1"
+
+#: contents/config/config.qml:40
+msgid "Appearance"
+msgstr "Изглед"
+
+#: contents/ui/config/SportWizardPage.qml:763
+msgctxt "@info"
+msgid ""
+"Are you sure? Competitions and teams you have enabled are kept, but any "
+"picks you have not yet confirmed will be discarded."
+msgstr "Сигурни ли сте? Включените от вас турнири и отбори се запазват, но всички избори, които все още не сте потвърдили, ще бъдат изгубени."
+
+#: contents/ui/config/SavedLeaguesList.qml:618
+msgctxt "@info"
+msgid ""
+"Are you sure? This is your last saved sport. If you remove it, the widget "
+"will no longer show sports information."
+msgstr "Сигурни ли сте? Това е последният ви запазен спорт. Ако го премахнете, приспособлението вече няма да показва спортна информация."
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:265
+msgctxt "@item:inlistbox"
+msgid "Auto"
+msgstr "Автоматично"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:308
+#: contents/ui/config/tabs/AppearancePanelTab.qml:345
+msgctxt "@option:check"
+msgid "Auto"
+msgstr "Автоматично"
+
+#: contents/ui/config/ConfigGeneral.qml:167
+msgctxt "@info"
+msgid ""
+"Automatically checks for upcoming matches every 30 minutes, and live scores "
+"every 60 seconds while a match is in progress, to limit network requests. "
+"Turn off to set your own refresh times."
+msgstr "Автоматично проверява за предстоящи мачове на всеки 30 минути и резултати на живо на всеки 60 секунди, докато мач тече, за да ограничи мрежовите заявки. Изключете, за да зададете собствени интервали за обновяване."
+
+#: contents/ui/FullRepresentation.qml:752
+msgctxt "@info:placeholder"
+msgid "Away team"
+msgstr "Гост отбор"
+
+#: contents/ui/config/CountrySubPage.qml:189
+#: contents/ui/config/LeagueSubPage.qml:264
+#: contents/ui/config/SportWizardPage.qml:654
+#: contents/ui/config/SportWizardPage.qml:854
+msgctxt "@action:button"
+msgid "Back"
+msgstr "Назад"
+
+#: contents/ui/config/SportWizardPage.qml:654
+msgctxt "@action:button"
+msgid "Back to Sport"
+msgstr "Назад към спорта"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:246
+msgctxt "@item:inlistbox stack separator"
+msgid "Bar ( | )"
+msgstr "Черта ( | )"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:149
+msgctxt "@item:inlistbox tabs position"
+msgid "Bottom"
+msgstr "Отдолу"
+
+#: contents/ui/config/PopularSelectPage.qml:149
+msgctxt "@action:button"
+msgid "Browse all leagues & countries…"
+msgstr "Разглеждане на всички лиги и държави…"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:157
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:185
+msgctxt "@option:check"
+msgid "Calendar"
+msgstr "Календар"
+
+#: contents/ui/config/ConfigNotifications.qml:71
+msgctxt "@title:tab"
+msgid "Calendar"
+msgstr "Календар"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:137
+msgctxt "@info"
+msgid ""
+"Calendar plugin detected. If matches still don't appear, make sure the "
+"\"Sports Widget matches\" plugin is enabled in the Plasma calendar settings."
+msgstr "Открита е приставка за календар. Ако мачовете все още не се показват, уверете се, че приставката „Sports Widget matches“ е включена в настройките на календара на Plasma."
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:76
+msgctxt "@info"
+msgid ""
+"Calendar sync is off by default for each saved competition/team to avoid "
+"spam. Enable it per entry in the \"Competitions & teams\" tab."
+msgstr "Синхронизацията с календара по подразбиране е изключена за всеки запазен турнир/отбор, за да се избегне претрупване. Включете я за отделен запис в раздел „Турнири и отбори“."
+
+#: contents/ui/config/SavedLeaguesList.qml:643
+#: contents/ui/config/SportWizardPage.qml:773
+msgctxt "@action:button"
+msgid "Cancel"
+msgstr "Отказ"
+
+#: contents/ui/config/LeagueSubPage.qml:336
+msgctxt "@info"
+msgid ""
+"Changes here are not applied immediately. Click Apply (or OK) at the bottom "
+"of the window to save them."
+msgstr "Промените тук не се прилагат веднага. Натиснете „Прилагане“ (или „ОК“) в долната част на прозореца, за да ги запазите."
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:49
+msgctxt "@title:window"
+msgid "Choose Panel Font"
+msgstr "Избор на шрифт за панела"
+
+#: contents/ui/main.qml:2626
+msgctxt "@info:status"
+msgid "Choose a competition to show a table."
+msgstr "Изберете турнир, за да видите таблица."
+
+#: contents/ui/config/CombinedSelectPage.qml:871
+msgctxt "@info"
+msgid "Choose competitions and teams to follow for %1."
+msgstr "Изберете турнири и отбори, които да следите за %1."
+
+#: contents/ui/config/SavedLeaguesList.qml:541
+msgctxt "@info"
+msgid "Choose what this item contributes to the widget."
+msgstr "Изберете какво добавя този елемент към приспособлението."
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:133
+msgctxt "@info"
+msgid ""
+"Choose which of your followed competitions and teams trigger notifications "
+"and appear in the calendar. Off by default for new entries."
+msgstr "Изберете кои от следените от вас турнири и отбори да предизвикват известия и да се показват в календара. По подразбиране е изключено за нови записи."
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:320
+msgctxt "@action:button"
+msgid "Choose..."
+msgstr "Избор…"
+
+#: contents/ui/config/SportWizardPage.qml:733
+msgctxt "@info"
+msgid "Click Apply (or OK) to save everything."
+msgstr "Натиснете „Прилагане“ (или „ОК“), за да запазите всичко."
+
+#: contents/ui/config/CountrySubPage.qml:227
+#: contents/ui/config/LeagueSubPage.qml:303
+msgctxt "@action:button"
+msgid "Close"
+msgstr "Затваряне"
+
+#: contents/ui/main.qml:954
+msgctxt "@label"
+msgid "Combined scope"
+msgstr "Комбиниран обхват"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:47
+msgctxt "@item"
+msgid "Competition"
+msgstr "Турнир"
+
+#: contents/ui/config/SavedLeaguesList.qml:97
+msgctxt "@label"
+msgid "Competition"
+msgstr "Турнир"
+
+#: contents/ui/config/CountrySubPage.qml:304
+msgctxt "@title:group"
+msgid "Competitions"
+msgstr "Турнири"
+
+#: contents/ui/config/CombinedSelectPage.qml:943
+msgctxt "@title:section"
+msgid "Competitions"
+msgstr "Турнири"
+
+#: contents/ui/config/CombinedSelectPage.qml:860
+msgctxt "@title:group"
+msgid "Competitions & Teams"
+msgstr "Турнири и отбори"
+
+#: contents/ui/config/ConfigNotifications.qml:76
+msgctxt "@title:tab"
+msgid "Competitions & teams"
+msgstr "Турнири и отбори"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:338
+msgctxt "@item:inlistbox"
+msgid "Competitions only"
+msgstr "Само турнири"
+
+#: contents/ui/FullRepresentation.qml:735
+msgctxt "@action:button"
+msgid "Configure"
+msgstr "Настройване"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:111
+msgctxt "@label:listbox"
+msgid "Count scheduled matches:"
+msgstr "Брой насрочени мачове:"
+
+#: contents/ui/config/CountrySelectPage.qml:42
+msgctxt "@title:group"
+msgid "Country"
+msgstr "Държава"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:106
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:162
+msgctxt "@item:inlistbox"
+msgid "Custom..."
+msgstr "Персонализирано…"
+
+#: contents/ui/FullRepresentation.qml:1509
+msgctxt "@label:abbreviation games drawn"
+msgid "D"
+msgstr "Р"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:244
+msgctxt "@item:inlistbox stack separator"
+msgid "Dash ( - )"
+msgstr "Тире ( - )"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:69
+msgctxt "@title:group"
+msgid "Date and Time"
+msgstr "Дата и час"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:74
+msgctxt "@label:listbox"
+msgid "Date format:"
+msgstr "Формат на датата:"
+
+#: contents/ui/config/ConfigGeneral.qml:141
+msgctxt "@label:listbox"
+msgid "Default sport:"
+msgstr "Спорт по подразбиране:"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:31
+msgctxt "@label:chooser"
+msgid "Desktop notifications:"
+msgstr "Известия на работния плот:"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:90
+msgctxt "@item:inlistbox widget layout"
+msgid "Detailed"
+msgstr "Подробен"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:79
+msgctxt "@item:inlistbox panel mode"
+msgid "Detailed (show the match)"
+msgstr "Подробен (показва мача)"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:95
+msgctxt "@option:check"
+msgid ""
+"Detailed events (scorer, cards, substitutions, extra time, penalties) - "
+"football only"
+msgstr "Подробни събития (вкараните голове, картони, смени, продължения, дузпи) - само за футбол"
+
+#: contents/ui/LiveMatchDelegate.qml:134
+msgctxt "@info:status"
+msgid "Detailed match information is not available for this match."
+msgstr "Подробна информация за мача не е налична за този мач."
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:103
+msgctxt "@info"
+msgid ""
+"Detailed shows a featured match, tabs, standings and recent results. Simple "
+"shows only live and scheduled matches in a single scrolling list."
+msgstr "„Подробен“ показва избран мач, раздели, класиране и скорошни резултати. „Опростен“ показва само мачове на живо и насрочени мачове в един списък с превъртане."
+
+#: contents/ui/LiveMatchDetails.qml:331
+msgctxt "@tab:match details"
+msgid "Details"
+msgstr "Подробности"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:171
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:224
+msgctxt "@option:check"
+msgid "Disabled"
+msgstr "Изключено"
+
+#: contents/ui/config/SportWizardPage.qml:696
+msgctxt "@action:button"
+msgid "Done"
+msgstr "Готово"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:245
+msgctxt "@item:inlistbox stack separator"
+msgid "Dot ( · )"
+msgstr "Точка ( · )"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:149
+msgctxt "@action:button"
+msgid "Download plugin"
+msgstr "Изтегляне на приставка"
+
+#: contents/ui/FullRepresentation.qml:1510
+msgctxt "@label"
+msgid "Drawn"
+msgstr "Равенства"
+
+#: contents/ui/config/SportWizardPage.qml:489
+msgctxt "@info"
+msgid ""
+"Duplicate detected: %1 is already saved. Saving will update the existing "
+"item."
+msgstr "Открито е дублиране: %1 вече е запазен. Запазването ще обнови съществуващия елемент."
+
+#: contents/ui/config/SportWizardPage.qml:491
+msgctxt "@info"
+msgid ""
+"Duplicate detected: %1 selected items are already saved (%2%3). Saving will "
+"update existing items."
+msgstr "Открито е дублиране: %1 от избраните елементи вече са запазени (%2%3). Запазването ще обнови съществуващите елементи."
+
+#: contents/ui/config/SavedLeaguesList.qml:501
+msgctxt "@action:button"
+msgid "Edit"
+msgstr "Редактиране"
+
+#: contents/ui/config/SavedLeaguesList.qml:527
+msgctxt "@title:window"
+msgid "Edit %1"
+msgstr "Редактиране на %1"
+
+#: contents/ui/config/CombinedSelectPage.qml:872
+msgctxt "@info"
+msgid "Edit the competition or team for %1."
+msgstr "Редактиране на турнира или отбора за %1."
+
+#: contents/ui/config/SavedLeaguesList.qml:503
+msgctxt "@info:tooltip"
+msgid "Edit what this item shows"
+msgstr "Редактиране на това, което показва този елемент"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:337
+msgctxt "@label:checkbox"
+msgid "Emblem size:"
+msgstr "Размер на емблемата:"
+
+#: contents/ui/config/ConfigGeneral.qml:220
+msgctxt "@option:check"
+msgid "Emblems"
+msgstr "Емблеми"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:157
+msgctxt "@item:inlistbox"
+msgid "Emblems and score"
+msgstr "Емблеми и резултат"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:154
+msgctxt "@item:inlistbox"
+msgid "Emblems, teams and score"
+msgstr "Емблеми, отбори и резултат"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:171
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:224
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:32
+msgctxt "@option:check"
+msgid "Enabled"
+msgstr "Включено"
+
+#: contents/ui/main.qml:3233
+msgctxt "@title:notification"
+msgid "Extra time"
+msgstr "Продължение"
+
+#: contents/ui/main.qml:3236
+msgctxt "@title:notification"
+msgid "Extra time: second half"
+msgstr "Продължение: втора част"
+
+#: contents/ui/FullRepresentation.qml:1521
+msgctxt "@label:abbreviation goals for"
+msgid "F"
+msgstr "В"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:144
+msgctxt "@option:check"
+msgid "Favorite teams only"
+msgstr "Само любими отбори"
+
+#: contents/ui/ScoreDelegate.qml:617
+msgctxt "@info:tooltip"
+msgid "Favourite %1"
+msgstr "Любим %1"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:132
+msgctxt "@label:checkbox"
+msgid "Featured match:"
+msgstr "Избран мач:"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:268
+msgctxt "@item:inlistbox"
+msgid "Fill panel"
+msgstr "Запълване на панела"
+
+#: contents/ui/config/ConfigGeneral.qml:220
+msgctxt "@option:check"
+msgid "Flags"
+msgstr "Знамена"
+
+#: contents/ui/config/LeagueSubPage.qml:383
+msgctxt "@option:check"
+msgid "Follow the whole competition"
+msgstr "Следене на целия турнир"
+
+#: contents/ui/config/LeagueSubPage.qml:405
+msgctxt "@title:group"
+msgid "Following"
+msgstr "Следени"
+
+#: contents/ui/config/LeagueSubPage.qml:425
+msgctxt "@info"
+msgid "Following the whole competition."
+msgstr "Следи се целият турнир."
+
+#: contents/ui/FullRepresentation.qml:1545 contents/ui/TableTab.qml:351
+msgctxt "@label"
+msgid "Form"
+msgstr "Форма"
+
+#: contents/ui/config/ConfigGeneral.qml:171
+msgctxt "@label:spinbox"
+msgid "Full refresh:"
+msgstr "Пълно обновяване:"
+
+#: contents/ui/main.qml:3230
+msgctxt "@title:notification"
+msgid "Full-time"
+msgstr "Край на мача"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:86
+msgctxt "@option:check"
+msgid "Full-time result"
+msgstr "Краен резултат"
+
+#: contents/ui/FullRepresentation.qml:1533
+msgctxt "@label"
+msgid "GD"
+msgstr "РГ"
+
+#: contents/ui/main.qml:3221 contents/ui/main.qml:3253
+msgctxt "@title:notification"
+msgid "GOAL"
+msgstr "ГОЛ"
+
+#: contents/config/config.qml:28
+msgid "General"
+msgstr "Общи"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:49
+msgctxt "@title:tab"
+msgid "General"
+msgstr "Общи"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:145
+msgctxt "@label"
+msgid "Global notifications and calendar:"
+msgstr "Общи известия и календар:"
+
+#: contents/ui/config/SportWizardPage.qml:779
+msgctxt "@action:button"
+msgid "Go Back"
+msgstr "Назад"
+
+#: contents/ui/FullRepresentation.qml:1534
+msgctxt "@label"
+msgid "Goal Difference"
+msgstr "Голова разлика"
+
+#: contents/ui/FullRepresentation.qml:1528
+msgctxt "@label"
+msgid "Goals Against"
+msgstr "Голове допуснати"
+
+#: contents/ui/FullRepresentation.qml:1522
+msgctxt "@label"
+msgid "Goals For"
+msgstr "Голове отбелязани"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:68
+msgctxt "@option:check"
+msgid "Goals and score changes"
+msgstr "Голове и промени в резултата"
+
+#: contents/ui/main.qml:3224
+msgctxt "@title:notification"
+msgid "Half-time"
+msgstr "Полувреме"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:77
+msgctxt "@option:check"
+msgid "Half-time and second half"
+msgstr "Полувреме и втора част"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:133
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:168
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:176
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:184
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:192
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:205
+msgctxt "@option:check"
+msgid "Hidden"
+msgstr "Скрито"
+
+#: contents/ui/config/SavedLeaguesList.qml:100
+msgctxt "@label"
+msgid "Highlight: %1"
+msgstr "Осветени: %1"
+
+#: contents/ui/FullRepresentation.qml:751
+msgctxt "@info:placeholder"
+msgid "Home team"
+msgstr "Домакин"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:315
+msgctxt "@info"
+msgid ""
+"How far ahead to look for fixtures, and how many upcoming matches to show "
+"under each team or competition group."
+msgstr "Колко напред във времето да се търсят срещи и колко предстоящи мачове да се показват за всеки отбор или група турнир."
+
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:101
+msgctxt "@info"
+msgid ""
+"How many live matches to list, how many days ahead to look for upcoming "
+"fixtures, and how many days back to look for finished matches in the panel's "
+"hover tooltip."
+msgstr "Колко мачове на живо да се изброяват, колко дни напред да се търсят предстоящи срещи и колко дни назад да се търсят завършени мачове в подсказката на панела."
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:371
+msgctxt "@info"
+msgid "How many recent matches to show under each team or competition group."
+msgstr "Колко скорошни мача да се показват за всеки отбор или група турнир."
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:198
+msgctxt "@title:group"
+msgid "Individual match notifications"
+msgstr "Известия за отделни мачове"
+
+#: contents/ui/config/SportChoiceCard.qml:131
+msgctxt "@action:button"
+msgid "Information"
+msgstr "Информация"
+
+#: contents/ui/LiveMatchDetails.qml:326
+msgctxt "@tab:match details"
+msgid "Information"
+msgstr "Информация"
+
+#: contents/ui/main.qml:3218
+msgctxt "@title:notification"
+msgid "Kick-off"
+msgstr "Начало на мача"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:59
+msgctxt "@option:check"
+msgid "Kickoff (match goes live)"
+msgstr "Начало (мачът става на живо)"
+
+#: contents/ui/FullRepresentation.qml:1515
+msgctxt "@label:abbreviation games lost"
+msgid "L"
+msgstr "З"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:85
+msgctxt "@label:listbox"
+msgid "Layout:"
+msgstr "Оформление:"
+
+#: contents/ui/TableTab.qml:88
+msgctxt "@label"
+msgid "League Table"
+msgstr "Класиране"
+
+#: contents/ui/config/LeagueSubPage.qml:374
+msgctxt "@title:group"
+msgid "League settings"
+msgstr "Настройки на лигата"
+
+#: contents/ui/config/SavedLeaguesList.qml:565
+msgctxt "@option:check"
+msgid "League tables"
+msgstr "Класирания"
+
+#: contents/ui/config/SportWizardPage.qml:754
+msgctxt "@title:window"
+msgid "Leave the wizard?"
+msgstr "Изход от помощника?"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:143
+msgctxt "@label:chooser"
+msgid "Limit to:"
+msgstr "Ограничаване до:"
+
+#: contents/ui/FullRepresentation.qml:1037
+msgid "Live"
+msgstr "На живо"
+
+#: contents/ui/CompactRepresentation.qml:115
+#: contents/ui/CompactRepresentation.qml:666
+#: contents/ui/FullRepresentation.qml:1147 contents/ui/main.qml:1138
+#: contents/ui/main.qml:1142 contents/ui/main.qml:1159
+#: contents/ui/MatchesToolTip.qml:121 contents/ui/MatchesToolTip.qml:126
+#: contents/ui/MatchesToolTip.qml:130 contents/ui/ScoreDelegate.qml:187
+msgctxt "@info:live match status"
+msgid "Live"
+msgstr "На живо"
+
+#: contents/ui/MatchesToolTip.qml:150
+msgctxt "@title:group"
+msgid "Live"
+msgstr "На живо"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:53
+msgctxt "@title:tab"
+msgid "Live"
+msgstr "На живо"
+
+#: contents/ui/main.qml:1142 contents/ui/MatchesToolTip.qml:121
+#: contents/ui/MatchesToolTip.qml:130
+msgctxt "@info:live match status"
+msgid "Live %1"
+msgstr "На живо %1"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:98
+msgctxt "@item:inlistbox"
+msgid "Live / remaining (e.g. 3 / 11)"
+msgstr "На живо / оставащи (напр. 3 / 11)"
+
+#: contents/ui/config/SavedLeaguesList.qml:547
+msgctxt "@option:check"
+msgid "Live matches"
+msgstr "Мачове на живо"
+
+#: contents/ui/config/ConfigGeneral.qml:192
+msgctxt "@label:checkbox"
+msgid "Live matches:"
+msgstr "Мачове на живо:"
+
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:35
+msgctxt "@label:spinbox"
+msgid "Live matches:"
+msgstr "Мачове на живо:"
+
+#: contents/ui/config/ConfigGeneral.qml:198
+msgctxt "@label:spinbox"
+msgid "Live refresh:"
+msgstr "Обновяване на живо:"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:167
+msgctxt "@label:checkbox"
+msgid "Live:"
+msgstr "На живо:"
+
+#: contents/ui/config/CombinedSelectPage.qml:971
+msgctxt "@info"
+msgid "Loading competitions from provider..."
+msgstr "Зареждане на турнири от доставчика..."
+
+#: contents/ui/config/CountrySubPage.qml:342
+msgctxt "@info"
+msgid "Loading competitions from provider…"
+msgstr "Зареждане на турнири от доставчика…"
+
+#: contents/ui/config/CountrySelectPage.qml:190
+msgctxt "@info"
+msgid "Loading countries from provider..."
+msgstr "Зареждане на държави от доставчика..."
+
+#: contents/ui/LiveMatchDetails.qml:291
+msgctxt "@info:status"
+msgid "Loading match statistics"
+msgstr "Зареждане на статистика за мача"
+
+#: contents/ui/FullRepresentation.qml:990 contents/ui/LeaguesTab.qml:202
+msgctxt "@info:status"
+msgid "Loading matches"
+msgstr "Зареждане на мачове"
+
+#: contents/ui/config/CombinedSelectPage.qml:1055
+msgctxt "@info"
+msgid "Loading national team variants from provider..."
+msgstr "Зареждане на варианти на национален отбор от доставчика..."
+
+#: contents/ui/config/CombinedSelectPage.qml:583
+msgctxt "@info"
+msgid "Loading players from provider..."
+msgstr "Зареждане на играчи от доставчика..."
+
+#: contents/ui/config/LeagueSubPage.qml:460
+msgctxt "@info"
+msgid "Loading players…"
+msgstr "Зареждане на играчи…"
+
+#: contents/ui/RecentResultsTab.qml:208
+msgctxt "@info:status"
+msgid "Loading recent results"
+msgstr "Зареждане на скорошни резултати"
+
+#: contents/ui/ScheduleTab.qml:32
+msgctxt "@info:status"
+msgid "Loading schedules"
+msgstr "Зареждане на разписания"
+
+#: contents/ui/config/CombinedSelectPage.qml:586
+msgctxt "@info"
+msgid "Loading teams from %1 of %2 competitions..."
+msgstr "Зареждане на отбори от %1 от %2 турнира..."
+
+#: contents/ui/config/CombinedSelectPage.qml:585
+msgctxt "@info"
+msgid "Loading teams..."
+msgstr "Зареждане на отбори..."
+
+#: contents/ui/config/CompetitionTeamSelector.qml:264
+#: contents/ui/config/LeagueSubPage.qml:461
+msgctxt "@info"
+msgid "Loading teams…"
+msgstr "Зареждане на отбори…"
+
+#: contents/ui/FullRepresentation.qml:1516
+msgctxt "@label"
+msgid "Lost"
+msgstr "Загуби"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:271
+msgctxt "@item:inlistbox"
+msgid "Manual"
+msgstr "Ръчно"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:308
+#: contents/ui/config/tabs/AppearancePanelTab.qml:345
+msgctxt "@option:check"
+msgid "Manual"
+msgstr "Ръчно"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:204
+msgctxt "@label:checkbox"
+msgid "Match quick actions:"
+msgstr "Бързи действия за мач:"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:170
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:223
+msgctxt "@label:checkbox"
+msgid "Match rotation:"
+msgstr "Смяна на мачове:"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:113
+msgctxt "@option:check"
+msgid "Match starts soon"
+msgstr "Мачът започва скоро"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:290
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:346
+msgctxt "@label:spinbox"
+msgid "Matches per team/competition:"
+msgstr "Мачове за отбор/турнир:"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:208
+msgctxt "@info"
+msgid ""
+"Matches you enabled the bell icon for in the widget. They are notified even "
+"if their competition is not included above, and are cleaned up automatically "
+"once the match has finished."
+msgstr "Мачове, за които сте включили иконата със звънец в приспособлението. За тях се получават известия дори ако турнирът им не е включен по-горе, и се премахват автоматично след края на мача."
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:215
+msgctxt "@label:spinbox"
+msgid "Max matches shown:"
+msgstr "Максимален брой показани мачове:"
+
+#: contents/ui/config/ConfigAppearance.qml:106
+msgctxt "@title:tab"
+msgid "Misc"
+msgstr "Разни"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:201
+msgctxt "@label:listbox"
+msgid "Multiple matches:"
+msgstr "Няколко мача:"
+
+#: contents/ui/config/ConfigGeneral.qml:219
+msgctxt "@label:chooser"
+msgid "National teams:"
+msgstr "Национални отбори:"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:92
+msgctxt "@item:inlistbox"
+msgid "Native plugin"
+msgstr "Вградена приставка"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:96
+msgctxt "@item:inlistbox"
+msgid "Native plugin + export .ics file"
+msgstr "Вградена приставка + експорт на .ics файл"
+
+#: contents/ui/config/SportWizardPage.qml:696
+msgctxt "@action:button"
+msgid "Next"
+msgstr "Напред"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:117
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:116
+msgctxt "@item:inlistbox scheduled matches window"
+msgid "Next 24 hours"
+msgstr "Следващите 24 часа"
+
+#: contents/ui/main.qml:128
+msgctxt "@info:status"
+msgid "No API key required"
+msgstr "Не се изисква API ключ"
+
+#: contents/ui/config/CombinedSelectPage.qml:982
+#: contents/ui/config/CountrySubPage.qml:380
+msgctxt "@info"
+msgid "No competitions found for this country."
+msgstr "Не са намерени турнири за тази държава."
+
+#: contents/ui/config/CountrySubPage.qml:377
+msgctxt "@info"
+msgid "No competitions match your search."
+msgstr "Няма турнири, отговарящи на търсенето."
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:139
+msgctxt "@info:placeholder"
+msgid "No competitions or teams added yet. Add some from the Sport page."
+msgstr "Все още няма добавени турнири или отбори. Добавете от страницата за спорта."
+
+#: contents/ui/config/CountrySelectPage.qml:161
+#: contents/ui/config/CountrySelectPage.qml:201
+msgctxt "@info"
+msgid "No countries were found for this sport."
+msgstr "Не са намерени държави за този спорт."
+
+#: contents/ui/config/ConfigSport.qml:213
+#: contents/ui/config/SportWizardPage.qml:137
+msgctxt "@label"
+msgid "No country selected"
+msgstr "Няма избрана държава"
+
+#: contents/ui/config/ConfigSport.qml:196
+msgctxt "@label"
+msgid "No favorite team"
+msgstr "Няма любим отбор"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:214
+msgctxt "@info:placeholder"
+msgid ""
+"No individual matches yet. Click the bell icon on a match row in the widget "
+"to add one."
+msgstr "Все още няма отделни мачове. Натиснете иконата със звънец на ред с мач в приспособлението, за да добавите такъв."
+
+#: contents/ui/config/ConfigSport.qml:238
+#: contents/ui/config/SportWizardPage.qml:153
+msgctxt "@label"
+msgid "No league selected"
+msgstr "Няма избрана лига"
+
+#: contents/ui/config/CombinedSelectPage.qml:291
+#: contents/ui/config/CountrySubPage.qml:159
+msgctxt "@info"
+msgid "No leagues or cups were found for this country."
+msgstr "Не са намерени лиги или купи за тази държава."
+
+#: contents/ui/LeaguesTab.qml:132
+msgctxt "@info:placeholder"
+msgid "No live matches"
+msgstr "Няма мачове на живо"
+
+#: contents/ui/FullRepresentation.qml:494
+msgctxt "@info:status"
+msgid "No live matches"
+msgstr "Няма мачове на живо"
+
+#: contents/ui/FullRepresentation.qml:972
+msgctxt "@info:placeholder"
+msgid "No live or scheduled matches"
+msgstr "Няма мачове на живо или насрочени мачове"
+
+#: contents/ui/MatchesToolTip.qml:214
+msgctxt "@info:tooltip"
+msgid "No live, upcoming or recent matches"
+msgstr "Няма мачове на живо, предстоящи или скорошни мачове"
+
+#: contents/ui/LiveMatchDetails.qml:718
+msgctxt "@info:placeholder"
+msgid "No match details available"
+msgstr "Няма налични подробности за мача"
+
+#: contents/ui/LiveMatchDetails.qml:558
+msgctxt "@info:placeholder"
+msgid "No match events available"
+msgstr "Няма налични събития за мача"
+
+#: contents/ui/LiveMatchDetails.qml:464
+msgctxt "@info:placeholder"
+msgid "No match information available"
+msgstr "Няма налична информация за мача"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:259
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:382
+msgctxt "@info:placeholder"
+msgid "No options yet."
+msgstr "Все още няма опции."
+
+#: contents/ui/config/LeagueSubPage.qml:484
+msgctxt "@info"
+msgid "No players are available for this competition from the provider."
+msgstr "Няма налични играчи за този турнир от доставчика."
+
+#: contents/ui/config/LeagueSubPage.qml:427
+msgctxt "@info"
+msgid "No players followed"
+msgstr "Не се следят играчи"
+
+#: contents/ui/RecentResultsTab.qml:133
+msgctxt "@info:placeholder"
+msgid "No recent matches"
+msgstr "Няма скорошни мачове"
+
+#: contents/ui/FullRepresentation.qml:851 contents/ui/RecentResultsTab.qml:31
+msgctxt "@info:placeholder"
+msgid "No recent results"
+msgstr "Няма скорошни резултати"
+
+#: contents/ui/FullRepresentation.qml:497
+msgctxt "@info:status"
+msgid "No recent results"
+msgstr "Няма скорошни резултати"
+
+#: contents/ui/FullRepresentation.qml:851
+msgctxt "@info:placeholder"
+msgid "No recent results for %1"
+msgstr "Няма скорошни резултати за %1"
+
+#: contents/ui/main.qml:1895 contents/ui/main.qml:1912
+msgctxt "@info:status"
+msgid "No saved items are enabled for Schedules."
+msgstr "Няма запазени елементи, включени за разписания."
+
+#: contents/ui/FullRepresentation.qml:827 contents/ui/ScheduleTab.qml:31
+msgctxt "@info:placeholder"
+msgid "No scheduled matches"
+msgstr "Няма насрочени мачове"
+
+#: contents/ui/main.qml:220
+msgctxt "@info:status"
+msgid "No scheduled matches"
+msgstr "Няма насрочени мачове"
+
+#: contents/ui/FullRepresentation.qml:827
+msgctxt "@info:placeholder"
+msgid "No scheduled matches for %1"
+msgstr "Няма насрочени мачове за %1"
+
+#: contents/ui/main.qml:1219
+msgctxt "@info:status"
+msgid "No scheduled matches for %1."
+msgstr "Няма насрочени мачове за %1."
+
+#: contents/ui/main.qml:1221
+msgctxt "@info:status"
+msgid "No scheduled matches for your saved sports."
+msgstr "Няма насрочени мачове за запазените ви спортове."
+
+#: contents/ui/FullRepresentation.qml:499
+msgctxt "@info:status"
+msgid "No schedules"
+msgstr "Няма разписания"
+
+#: contents/ui/config/ConfigSport.qml:206
+msgctxt "@label"
+msgid "No sport selected"
+msgstr "Няма избран спорт"
+
+#: contents/ui/FullRepresentation.qml:598
+msgctxt "@info:status"
+msgid "No sports added"
+msgstr "Няма добавени спортове"
+
+#: contents/ui/config/SavedLeaguesList.qml:303
+msgctxt "@info:placeholder"
+msgid "No sports added yet"
+msgstr "Все още няма добавени спортове"
+
+#: contents/ui/TableTab.qml:258
+msgctxt "@info:placeholder"
+msgid "No table data"
+msgstr "Няма данни за таблица"
+
+#: contents/ui/main.qml:1836 contents/ui/main.qml:2641
+#: contents/ui/main.qml:2672
+msgctxt "@info:status"
+msgid "No table rows returned for %1."
+msgstr "Не са върнати редове от таблица за %1."
+
+#: contents/ui/main.qml:1809
+msgctxt "@info:status"
+msgid "No table scope enabled."
+msgstr "Няма включен обхват за таблица."
+
+#: contents/ui/config/CompetitionTeamSelector.qml:320
+#: contents/ui/config/LeagueSubPage.qml:485
+msgctxt "@info"
+msgid "No teams are available for this competition from the provider."
+msgstr "Няма налични отбори за този турнир от доставчика."
+
+#: contents/ui/config/LeagueSubPage.qml:428
+msgctxt "@info"
+msgid "No teams followed"
+msgstr "Не се следят отбори"
+
+#: contents/ui/config/CombinedSelectPage.qml:1127
+msgctxt "@info"
+msgid ""
+"No teams were found for this country yet. Try another country or competition."
+msgstr "Все още не са намерени отбори за тази държава. Опитайте друга държава или турнир."
+
+#: contents/ui/config/CombinedSelectPage.qml:1126
+msgctxt "@info"
+msgid "No tennis players were found by the provider."
+msgstr "Не са намерени тенисисти от доставчика."
+
+#: contents/ui/ScheduleTab.qml:158
+msgctxt "@info:placeholder"
+msgid "No upcoming matches"
+msgstr "Няма предстоящи мачове"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:247
+msgctxt "@item:inlistbox stack separator"
+msgid "None"
+msgstr "Няма"
+
+#: contents/config/config.qml:34
+msgid "Notifications"
+msgstr "Известия"
+
+#: contents/ui/config/ConfigNotifications.qml:66
+msgctxt "@title:tab"
+msgid "Notifications"
+msgstr "Известия"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:52
+msgctxt "@info"
+msgid ""
+"Notifications are off by default for each saved competition/team to avoid "
+"spam. Enable them per entry in the \"Competitions & teams\" tab."
+msgstr "Известията по подразбиране са изключени за всеки запазен турнир/отбор, за да се избегне претрупване. Включете ги за отделен запис в раздел „Турнири и отбори“."
+
+#: contents/ui/ScoreDelegate.qml:517
+msgctxt "@info:tooltip"
+msgid "Notifications on for this match - click to mute"
+msgstr "Известията за този мач са включени - натиснете за заглушаване"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:150
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:178
+msgctxt "@option:check"
+msgid "Notify"
+msgstr "Известяване"
+
+#: contents/ui/ScoreDelegate.qml:518
+msgctxt "@info:tooltip"
+msgid "Notify me about this match"
+msgstr "Известявай ме за този мач"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:58
+msgctxt "@label:chooser"
+msgid "Notify on:"
+msgstr "Известяване при:"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:88
+msgctxt "@item:inlistbox"
+msgid "Off"
+msgstr "Изключено"
+
+#: contents/ui/config/CombinedSelectPage.qml:1003
+#: contents/ui/config/CountrySelectPage.qml:221
+#: contents/ui/config/CountrySubPage.qml:363
+#: contents/ui/config/PopularSelectPage.qml:179
+msgctxt "@info:tooltip"
+msgid "Open %1"
+msgstr "Отваряне на %1"
+
+#: contents/ui/config/CountrySelectPage.qml:68
+msgctxt "@info"
+msgid ""
+"Open International to browse the ATP, WTA and Grand Slam competitions and "
+"follow players."
+msgstr "Отворете „Международни“, за да разгледате турнирите на ATP, WTA и Големия шлем и да следите играчи."
+
+#: contents/ui/config/CombinedSelectPage.qml:883
+msgctxt "@info"
+msgid ""
+"Open a competition to follow it or pick players inside it, or follow a "
+"player directly from the list below."
+msgstr "Отворете турнир, за да го следите или да изберете играчи от него, или следвайте играч директно от списъка по-долу."
+
+#: contents/ui/config/CombinedSelectPage.qml:884
+msgctxt "@info"
+msgid ""
+"Open a competition to follow the whole competition or pick teams inside it, "
+"or follow a team directly from the list below."
+msgstr "Отворете турнир, за да следите целия турнир или да изберете отбори от него, или следвайте отбор директно от списъка по-долу."
+
+#: contents/ui/config/CountrySubPage.qml:258
+msgctxt "@info"
+msgid ""
+"Open a competition to follow the whole competition or pick teams inside it. "
+"Changes are saved when you click Apply (or OK)."
+msgstr "Отворете турнир, за да следите целия турнир или да изберете отбори от него. Промените се запазват, когато натиснете „Прилагане“ (или „ОК“)."
+
+#: contents/ui/config/CountrySelectPage.qml:69
+msgctxt "@info"
+msgid ""
+"Open a country to browse its competitions and follow the ones you want. You "
+"can follow competitions from several countries."
+msgstr "Отворете държава, за да разгледате нейните турнири и да следите тези, които искате. Можете да следите турнири от няколко държави."
+
+#: contents/ui/config/CountrySelectPage.qml:45
+msgctxt "@info"
+msgid "Open a country to follow its leagues and teams."
+msgstr "Отворете държава, за да следите нейните лиги и отбори."
+
+#: contents/ui/config/CountrySelectPage.qml:44
+msgctxt "@info"
+msgid "Open a region to follow its tennis competitions and players."
+msgstr "Отворете регион, за да следите неговите тенис турнири и играчи."
+
+#: contents/ui/main.qml:3103
+msgctxt "@action:button"
+msgid "Open match"
+msgstr "Отваряне на мача"
+
+#: contents/ui/main.qml:144
+msgctxt "@info:status"
+msgid "Open settings to add a league"
+msgstr "Отворете настройките, за да добавите лига"
+
+#: contents/ui/config/SavedLeaguesList.qml:572
+msgctxt "@option:check"
+msgid "Panel"
+msgstr "Панел"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:64
+msgctxt "@title:group"
+msgid "Panel"
+msgstr "Панел"
+
+#: contents/ui/config/ConfigAppearance.qml:91
+msgctxt "@title:tab"
+msgid "Panel"
+msgstr "Панел"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:301
+msgctxt "@label:checkbox"
+msgid "Panel font:"
+msgstr "Шрифт на панела:"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:148
+msgctxt "@label:listbox"
+msgid "Panel information:"
+msgstr "Информация в панела:"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:74
+msgctxt "@label:listbox"
+msgid "Panel mode:"
+msgstr "Режим на панела:"
+
+#: contents/ui/main.qml:3239
+msgctxt "@title:notification"
+msgid "Penalty shootout"
+msgstr "Дузпи"
+
+#: contents/ui/ScoreDelegate.qml:95
+msgctxt "@label:penalty shoot-out short"
+msgid "Pens"
+msgstr "Дузпи"
+
+#: contents/ui/config/SportSelectPage.qml:55
+msgctxt "@info"
+msgid ""
+"Pick a sport to start. Next you can follow the most popular competitions "
+"worldwide, or browse every country and league."
+msgstr "Изберете спорт, за да започнете. След това можете да следите най-популярните турнири в света или да разгледате всяка държава и лига."
+
+#: contents/ui/main.qml:1415
+msgctxt "@info %2 and %3 are team names"
+msgid ""
+"Pinned %2 vs %3 to the panel - the previously pinned match was unpinned."
+msgid_plural ""
+"Pinned %2 vs %3 to the panel - %1 previously pinned matches were unpinned."
+msgstr[0] "%2 срещу %3 бе закачен в панела - предишният закачен мач бе откачен."
+msgstr[1] "%2 срещу %3 бе закачен в панела - %1 предишни закачени мача бяха откачени."
+
+#: contents/ui/ScoreDelegate.qml:527
+msgctxt "@info:tooltip"
+msgid "Pinned to the panel - click to unpin"
+msgstr "Закачен в панела - натиснете, за да откачите"
+
+#: contents/ui/FullRepresentation.qml:1497
+msgctxt "@label:abbreviation games played"
+msgid "Pl"
+msgstr "И"
+
+#: contents/ui/FullRepresentation.qml:1498
+msgctxt "@label"
+msgid "Played"
+msgstr "Изиграни"
+
+#: contents/ui/config/SavedLeaguesList.qml:95
+msgctxt "@label"
+msgid "Player"
+msgstr "Играч"
+
+#: contents/ui/LiveMatchDetails.qml:348
+msgctxt "@tab:match details"
+msgid "Players"
+msgstr "Играчи"
+
+#: contents/ui/config/LeagueSubPage.qml:443
+msgctxt "@title:group"
+msgid "Players"
+msgstr "Играчи"
+
+#: contents/ui/config/CombinedSelectPage.qml:1023
+msgctxt "@title:section"
+msgid "Players"
+msgstr "Играчи"
+
+#: contents/ui/FullRepresentation.qml:1540
+msgctxt "@label"
+msgid "Points"
+msgstr "Точки"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:107
+msgctxt "@info"
+msgid ""
+"Polls each live football match for its scorer/cards/substitutions/extra time/"
+"penalty shootout on a separate, slower timer (every 90s). This means extra "
+"network requests per live match you follow, on top of the regular score "
+"refresh - leave this off if you'd rather minimize requests."
+msgstr "Проверява всеки футболен мач на живо за вкарани голове/картони/смени/продължения/дузпи на отделен, по-бавен таймер (на всеки 90с). Това означава допълнителни мрежови заявки за всеки следен от вас мач на живо, в допълнение към обичайното обновяване на резултата - оставете изключено, ако предпочитате да намалите заявките."
+
+#: contents/ui/FullRepresentation.qml:66
+msgctxt "@info data source credit; %1 is one or more linked provider names"
+msgid "Powered by %1"
+msgstr "Захранвано от %1"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:192
+msgctxt "@label"
+msgid "Preview:"
+msgstr "Преглед:"
+
+#: contents/ui/FullRepresentation.qml:1539
+msgctxt "@label:abbreviation points"
+msgid "Pts"
+msgstr "Т"
+
+#: contents/ui/MatchesToolTip.qml:194
+msgctxt "@title:group"
+msgid "Recent"
+msgstr "Скорошни"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:61
+msgctxt "@title:tab"
+msgid "Recent"
+msgstr "Скорошни"
+
+#: contents/ui/FullRepresentation.qml:1051
+msgid "Recent Results"
+msgstr "Скорошни резултати"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:183
+msgctxt "@label:checkbox"
+msgid "Recent Results:"
+msgstr "Скорошни резултати:"
+
+#: contents/ui/config/SavedLeaguesList.qml:559
+msgctxt "@option:check"
+msgid "Recent results"
+msgstr "Скорошни резултати"
+
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:75
+msgctxt "@label:spinbox"
+msgid "Recent results days back:"
+msgstr "Дни назад за скорошни резултати:"
+
+#: contents/ui/main.qml:3260
+msgctxt "@title:notification"
+msgid "Red card"
+msgstr "Червен картон"
+
+#: contents/ui/main.qml:4221
+msgctxt "@action"
+msgid "Refresh"
+msgstr "Обновяване"
+
+#: contents/ui/FullRepresentation.qml:724
+msgctxt "@action:button"
+msgid "Refresh"
+msgstr "Обновяване"
+
+#: contents/ui/config/ConfigGeneral.qml:156
+msgctxt "@label:chooser"
+msgid "Refresh:"
+msgstr "Обновяване:"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:159
+msgctxt "@item:inlistbox"
+msgid "Region default"
+msgstr "По подразбиране за региона"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:103
+msgctxt "@item:inlistbox"
+msgid "Region default (long)"
+msgstr "По подразбиране за региона (дълъг)"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:100
+msgctxt "@item:inlistbox"
+msgid "Region default (short)"
+msgstr "По подразбиране за региона (кратък)"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:101
+msgctxt "@item:inlistbox"
+msgid "Remaining only (e.g. 11)"
+msgstr "Само оставащи (напр. 11)"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:120
+msgctxt "@label:spinbox"
+msgid "Remind before kickoff:"
+msgstr "Напомняне преди началото:"
+
+#: contents/ui/config/SavedLeaguesList.qml:510
+msgctxt "@action:button"
+msgid "Remove"
+msgstr "Премахване"
+
+#: contents/ui/ScoreDelegate.qml:616
+msgctxt "@info:tooltip"
+msgid "Remove %1 from favourites"
+msgstr "Премахване на %1 от любими"
+
+#: contents/ui/config/SavedLeaguesList.qml:589
+msgctxt "@title:window"
+msgid "Remove last saved sport?"
+msgstr "Премахване на последния запазен спорт?"
+
+#: contents/ui/config/SavedLeaguesList.qml:512
+msgctxt "@info:tooltip"
+msgid "Remove saved sport"
+msgstr "Премахване на запазен спорт"
+
+#: contents/ui/config/SportWizardPage.qml:794
+msgctxt "@title:window"
+msgid "Review Selections"
+msgstr "Преглед на избраното"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:207
+msgctxt "@item:inlistbox panel multi-match mode"
+msgid "Rotate one at a time"
+msgstr "Смяна един по един"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:178
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:231
+msgctxt "@label:spinbox"
+msgid "Rotation interval:"
+msgstr "Интервал на смяна:"
+
+#: contents/ui/config/SportWizardPage.qml:860
+msgctxt "@action:button"
+msgid "Save"
+msgstr "Запазване"
+
+#: contents/ui/main.qml:948
+msgctxt "@label"
+msgid "Saved Teams"
+msgstr "Запазени отбори"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:57
+msgctxt "@title:tab"
+msgid "Scheduled"
+msgstr "Насрочени"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:109
+msgctxt "@label:listbox"
+msgid "Scheduled matches:"
+msgstr "Насрочени мачове:"
+
+#: contents/ui/FullRepresentation.qml:1044
+msgid "Schedules"
+msgstr "Разписания"
+
+#: contents/ui/config/SavedLeaguesList.qml:553
+msgctxt "@option:check"
+msgid "Schedules"
+msgstr "Разписания"
+
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:55
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:270
+msgctxt "@label:spinbox"
+msgid "Schedules days ahead:"
+msgstr "Дни напред за насрочени:"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:175
+msgctxt "@label:checkbox"
+msgid "Schedules:"
+msgstr "Разписания:"
+
+#: contents/ui/ScoreDelegate.qml:295
+msgctxt "@info:tooltip"
+msgid "Score may be inaccurate. Click to view match details."
+msgstr "Резултатът може да е неточен. Натиснете, за да видите подробности за мача."
+
+#: contents/ui/config/CountrySubPage.qml:311
+msgctxt "@info:placeholder"
+msgid "Search competitions"
+msgstr "Търсене на турнири"
+
+#: contents/ui/config/CombinedSelectPage.qml:905
+msgctxt "@info:placeholder"
+msgid "Search competitions and players"
+msgstr "Търсене на турнири и играчи"
+
+#: contents/ui/config/CombinedSelectPage.qml:906
+msgctxt "@info:placeholder"
+msgid "Search competitions and teams"
+msgstr "Търсене на турнири и отбори"
+
+#: contents/ui/config/CountrySelectPage.qml:47
+msgctxt "@info:placeholder"
+msgid "Search countries"
+msgstr "Търсене на държави"
+
+#: contents/ui/TableTab.qml:174
+msgctxt "@label"
+msgid "Season:"
+msgstr "Сезон:"
+
+#: contents/ui/main.qml:3227
+msgctxt "@title:notification"
+msgid "Second half"
+msgstr "Втора част"
+
+#: contents/ui/config/SportSelectPage.qml:46
+msgctxt "@info"
+msgid "Select the sport that should drive schedules, tables and fixtures."
+msgstr "Изберете спорта, който да определя разписанията, таблиците и срещите."
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:237
+msgctxt "@label:listbox"
+msgid "Separator between matches:"
+msgstr "Разделител между мачовете:"
+
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:43
+msgctxt "@info"
+msgid ""
+"Show a notification for matches in the competitions and teams you follow."
+msgstr "Показване на известие за мачове от турнирите и отборите, които следите."
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:217
+msgctxt "@info"
+msgid ""
+"Show one-click star, bell and pin icons on each match row to favourite a "
+"team, get notifications for that match, or pin it to the panel."
+msgstr "Показване на икони звезда, звънец и карфица на всеки ред с мач, за да отбележите отбор като любим, да получавате известия за мача или да го закачите в панела."
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:208
+msgctxt "@item:inlistbox panel multi-match mode"
+msgid "Show several side by side"
+msgstr "Показване на няколко едновременно"
+
+#: contents/ui/config/CompetitionTeamSelector.qml:237
+msgctxt "@action:button"
+msgid "Show teams"
+msgstr "Показване на отбори"
+
+#: contents/ui/config/CompetitionTeamSelector.qml:239
+msgctxt "@info:tooltip"
+msgid "Show the teams in this competition"
+msgstr "Показване на отборите в този турнир"
+
+#: contents/ui/ScoreDelegate.qml:528
+msgctxt "@info:tooltip"
+msgid "Show this match in the panel"
+msgstr "Показване на този мач в панела"
+
+#: contents/ui/config/SportChoiceCard.qml:133
+msgctxt "@info:tooltip"
+msgid "Show tournaments"
+msgstr "Показване на турнири"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:92
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:327
+msgctxt "@label:listbox"
+msgid "Show:"
+msgstr "Показване:"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:133
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:168
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:176
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:184
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:192
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:205
+msgctxt "@option:check"
+msgid "Shown"
+msgstr "Показано"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:91
+msgctxt "@item:inlistbox widget layout"
+msgid "Simple"
+msgstr "Опростен"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:82
+msgctxt "@item:inlistbox panel mode"
+msgid "Simple (match counts only)"
+msgstr "Опростен (само брой мачове)"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:142
+msgctxt "@info"
+msgid ""
+"Simple mode shows the sport icon and a match count instead of a match. The "
+"layout, rotation and emblem options below do not apply."
+msgstr "Опростеният режим показва иконата на спорта и брой мачове вместо мач. Опциите за оформление, смяна и емблема по-долу не се прилагат."
+
+#: contents/ui/config/ConfigGeneral.qml:157
+msgctxt "@option:check"
+msgid "Smart"
+msgstr "Интелигентно"
+
+#: contents/config/config.qml:22
+msgid "Sport"
+msgstr "Спорт"
+
+#: contents/ui/config/SportSelectPage.qml:37
+msgctxt "@title:group"
+msgid "Sport"
+msgstr "Спорт"
+
+#: contents/ui/config/CombinedSelectPage.qml:892
+msgctxt "@info"
+msgid ""
+"SportScore is not responding right now, so competitions could not be loaded. "
+"Please try again later."
+msgstr "SportScore не отговаря в момента, затова турнирите не можаха да бъдат заредени. Опитайте отново по-късно."
+
+#: contents/ui/config/CountrySelectPage.qml:66
+msgctxt "@info"
+msgid ""
+"SportScore is not responding right now, so the list of countries could not "
+"be loaded. Please try again later."
+msgstr "SportScore не отговаря в момента, затова списъкът с държави не можа да бъде зареден. Опитайте отново по-късно."
+
+#: contents/ui/config/LeagueSubPage.qml:360
+msgctxt "@info"
+msgid ""
+"SportScore is not responding right now, so this competition's teams could "
+"not be loaded. Please try again later."
+msgstr "SportScore не отговаря в момента, затова отборите в този турнир не можаха да бъдат заредени. Опитайте отново по-късно."
+
+#: contents/ui/config/CountrySubPage.qml:290
+msgctxt "@info"
+msgid ""
+"SportScore is not responding right now, so this country's competitions could "
+"not be loaded. Please try again later."
+msgstr "SportScore не отговаря в момента, затова турнирите на тази държава не можаха да бъдат заредени. Опитайте отново по-късно."
+
+#: contents/ui/main.qml:4175
+msgid "Sports Widget for Plasma"
+msgstr "Sports Widget for Plasma"
+
+#: contents/ui/main.qml:3452
+msgctxt "@title calendar name"
+msgid "Sports Widget for Plasma upcoming matches"
+msgstr "Предстоящи мачове от Sports Widget for Plasma"
+
+#: contents/ui/LiveMatchDetails.qml:446
+msgctxt "@label:football lineups"
+msgid "Starting lineups"
+msgstr "Стартови състави"
+
+#: contents/ui/main.qml:3242
+msgctxt "@title:notification"
+msgid "Starts in %1 minute"
+msgid_plural "Starts in %1 minutes"
+msgstr[0] "Започва след %1 минута"
+msgstr[1] "Започва след %1 минути"
+
+#: contents/ui/LiveMatchDetails.qml:339
+msgctxt "@tab:match details"
+msgid "Statistics"
+msgstr "Статистика"
+
+#: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:241
+msgctxt "@action:button"
+msgid "Stop notifying about this match"
+msgstr "Спиране на известията за този мач"
+
+#: contents/ui/LiveMatchDetails.qml:456
+msgctxt "@label:football lineups"
+msgid "Substitutes"
+msgstr "Резерви"
+
+#: contents/ui/main.qml:3263
+msgctxt "@title:notification"
+msgid "Substitution"
+msgstr "Смяна"
+
+#: contents/ui/FullRepresentation.qml:662
+msgctxt "@action:button"
+msgid "Switch sport"
+msgstr "Смяна на спорта"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:330
+msgctxt "@info:font preview"
+msgid "System font"
+msgstr "Системен шрифт"
+
+#: contents/ui/main.qml:4500 contents/ui/main.qml:4501
+#: contents/ui/main.qml:4528 contents/ui/main.qml:4559
+msgctxt "@info:status"
+msgid "Table request timed out."
+msgstr "Заявката за таблица изтече."
+
+#: contents/ui/TableTab.qml:133
+msgctxt "@label"
+msgid "Table:"
+msgstr "Таблица:"
+
+#: contents/ui/FullRepresentation.qml:1058
+msgid "Tables"
+msgstr "Таблици"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:65
+msgctxt "@title:tab"
+msgid "Tables"
+msgstr "Таблици"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:191
+msgctxt "@label:checkbox"
+msgid "Tables:"
+msgstr "Таблици:"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:142
+msgctxt "@label:listbox"
+msgid "Tabs position:"
+msgstr "Позиция на разделите:"
+
+#: contents/ui/config/PopularSelectPage.qml:142
+msgctxt "@info"
+msgid ""
+"Tap a competition to open it, then enable the whole competition or follow "
+"individual teams."
+msgstr "Докоснете турнир, за да го отворите, след което включете целия турнир или следвайте отделни отбори."
+
+#: contents/ui/config/PopularSelectPage.qml:142
+msgctxt "@info"
+msgid ""
+"Tap a competition to open it, then enable the whole competition or follow "
+"individual teams. Use Browse all for every country and international "
+"competition."
+msgstr "Докоснете турнир, за да го отворите, след което включете целия турнир или следвайте отделни отбори. Използвайте „Разглеждане на всички“ за всяка държава и международен турнир."
+
+#: contents/ui/config/SavedLeaguesList.qml:95
+#: contents/ui/FullRepresentation.qml:1492 contents/ui/TableTab.qml:334
+msgctxt "@label"
+msgid "Team"
+msgstr "Отбор"
+
+#: contents/ui/config/LeagueSubPage.qml:444
+msgctxt "@title:group"
+msgid "Teams"
+msgstr "Отбори"
+
+#: contents/ui/config/CombinedSelectPage.qml:1023
+msgctxt "@title:section"
+msgid "Teams"
+msgstr "Отбори"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:332
+msgctxt "@item:inlistbox"
+msgid "Teams and competitions"
+msgstr "Отбори и турнири"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:160
+msgctxt "@item:inlistbox"
+msgid "Teams and score"
+msgstr "Отбори и резултат"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:335
+msgctxt "@item:inlistbox"
+msgid "Teams only"
+msgstr "Само отбори"
+
+#: contents/ui/config/PopularSelectPage.qml:120
+msgctxt "@info"
+msgid ""
+"The most popular competitions. Open one to follow the competition or pick "
+"teams inside it."
+msgstr "Най-популярните турнири. Отворете турнир, за да го следите или да изберете отбори от него."
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:146
+msgctxt "@info"
+msgid ""
+"The native calendar plugin is not installed, so matches won't appear in the "
+"Plasma calendar yet. Download and install it from the widget's plugin/ "
+"folder, then restart Plasma. Before installing, verify the downloaded "
+"archive's MD5 checksum matches:\n"
+"%1"
+msgstr "Вградената приставка за календар не е инсталирана, затова мачовете все още няма да се показват в календара на Plasma. Изтеглете я и я инсталирайте от папката plugin/ на приспособлението, след което рестартирайте Plasma. Преди инсталиране проверете дали контролната сума MD5 на изтегления архив съвпада с:\n%1"
+
+#: contents/ui/LiveMatchDetails.qml:256
+msgctxt "@info:placeholder"
+msgid "The provider does not provide detailed match statistics for this match."
+msgstr "Доставчикът не предоставя подробна статистика за този мач."
+
+#: contents/ui/config/LeagueSubPage.qml:359
+msgctxt "@info"
+msgid ""
+"The provider is not responding right now, so this competition's players "
+"could not be loaded. Please try again later."
+msgstr "Доставчикът не отговаря в момента, затова играчите в този турнир не можаха да бъдат заредени. Опитайте отново по-късно."
+
+#: contents/ui/config/PopularSelectPage.qml:191
+msgctxt "@info"
+msgid ""
+"There is no curated top list for this sport yet - use Browse all to pick "
+"competitions and teams."
+msgstr "Все още няма подбран топ списък за този спорт - използвайте „Разглеждане на всички“, за да изберете турнири и отбори."
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:210
+msgctxt "@info"
+msgid ""
+"These formats are used for match dates and update times in the panel and "
+"widget. Custom values use Qt date/time patterns."
+msgstr "Тези формати се използват за датите на мачовете и времената на обновяване в панела и приспособлението. Персонализираните стойности използват шаблони за дата/час на Qt."
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:243
+msgctxt "@item:inlistbox stack separator"
+msgid "Thin line"
+msgstr "Тънка линия"
+
+#: contents/ui/config/tabs/AppearanceMiscTab.qml:136
+msgctxt "@label:listbox"
+msgid "Time format:"
+msgstr "Формат на часа:"
+
+#: contents/ui/config/SavedLeaguesList.qml:578
+msgctxt "@option:check"
+msgid "Tooltip"
+msgstr "Подсказка"
+
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:30
+msgctxt "@title:group"
+msgid "Tooltip"
+msgstr "Подсказка"
+
+#: contents/ui/config/ConfigAppearance.qml:101
+msgctxt "@title:tab"
+msgid "Tooltip"
+msgstr "Подсказка"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:148
+msgctxt "@item:inlistbox tabs position"
+msgid "Top"
+msgstr "Отгоре"
+
+#: contents/ui/config/PopularSelectPage.qml:160
+msgctxt "@title:group"
+msgid "Top competitions"
+msgstr "Топ турнири"
+
+#: contents/ui/config/PopularSelectPage.qml:112
+msgctxt "@title:group"
+msgid "Top in the World"
+msgstr "Топ в света"
+
+#: contents/ui/LiveMatchDetails.qml:625
+msgctxt "@title:group match details"
+msgid "Top performers"
+msgstr "Най-изявени играчи"
+
+#: contents/ui/LiveMatchDetails.qml:357
+msgctxt "@tab:match details"
+msgid "Tracker"
+msgstr "Проследяване"
+
+#: contents/ui/config/CombinedSelectPage.qml:896
+#: contents/ui/config/CountrySelectPage.qml:76
+#: contents/ui/config/CountrySubPage.qml:294
+#: contents/ui/config/LeagueSubPage.qml:364
+msgctxt "@action:button"
+msgid "Try again"
+msgstr "Опитайте отново"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:176
+msgctxt "@info"
+msgid ""
+"Unstable - not recommended. This registers the .ics as a live Akonadi (KDE "
+"PIM) calendar. On some systems Akonadi re-indexes every match on each update "
+"and can freeze Plasma for several seconds. Prefer the native calendar plugin "
+"above; only enable this if you specifically need an Akonadi calendar and "
+"accept the risk."
+msgstr "Нестабилно - не се препоръчва. Това регистрира .ics като жив календар на Akonadi (KDE PIM). На някои системи Akonadi преиндексира всеки мач при всяко обновяване и може да блокира Plasma за няколко секунди. Предпочитайте вградената приставка за календар по-горе; включете това само ако конкретно имате нужда от календар на Akonadi и приемате риска."
+
+#: contents/ui/MatchesToolTip.qml:172
+msgctxt "@title:group"
+msgid "Upcoming"
+msgstr "Предстоящи"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:67
+msgctxt "@info"
+msgid ""
+"Upcoming fixtures from the competitions and teams you follow are shown "
+"directly in the Plasma calendar (the date/clock pop-up), kept in sync "
+"automatically."
+msgstr "Предстоящите срещи от турнирите и отборите, които следите, се показват директно в календара на Plasma (изскачащия прозорец с дата/час) и се синхронизират автоматично."
+
+#: contents/ui/config/ConfigGeneral.qml:193
+msgctxt "@option:check"
+msgid "Update separately"
+msgstr "Отделно обновяване"
+
+#: contents/ui/main.qml:1124
+msgctxt "@info:status"
+msgid "Updated"
+msgstr "Обновено"
+
+#: contents/ui/main.qml:1124
+msgctxt "@info:status"
+msgid "Updated %1"
+msgstr "Обновено %1"
+
+#: contents/ui/FullRepresentation.qml:1099
+msgctxt "@info:status"
+msgid "Updating"
+msgstr "Обновяване"
+
+#: contents/ui/TableTab.qml:276
+msgctxt "@info:status"
+msgid "Updating table"
+msgstr "Обновяване на таблицата"
+
+#: contents/ui/main.qml:219 contents/ui/MatchesToolTip.qml:214
+msgctxt "@info:status"
+msgid "Updating…"
+msgstr "Обновяване…"
+
+#: contents/ui/config/tabs/NotificationsCalendarTab.qml:154
+msgctxt "@action:button"
+msgid "View README"
+msgstr "Преглед на README"
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:161
+msgctxt "@title:group"
+msgid "Visible tabs"
+msgstr "Видими раздели"
+
+#: contents/ui/LiveMatchDetails.qml:429
+msgctxt "@action:button open match on ESPN website"
+msgid "Visit on ESPN"
+msgstr "Преглед в ESPN"
+
+#: contents/ui/FullRepresentation.qml:1503
+msgctxt "@label:abbreviation games won"
+msgid "W"
+msgstr "П"
+
+#: contents/ui/FullRepresentation.qml:1006
+msgctxt "@info:status"
+msgid "Waiting for update"
+msgstr "Изчакване на обновяване"
+
+#: contents/ui/config/ConfigAppearance.qml:96
+msgctxt "@title:tab"
+msgid "Widget"
+msgstr "Приспособление"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:254
+msgctxt "@label:listbox"
+msgid "Widget panel area:"
+msgstr "Област на панела на приспособлението:"
+
+#: contents/ui/FullRepresentation.qml:1504
+msgctxt "@label"
+msgid "Won"
+msgstr "Победи"
+
+#: contents/ui/main.qml:3257
+msgctxt "@title:notification"
+msgid "Yellow card"
+msgstr "Жълт картон"
+
+#: contents/ui/config/SavedLeaguesList.qml:633
+msgctxt "@action:button"
+msgid "Yes, remove it"
+msgstr "Да, премахни го"
+
+#: contents/ui/config/SportWizardPage.qml:810
+msgctxt "@info"
+msgid ""
+"You selected the competitions and teams below. If you click Save, they will "
+"be added to the Sports list. If you missed something, go back and add the "
+"missing items."
+msgstr "Избрахте турнирите и отборите по-долу. Ако натиснете „Запазване“, те ще бъдат добавени към списъка със спортове. Ако сте пропуснали нещо, върнете се назад и добавете липсващите елементи."
+
+#: contents/ui/config/LeagueSubPage.qml:335
+msgctxt "@info"
+msgid ""
+"Your picks are added to this sport's selection. They are saved when you "
+"finish the wizard and click Apply (or OK)."
+msgstr "Вашите избори се добавят към селекцията за този спорт. Те се запазват, когато завършите помощника и натиснете „Прилагане“ (или „ОК“)."
+
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:70
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:90
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:285
+msgctxt "@label:spinbox"
+msgid "day"
+msgid_plural "days"
+msgstr[0] "ден"
+msgstr[1] "дни"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:230
+#: contents/ui/config/tabs/AppearanceTooltipTab.qml:50
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:305
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:361
+msgctxt "@label:spinbox"
+msgid "match"
+msgid_plural "matches"
+msgstr[0] "мач"
+msgstr[1] "мача"
+
+#: contents/ui/config/ConfigGeneral.qml:185
+#: contents/ui/config/tabs/NotificationsAlertsTab.qml:136
+msgctxt "@label:spinbox"
+msgid "minute"
+msgid_plural "minutes"
+msgstr[0] "минута"
+msgstr[1] "минути"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:372
+msgctxt "@label:spinbox pixels unit"
+msgid "px"
+msgstr "px"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:291
+msgctxt "@label:manual area unit"
+msgid "px height"
+msgstr "px височина"
+
+#: contents/ui/config/tabs/AppearancePanelTab.qml:291
+msgctxt "@label:manual area unit"
+msgid "px width"
+msgstr "px ширина"
+
+#: contents/ui/config/ConfigGeneral.qml:212
+#: contents/ui/config/tabs/AppearancePanelTab.qml:194
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:247
+msgctxt "@label:spinbox"
+msgid "second"
+msgid_plural "seconds"
+msgstr[0] "секунда"
+msgstr[1] "секунди"
