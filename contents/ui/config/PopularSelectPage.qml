@@ -35,7 +35,7 @@ ColumnLayout {
     readonly property string sport: root.configRoot ? root.configRoot.normalizedSport() : ""
     readonly property bool browseDisabled: root.configRoot ? root.configRoot.browseDisabled : false
     // Tennis shows its full ATP/WTA list right here, and "Browse all" only leads to
-    // an International page with the same two competitions — so hide it for tennis
+    // an International page with the same two competitions - so hide it for tennis
     // too, just like the fixed-league ESPN-native sports.
     readonly property bool hideBrowse: root.browseDisabled || root.sport === "tennis"
     readonly property var curatedCompetitions: PopularCatalog.popularCompetitions(root.sport)
@@ -52,7 +52,10 @@ ColumnLayout {
         return root.curatedCompetitions;
     }
     readonly property int cardMinimumWidth: Kirigami.Units.gridUnit * 11
-    property var emblems: ({ "competitions": {}, "teams": {} })
+    property var emblems: ({
+            "competitions": {},
+            "teams": {}
+        })
 
     spacing: Kirigami.Units.largeSpacing
     onSportChanged: root.loadEmblems()
@@ -81,7 +84,9 @@ ColumnLayout {
                 return;
         }
 
-        SportsApi.fetchPopularEmblems({ "sports": root.sport }, map => {
+        SportsApi.fetchPopularEmblems({
+            "sports": root.sport
+        }, map => {
             if (map && typeof map === "object") {
                 emblemCache.write(cacheKey, map);
                 root.applyEmblemMap(map);
@@ -94,8 +99,7 @@ ColumnLayout {
         if (direct.length > 0)
             return direct;
         const key = String(comp && comp.label || "").trim().toLowerCase();
-        return root.emblems && root.emblems.competitions && root.emblems.competitions[key]
-            ? String(root.emblems.competitions[key]) : "";
+        return root.emblems && root.emblems.competitions && root.emblems.competitions[key] ? String(root.emblems.competitions[key]) : "";
     }
 
     ColumnLayout {
@@ -108,11 +112,12 @@ ColumnLayout {
             text: i18nc("@title:group", "Top in the World")
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
+            visible: true
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
             text: i18nc("@info", "The most popular competitions. Open one to follow the competition or pick teams inside it.")
-            opacity: 0.72
-            wrapMode: Text.WordWrap
         }
     }
 
@@ -132,10 +137,9 @@ ColumnLayout {
             Kirigami.InlineMessage {
                 Layout.fillWidth: true
                 visible: true
+                showCloseButton: true
                 type: Kirigami.MessageType.Information
-                text: root.hideBrowse
-                    ? i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams.")
-                    : i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams. Use Browse all for every country and international competition.")
+                text: root.hideBrowse ? i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams.") : i18nc("@info", "Tap a competition to open it, then enable the whole competition or follow individual teams. Use Browse all for every country and international competition.")
             }
 
             Button {
@@ -184,7 +188,7 @@ ColumnLayout {
             Label {
                 Layout.fillWidth: true
                 visible: root.popularCompetitions.length === 0
-                text: i18nc("@info", "There is no curated top list for this sport yet — use Browse all to pick competitions and teams.")
+                text: i18nc("@info", "There is no curated top list for this sport yet - use Browse all to pick competitions and teams.")
                 color: Kirigami.Theme.disabledTextColor
                 wrapMode: Text.WordWrap
             }

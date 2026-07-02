@@ -53,7 +53,7 @@ Item {
     property bool loading: false
     property string loadError: ""
     // True only when the provider request itself failed (network/timeout), as
-    // opposed to a successful-but-empty result — drives the "try again" error.
+    // opposed to a successful-but-empty result - drives the "try again" error.
     property bool loadFailed: false
     property int requestToken: 0
     property var emblems: ({ "competitions": {}, "teams": {} })
@@ -162,7 +162,7 @@ Item {
             if (token !== root.requestToken)
                 return;
             root.loading = false;
-            // The provider failed (and ESPN could not cover this) — keep any cached
+            // The provider failed (and ESPN could not cover this) - keep any cached
             // list and surface a retry message.
             if (!hasCache)
                 root.loadFailed = true;
@@ -253,12 +253,14 @@ Item {
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
                     visible: true
+                    showCloseButton: true
                     type: Kirigami.MessageType.Information
                     text: i18nc("@info", "Open a competition to follow the whole competition or pick teams inside it. Changes are saved when you click Apply (or OK).")
                 }
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
+                    showCloseButton: true
                     type: Kirigami.MessageType.Positive
                     // Session-wide summary of new additions (excluding already-saved),
                     // matching the wizard pages and the league subpage. The
@@ -283,6 +285,7 @@ Item {
                     // sports are ESPN-only, so don't blame SportScore there.
                     // Hidden while (re)loading so "Try again" shows progress first.
                     visible: root.loadFailed && !root.loading && SportScoreSports.supports(root.sport)
+                    showCloseButton: true
                     type: Kirigami.MessageType.Error
                     text: i18nc("@info", "SportScore is not responding right now, so this country's competitions could not be loaded. Please try again later.")
                     actions: [

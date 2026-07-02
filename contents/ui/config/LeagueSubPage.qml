@@ -219,7 +219,11 @@ Item {
         SportsApi.fetchCompetitionTeams({
             "sports": root.sport,
             "league": root.slug,
-            "country": root.country
+            "country": root.country,
+            // The canonical page path lets the standings widget derive the right
+            // slug (a label-derived slug often 404s), skipping the HTML fallback.
+            "competitionPath": root.league ? String(root.league.path || root.league.competitionPath || "") : "",
+            "leagueLabel": root.label
         }, teams => {
             if (token !== root.teamsToken)
                 return;
@@ -325,6 +329,7 @@ Item {
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
                     visible: true
+                    showCloseButton: true
                     type: Kirigami.MessageType.Information
                     text: root.commitMode === "select"
                         ? i18nc("@info", "Your picks are added to this sport's selection. They are saved when you finish the wizard and click Apply (or OK).")
@@ -333,6 +338,7 @@ Item {
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
+                    showCloseButton: true
                     type: Kirigami.MessageType.Positive
                     // savedRevision bumps on every follow/unfollow, re-evaluating this.
                     // Shows the session-wide summary (all sports/countries added,
@@ -347,6 +353,7 @@ Item {
                     // other sports are ESPN-only, so don't blame SportScore there.
                     // Hidden while (re)loading so "Try again" shows progress first.
                     visible: root.loadFailed && !root.loading && SportScoreSports.supports(root.sport)
+                    showCloseButton: true
                     type: Kirigami.MessageType.Error
                     text: root.usesPlayers
                         ? i18nc("@info", "The provider is not responding right now, so this competition's players could not be loaded. Please try again later.")

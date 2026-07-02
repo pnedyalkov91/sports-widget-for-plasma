@@ -73,8 +73,8 @@ KCM.SimpleKCM {
     property bool cfg_calendarIcsExportEnabled: Plasmoid.configuration.calendarIcsExportEnabled
     property bool cfg_calendarAkonadiEnabled: Plasmoid.configuration.calendarAkonadiEnabled
     property int cfg_calendarReminderMinutes: Plasmoid.configuration.calendarReminderMinutes
-    property string cfg_notifyEntryExclusions: Plasmoid.configuration.notifyEntryExclusions
-    property string cfg_calendarEntryExclusions: Plasmoid.configuration.calendarEntryExclusions
+    property string cfg_notifyEntryInclusions: Plasmoid.configuration.notifyEntryInclusions
+    property string cfg_calendarEntryInclusions: Plasmoid.configuration.calendarEntryInclusions
     property string cfg_providerDefault: "sportscore"
     property string cfg_defaultSportDefault: "football"
     property string cfg_selectedSportsDefault: ""
@@ -120,8 +120,8 @@ KCM.SimpleKCM {
     property bool cfg_calendarIcsExportEnabledDefault: false
     property bool cfg_calendarAkonadiEnabledDefault: false
     property int cfg_calendarReminderMinutesDefault: 15
-    property string cfg_notifyEntryExclusionsDefault: "[]"
-    property string cfg_calendarEntryExclusionsDefault: "[]"
+    property string cfg_notifyEntryInclusionsDefault: "[]"
+    property string cfg_calendarEntryInclusionsDefault: "[]"
 
     function indexFor(model, value) {
         for (let index = 0; index < model.length; index += 1) {
@@ -134,34 +134,6 @@ KCM.SimpleKCM {
 
     Kirigami.FormLayout {
         anchors.fill: parent
-
-        ComboBox {
-            id: layoutMode
-
-            Kirigami.FormData.label: i18nc("@label:listbox", "Layout:")
-            Layout.fillWidth: true
-            textRole: "label"
-            valueRole: "value"
-            model: [
-                { "value": "detailed", "label": i18nc("@item:inlistbox widget layout", "Detailed") },
-                { "value": "simple", "label": i18nc("@item:inlistbox widget layout", "Simple") }
-            ]
-            Component.onCompleted: currentIndex = root.indexFor(model, root.cfg_widgetLayoutMode)
-            onActivated: root.cfg_widgetLayoutMode = currentValue
-        }
-
-        Label {
-            Layout.fillWidth: true
-            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
-            text: i18nc("@info", "Detailed shows a featured match, tabs, standings and recent results. Simple shows only live and scheduled matches in a single scrolling list.")
-            wrapMode: Text.WordWrap
-            font: Kirigami.Theme.smallFont
-            color: Kirigami.Theme.disabledTextColor
-        }
-
-        Item {
-            Kirigami.FormData.isSection: true
-        }
 
         ComboBox {
             id: defaultSport
@@ -186,13 +158,13 @@ KCM.SimpleKCM {
             checked: true
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
-            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+            visible: true
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
             text: i18nc("@info", "Automatically checks for upcoming matches every 30 minutes, and live scores every 60 seconds while a match is in progress, to limit network requests. Turn off to set your own refresh times.")
-            wrapMode: Text.WordWrap
-            font: Kirigami.Theme.smallFont
-            color: Kirigami.Theme.disabledTextColor
         }
 
         RowLayout {

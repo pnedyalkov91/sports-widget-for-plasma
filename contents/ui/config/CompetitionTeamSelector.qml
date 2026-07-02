@@ -25,7 +25,7 @@ import "../../code/SportsApi.js" as SportsApi
 
 // A simple, native-looking list of competitions. Each row has an emblem, name
 // and a follow switch, plus a chevron that expands it in place to reveal its
-// teams (loaded from the standings JSON API, with emblems, cached) — each team
+// teams (loaded from the standings JSON API, with emblems, cached) - each team
 // a follow switch too. `commitMode` selects how a switch commits:
 //   "favorite" - add/remove a saved favorite instantly (Top page, cross-country)
 //   "select"   - toggle it in the staged wizard selection (Browse flow)
@@ -158,7 +158,11 @@ ColumnLayout {
         SportsApi.fetchCompetitionTeams({
             "sports": root.sport,
             "league": slug,
-            "country": String(comp.country || "")
+            "country": String(comp.country || ""),
+            // The canonical page path lets the standings widget derive the right
+            // slug (a label-derived slug often 404s), skipping the HTML fallback.
+            "competitionPath": String(comp.path || comp.competitionPath || ""),
+            "leagueLabel": String(comp.label || "")
         }, teams => {
             if (root.loadingSlug === slug)
                 root.loadingSlug = "";

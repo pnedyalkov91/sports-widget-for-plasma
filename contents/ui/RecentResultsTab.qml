@@ -77,7 +77,7 @@ Item {
         // Delegate heights here are variable (collapsed groups, placeholder rows,
         // an inline-expanded match whose details load async). With item reuse the
         // ListView estimates off-screen heights from recycled items and corrects
-        // contentHeight mid-scroll — which makes the scrollbar resize and the view
+        // contentHeight mid-scroll - which makes the scrollbar resize and the view
         // jump. Disabling reuse keeps each realized row's measured height, and a
         // moderate cache buffer avoids re-measuring at the scroll edges. The fixed
         // non-expanded delegate height (below) keeps contentHeight stable.
@@ -113,16 +113,14 @@ Item {
 
             width: resultsList.contentColumnWidth
             // Explicit row kind ("header" | "match" | "notice") so the discriminator
-            // is reliable with the model's dynamic roles — header rows only exist so
+            // is reliable with the model's dynamic roles - header rows only exist so
             // the section header renders, notice rows say "no recent matches".
             readonly property string rowType: String(recentRow.model.rowType || "match")
             readonly property bool isNotice: rowType === "notice"
-            readonly property bool shown: rowType !== "header"
-                && !root.isGroupCollapsed(recentRow.model.leagueGroup)
+            readonly property bool shown: rowType !== "header" && !root.isGroupCollapsed(recentRow.model.leagueGroup)
             readonly property real matchRowHeight: String(recentRow.model.stadium || "").length > 0 ? Kirigami.Units.gridUnit * 5.4 : Kirigami.Units.gridUnit * 4.6
             visible: shown
-            height: !shown ? 0 : (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
-                : (matchLoader.item && matchLoader.item.expanded ? matchLoader.item.implicitHeight : matchRowHeight))
+            height: !shown ? 0 : (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2 : (matchLoader.item && matchLoader.item.expanded ? matchLoader.item.implicitHeight : matchRowHeight))
 
             PlasmaComponents.Label {
                 id: noticeLabel
@@ -174,6 +172,10 @@ Item {
                     espnEventId: recentRow.model.espnEventId || ""
                     espnSport: recentRow.model.espnSport || ""
                     espnLeague: recentRow.model.espnLeague || ""
+                    // Owned by the list (see LiveTab) so the chosen details tab
+                    // survives the delegate being recreated on scroll.
+                    activeDetailsTab: resultsList.expandedDetailsTab
+                    onActiveDetailsTabChanged: resultsList.expandedDetailsTab = activeDetailsTab
                     onClicked: {
                         root.matchSelected(recentRow.index);
                         resultsList.expandedIndex = resultsList.expandedIndex === recentRow.index ? -1 : recentRow.index;
@@ -184,6 +186,8 @@ Item {
         }
 
         property int expandedIndex: -1
+        property int expandedDetailsTab: 0
+        onExpandedIndexChanged: expandedDetailsTab = 0
     }
 
     ColumnLayout {

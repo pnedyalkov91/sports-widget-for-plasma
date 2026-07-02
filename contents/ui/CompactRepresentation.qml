@@ -27,6 +27,11 @@ Control {
     property int liveCount: 0
     property bool loading: false
     property string layoutMode: "teamsAndBadges"
+    // Simple/Colosseum-style count mode.
+    property string panelMode: "detailed"
+    property string panelCountsFormat: "liveRemaining"
+    property int remainingCount: 0
+    readonly property bool simpleMode: compact.panelMode === "simple"
     property string primaryText: ""
     property string secondaryText: ""
     property string panelText: ""
@@ -55,6 +60,11 @@ Control {
     property bool matchRotationEnabled: true
     property int matchRotationInterval: 30
     property int matchRotationCount: 0
+    // "rotate" (default) cycles one match at a time; "stack" shows several at once.
+    property string multiMatchMode: "rotate"
+    property int stackMaxMatches: 3
+    property var stackMatches: []
+    readonly property bool stackModeActive: compact.multiMatchMode === "stack" && !compact.favoritePanelMode && Array.isArray(compact.stackMatches) && compact.stackMatches.length > 0
     readonly property color liveColor: Kirigami.Theme.negativeTextColor
     readonly property int effectiveManualFontPointSize: Math.max(6, compact.panelFontSize > 0 ? compact.panelFontSize : Kirigami.Theme.defaultFont.pointSize > 0 ? Kirigami.Theme.defaultFont.pointSize : 11)
     readonly property font effectivePanelFont: compact.useCustomFont()
@@ -75,6 +85,15 @@ Control {
     function displayText() {
         const text = compact.panelText.trim();
         return text.length > 0 ? text : compact.primaryText;
+    }
+
+    // Compact count shown in simple mode: "A / B" (live / remaining) or just "B"
+    // (remaining), GNOME Colosseum style.
+    function countsText() {
+        const remaining = Math.max(0, compact.remainingCount);
+        if (compact.panelCountsFormat === "remaining")
+            return String(remaining);
+        return String(Math.max(0, compact.liveCount)) + " / " + String(remaining);
     }
 
     function displayLiveText() {
@@ -167,7 +186,8 @@ Control {
     readonly property int favoriteDetailsNaturalWidth: Math.ceil(favoriteDetailsMetrics.advanceWidth) + compact.contentMargin * 2
     readonly property int matchNaturalWidth: compact.favoritePanelMode ? Math.max(favoriteMatchNaturalWidth, favoriteDetailsNaturalWidth) : homeSideNaturalWidth + centerNaturalWidth + awaySideNaturalWidth + compact.matchColumnSpacing * 2 + compact.contentMargin * 2
     readonly property int fallbackNaturalWidth: Math.ceil(fallbackTextMetrics.advanceWidth) + Kirigami.Units.iconSizes.medium + compact.matchColumnSpacing * 2 + (compact.liveCount > 0 ? Kirigami.Units.iconSizes.smallMedium + compact.matchColumnSpacing : 0)
-    readonly property int naturalPanelWidth: compact.hasMatchDetails() ? matchNaturalWidth : fallbackNaturalWidth
+    readonly property int stackNaturalWidth: compact.contentMargin * 2 + (stackRow ? Math.ceil(stackRow.implicitWidth) : 0)
+    readonly property int naturalPanelWidth: compact.stackModeActive ? Math.max(compact.minimumPanelWidth, stackNaturalWidth) : compact.hasMatchDetails() ? matchNaturalWidth : fallbackNaturalWidth
     readonly property int minimumPanelWidth: compact.normalizedLayoutMode() === "badgesOnly" ? Kirigami.Units.gridUnit * 5 : Kirigami.Units.gridUnit * 9
     readonly property string effectivePanelAreaMode: compact.normalizedPanelAreaMode()
     readonly property int manualPanelAreaSize: Math.max(20, compact.panelAreaSize || 240)
@@ -252,32 +272,9 @@ Control {
     Timer {
         interval: Math.max(5, compact.matchRotationInterval || 30) * 1000
         repeat: true
-        running: compact.matchRotationEnabled && compact.matchRotationCount > 1
-        onTriggered: matchRotationAnimation.restart()
-    }
-
-    SequentialAnimation {
-        id: matchRotationAnimation
-
-        NumberAnimation {
-            target: compactContent
-            property: "opacity"
-            to: 0
-            duration: Kirigami.Units.longDuration
-            easing.type: Easing.InOutQuad
-        }
-
-        ScriptAction {
-            script: compact.rotateMatchRequested()
-        }
-
-        NumberAnimation {
-            target: compactContent
-            property: "opacity"
-            to: 1
-            duration: Kirigami.Units.longDuration
-            easing.type: Easing.InOutQuad
-        }
+        // No rotation in stack mode - all matches are shown at once.
+        running: compact.matchRotationEnabled && compact.matchRotationCount > 1 && !compact.stackModeActive
+        onTriggered: compact.rotateMatchRequested()
     }
 
     MouseArea {
@@ -288,6 +285,36 @@ Control {
     contentItem: Item {
         id: compactContent
 
+        // Simple mode: sport icon + "live / remaining" (or "remaining") count.
+        RowLayout {
+            id: simpleRow
+
+            anchors.centerIn: parent
+            width: Math.min(implicitWidth, Math.max(0, parent.width - compact.contentMargin * 2))
+            height: implicitHeight
+            spacing: compact.matchColumnSpacing
+            visible: compact.simpleMode
+
+            SportGlyph {
+                Layout.preferredWidth: Math.min(compact.height, Kirigami.Units.iconSizes.smallMedium)
+                Layout.preferredHeight: Layout.preferredWidth
+                Layout.alignment: Qt.AlignVCenter
+                loading: compact.loading
+                sport: compact.sport
+            }
+
+            LiveDot {
+                Layout.alignment: Qt.AlignVCenter
+                visible: compact.liveCount > 0 && compact.panelCountsFormat !== "remaining"
+            }
+
+            PanelLabel {
+                Layout.alignment: Qt.AlignVCenter
+                text: compact.countsText()
+                color: compact.liveCount > 0 ? compact.liveColor : Kirigami.Theme.textColor
+            }
+        }
+
         RowLayout {
             id: matchRow
 
@@ -295,7 +322,7 @@ Control {
             width: Math.min(implicitWidth, Math.max(0, parent.width - compact.contentMargin * 2))
             height: implicitHeight
             spacing: compact.matchColumnSpacing
-            visible: compact.hasMatchDetails() && !compact.favoritePanelMode
+            visible: !compact.simpleMode && compact.hasMatchDetails() && !compact.favoritePanelMode && !compact.stackModeActive
 
             RowLayout {
                 Layout.fillWidth: compact.showTeamNames()
@@ -376,6 +403,43 @@ Control {
             }
         }
 
+        // Stack mode: several matches side by side (Colosseum style). Each cell
+        // is a compact badge/score/badge group separated by a thin divider.
+        Row {
+            id: stackRow
+
+            anchors.centerIn: parent
+            height: parent.height
+            spacing: compact.matchColumnSpacing
+            visible: !compact.simpleMode && compact.stackModeActive
+
+            Repeater {
+                model: compact.stackModeActive ? compact.stackMatches : []
+
+                delegate: Row {
+                    required property var modelData
+                    required property int index
+
+                    height: stackRow.height
+                    spacing: compact.teamContentSpacing
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 1
+                        height: Math.round(parent.height * 0.55)
+                        color: Kirigami.Theme.separatorColor
+                        opacity: 0.5
+                        visible: index > 0
+                    }
+
+                    StackCell {
+                        anchors.verticalCenter: parent.verticalCenter
+                        cell: modelData
+                    }
+                }
+            }
+        }
+
         RowLayout {
             id: favoriteMatchRow
 
@@ -383,7 +447,7 @@ Control {
             width: Math.min(implicitWidth, Math.max(0, parent.width - compact.contentMargin * 2))
             height: implicitHeight
             spacing: compact.matchColumnSpacing
-            visible: compact.favoritePanelMode && !compact.favoriteDetailsVisible
+            visible: !compact.simpleMode && compact.favoritePanelMode && !compact.favoriteDetailsVisible
 
             RowLayout {
                 Layout.fillWidth: true
@@ -438,7 +502,7 @@ Control {
             anchors.centerIn: parent
             width: Math.max(0, parent.width - compact.contentMargin * 2)
             text: compact.favoriteDetailsText()
-            visible: compact.favoritePanelMode && compact.favoriteDetailsVisible && text.length > 0
+            visible: !compact.simpleMode && compact.favoritePanelMode && compact.favoriteDetailsVisible && text.length > 0
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
@@ -448,7 +512,7 @@ Control {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
-            visible: !compact.hasMatchDetails()
+            visible: !compact.simpleMode && !compact.hasMatchDetails()
 
             SportGlyph {
                 Layout.preferredWidth: Math.min(parent.height, Kirigami.Units.iconSizes.medium)
@@ -505,27 +569,10 @@ Control {
     component LiveDot: Rectangle {
         Layout.preferredWidth: compact.liveDotSize
         Layout.preferredHeight: Layout.preferredWidth
+        implicitWidth: compact.liveDotSize
+        implicitHeight: compact.liveDotSize
         radius: width / 2
         color: compact.liveColor
-
-        SequentialAnimation on opacity {
-            loops: Animation.Infinite
-            running: compact.isLive
-
-            NumberAnimation {
-                from: 1
-                to: 0.35
-                duration: 650
-                easing.type: Easing.InOutQuad
-            }
-
-            NumberAnimation {
-                from: 0.35
-                to: 1
-                duration: 650
-                easing.type: Easing.InOutQuad
-            }
-        }
     }
 
     component TeamLogo: Item {
@@ -544,6 +591,71 @@ Control {
             anchors.fill: parent
             sourceUrl: parent.sourceUrl
             fallbackIcon: "emblem-favorite"
+            fallbackEmoji: SportVisuals.emoji(compact.sport)
+        }
+    }
+
+    // One compact match in stack mode: home badge, score (or kickoff time), away
+    // badge, with a small live dot when the match is in play.
+    component StackCell: Row {
+        property var cell: ({})
+
+        readonly property int badgeSize: compact.panelEmblemSize > 0
+            ? Math.max(8, Math.min(40, compact.panelEmblemSize))
+            : Math.max(8, Math.min(Math.max(8, compact.height - Math.max(2, Kirigami.Units.smallSpacing)), Kirigami.Units.iconSizes.smallMedium))
+        readonly property bool cellLive: Boolean(cell && cell.isLive)
+
+        spacing: Math.max(2, Math.round(Kirigami.Units.smallSpacing / 2))
+
+        TeamBadgeImage {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.badgeSize
+            height: parent.badgeSize
+            sourceUrl: cell ? (cell.homeBadge || "") : ""
+            fallbackIcon: "emblem-favorite"
+            fallbackEmoji: SportVisuals.emoji(cell ? (cell.sport || compact.sport) : compact.sport)
+        }
+
+        Column {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 0
+
+            PanelLabel {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: {
+                    if (!cell)
+                        return "";
+                    if (cellLive || (cell.showScore !== false && String(cell.homeScore || "").length > 0))
+                        return String(cell.homeScore || "0") + " - " + String(cell.awayScore || "0");
+                    return String(cell.startTime || cell.statusText || "");
+                }
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: compact.teamContentSpacing
+                visible: cellLive
+
+                LiveDot {
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                PanelSecondaryLabel {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: cell && String(cell.liveText || "").length > 0 ? cell.liveText : i18nc("@info:live match status", "Live")
+                    color: compact.liveColor
+                }
+            }
+        }
+
+        TeamBadgeImage {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.badgeSize
+            height: parent.badgeSize
+            sourceUrl: cell ? (cell.awayBadge || "") : ""
+            fallbackIcon: "emblem-favorite"
+            fallbackEmoji: SportVisuals.emoji(cell ? (cell.sport || compact.sport) : compact.sport)
         }
     }
 

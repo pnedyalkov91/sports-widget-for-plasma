@@ -203,7 +203,9 @@ Kirigami.FormLayout {
 
     Kirigami.InlineMessage {
         Layout.fillWidth: true
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
         Kirigami.FormData.label: ""
+        showCloseButton: true
         type: Kirigami.MessageType.Information
         text: i18nc("@info", "These formats are used for match dates and update times in the panel and widget. Custom values use Qt date/time patterns.")
     }

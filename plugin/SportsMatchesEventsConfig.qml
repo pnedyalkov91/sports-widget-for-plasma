@@ -23,7 +23,7 @@ import org.kde.kcmutils as KCM
 
 // The Plasma calendar config page expects every enabled plugin to provide a
 // config UI (X-KDE-PlasmaCalendar-ConfigUi). This plugin has nothing to
-// configure here — all options live in the Sports widget settings — so this is
+// configure here - all options live in the Sports widget settings - so this is
 // just an explanatory page that satisfies the expected saveConfig()/changed API.
 KCM.SimpleKCM {
     id: configPage

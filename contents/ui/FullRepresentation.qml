@@ -17,6 +17,7 @@
 
 import "../code/SportVisuals.js" as SportVisuals
 import "../code/SportsApi.js" as SportsApi
+import "../code/providers/EspnSports.js" as EspnSports
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -46,6 +47,24 @@ Item {
     property string tableErrorMessage: ""
     property string lastUpdatedText: ""
     property string sourceText: ""
+    // Data providers currently supplying matches: array of { name, url }. The
+    // footer credits each one ("Powered by SportScore and ESPN").
+    property var activeProviders: []
+
+    // Builds the "Powered by …" markup, linking each active provider. Falls back
+    // to SportScore when nothing has loaded yet.
+    function poweredByText() {
+        const providers = Array.isArray(root.activeProviders) && root.activeProviders.length > 0
+            ? root.activeProviders
+            : [{ "name": "SportScore", "url": "https://sportscore.com/" }];
+        const links = providers.map(p => "<a href=\"" + p.url + "\">" + p.name + "</a>");
+        let joined = links[0];
+        if (links.length === 2)
+            joined = i18nc("@info two data providers joined", "%1 and %2", links[0], links[1]);
+        else if (links.length > 2)
+            joined = links.slice(0, -1).join(", ") + i18nc("@info last item of a provider list", " and %1", links[links.length - 1]);
+        return i18nc("@info data source credit; %1 is one or more linked provider names", "Powered by %1", joined);
+    }
     property string primaryText: ""
     property string secondaryText: ""
     property string league: ""
@@ -71,8 +90,18 @@ Item {
     property int tableCount: 0
     property int recentResultsCount: 0
     property string widgetTabs: "all"
+    // Per-tab visibility (Live/Schedules are core; Recent/Tables optional).
+    property bool showTabLive: true
+    property bool showTabSchedules: true
+    property bool showTabRecent: true
+    property bool showTabTables: true
     property string widgetLayoutMode: "detailed"
+    property bool heroEnabled: true
+    property string tabsPosition: "top"
     readonly property bool simpleMode: root.widgetLayoutMode === "simple"
+    // Which scheduled matches the Simple layout lists: "all" future fixtures or
+    // only those kicking off within the "next24h".
+    property string simpleScheduleWindow: "all"
     property bool simpleRebuildPending: false
     property var simpleCollapsedGroups: ({})
     property var simpleGroups: []
@@ -93,6 +122,23 @@ Item {
     readonly property int currentHeroCount: root.activeTab === 0 ? root.liveModelCount : root.activeTab === 1 ? root.scoreModelCount : root.activeTab === 2 ? root.recentResultsCount : root.liveModelCount > 0 ? root.liveModelCount : root.scoreModelCount
     readonly property bool hasMatches: root.heroRotationCount > 0 || root.currentHeroCount > 0
 
+    // Per-match one-click action wiring, supplied by the host (main.qml).
+    property bool showMatchActions: false
+    property int matchActionsTick: 0
+    property var matchNotifyState: function(match) { return false; }
+    property var matchPinnedState: function(match) { return false; }
+    property var matchFavoriteState: function(match) { return false; }
+    property var teamFavoriteState: function(teamName) { return false; }
+    signal matchNotifyToggled(var match)
+    signal matchFavoriteToggled(string teamName)
+    signal matchPanelPinToggled(var match)
+
+    // Live tab data (compact collapsed-league layout).
+    property var leaguesModel: null
+    property var leaguesCollapsedGroups: ({})
+    property var leaguesGroupSummaries: ({})
+    signal leaguesGroupToggled(string group)
+
     signal refreshRequested()
     signal configureRequested()
     signal leagueSelected(int index)
@@ -112,28 +158,68 @@ Item {
         return String(teamName || "").toLowerCase().indexOf(favorite) >= 0;
     }
 
-    function tabVisible(tab) {
-        if (tab === 0 || tab === 1)
-            return true;
+    // Whether this sport has a league table. Only team-league sports do; "event"
+    // sports (tennis, golf, racing, MMA) are individual/tournament based and have no
+    // standings, so the Tables tab is hidden for them. Defaults to true when the
+    // sport is unknown so a new ESPN sport isn't silently stripped of its tab.
+    readonly property bool sportHasTables: root.sport.length === 0 || EspnSports.usesStandings(root.sport)
 
-        if (tab === 3 && String(root.sport || "").toLowerCase() === "tennis")
+    function tabVisible(tab) {
+        // Tables (tab 3) needs standings, which only team-league sports have.
+        if (tab === 3 && !root.sportHasTables)
             return false;
 
-        if (root.widgetTabs === "all")
-            return true;
-
-        if (root.widgetTabs === "liveStats")
-            return tab === 2;
-
-        if (root.widgetTabs === "liveTables")
-            return tab === 3;
+        if (tab === 0)
+            return root.showTabLive;
+        if (tab === 1)
+            return root.showTabSchedules;
+        if (tab === 2)
+            return root.showTabRecent;
+        if (tab === 3)
+            return root.showTabTables;
 
         return false;
     }
 
-    function activateTab(tab) {
-        root.activeTab = root.tabVisible(tab) ? tab : 0;
+    // First visible tab, used as a fallback when the requested/active one is
+    // hidden. Returns 0 even if nothing is visible (shouldn't happen - the config
+    // UI keeps at least one tab on).
+    // Minimal match identity for the per-match action callbacks in simple mode.
+    function simpleMatchOf(modelData) {
+        return {
+            "league": (modelData && modelData.league) || "",
+            "homeTeam": (modelData && modelData.homeTeam) || "",
+            "awayTeam": (modelData && modelData.awayTeam) || "",
+            "startTime": (modelData && modelData.startTime) || "",
+            "timestamp": Number((modelData && modelData.timestamp) || 0)
+        };
     }
+
+    function firstVisibleTab() {
+        for (let tab = 0; tab <= 3; tab += 1) {
+            if (root.tabVisible(tab))
+                return tab;
+        }
+        return 0;
+    }
+
+    function activateTab(tab) {
+        root.activeTab = root.tabVisible(tab) ? tab : root.firstVisibleTab();
+    }
+
+    // When the active tab stops being available (sport without standings, or the
+    // user hid it), fall back to the first visible tab so the view never shows a
+    // hidden tab's content with no tab selected.
+    onSportHasTablesChanged: {
+        if (!root.tabVisible(root.activeTab))
+            root.activeTab = root.firstVisibleTab();
+    }
+
+    // Same guard when the user toggles tab visibility live in settings.
+    onShowTabLiveChanged: if (!root.tabVisible(root.activeTab)) root.activeTab = root.firstVisibleTab()
+    onShowTabSchedulesChanged: if (!root.tabVisible(root.activeTab)) root.activeTab = root.firstVisibleTab()
+    onShowTabRecentChanged: if (!root.tabVisible(root.activeTab)) root.activeTab = root.firstVisibleTab()
+    onShowTabTablesChanged: if (!root.tabVisible(root.activeTab)) root.activeTab = root.firstVisibleTab()
 
     function selectedMatchValue(field, fallback) {
         const rotatedMatch = root.rotatedHeroMatch;
@@ -246,6 +332,7 @@ Item {
             "status": String(match.status || ""),
             "minute": String(match.minute || ""),
             "startTime": String(match.startTime || ""),
+            "timestamp": Number(match.timestamp || 0),
             "matchday": String(match.matchday || ""),
             "stadium": String(match.stadium || ""),
             "homeBadge": String(match.homeBadge || ""),
@@ -271,6 +358,8 @@ Item {
         const order = [];
         const grouped = {};
         const seen = {};
+        const next24hOnly = root.simpleScheduleWindow === "next24h";
+        const scheduleCutoff = Date.now() + 24 * 60 * 60 * 1000;
 
         function collect(model, isLive) {
             const count = root.modelCount(model);
@@ -278,6 +367,18 @@ Item {
                 const match = model.get(index);
                 if (!match)
                     continue;
+                // The schedule model also carries non-match rows (group header
+                // placeholders and "nothing scheduled" notices); rendered as
+                // matches they show up as empty rows with trophy fallback badges.
+                if (match.isPlaceholder === true || match.rowType === "header" || match.rowType === "notice")
+                    continue;
+                // Optionally limit upcoming fixtures to the next 24 hours
+                // (fixtures without a known kickoff time are dropped too).
+                if (!isLive && next24hOnly) {
+                    const timestamp = root.normalizedMatchTimestamp(match);
+                    if (timestamp <= 0 || timestamp >= scheduleCutoff)
+                        continue;
+                }
 
                 const group = String(match.leagueGroup || match.league || "");
                 const key = (String(match.homeTeam || "") + "|" + String(match.awayTeam || "") + "|" + group).toLowerCase();
@@ -297,6 +398,8 @@ Item {
         collect(root.scoreModel, false);
 
         root.simpleGroups = order.map(group => {
+            // Upcoming fixtures soonest-first, so the next kickoff tops the group.
+            grouped[group].scheduled.sort((left, right) => root.normalizedMatchTimestamp(left) - root.normalizedMatchTimestamp(right));
             return {
                 "group": group,
                 "matches": grouped[group].live.concat(grouped[group].scheduled)
@@ -346,6 +449,7 @@ Item {
     }
     onMatchRotationEnabledChanged: scheduleHeroRotationRefresh()
     onSimpleModeChanged: scheduleSimpleRebuild()
+    onSimpleScheduleWindowChanged: scheduleSimpleRebuild()
 
     Component.onCompleted: {
         scheduleHeroRotationRefresh();
@@ -422,31 +526,7 @@ Item {
         interval: Math.max(5, root.matchRotationInterval || 30) * 1000
         repeat: true
         running: root.visible && !root.simpleMode && root.matchRotationEnabled && root.heroRotationCount > 1
-        onTriggered: heroRotationAnimation.restart()
-    }
-
-    SequentialAnimation {
-        id: heroRotationAnimation
-
-        NumberAnimation {
-            target: matchHero
-            property: "opacity"
-            to: 0
-            duration: Kirigami.Units.longDuration
-            easing.type: Easing.InOutQuad
-        }
-
-        ScriptAction {
-            script: root.advanceHeroRotation()
-        }
-
-        NumberAnimation {
-            target: matchHero
-            property: "opacity"
-            to: 1
-            duration: Kirigami.Units.longDuration
-            easing.type: Easing.InOutQuad
-        }
+        onTriggered: root.advanceHeroRotation()
     }
 
     function stripLegacyTeamPrefix(value) {
@@ -657,7 +737,7 @@ Item {
         MatchHero {
             id: matchHero
 
-            visible: !root.simpleMode
+            visible: !root.simpleMode && root.heroEnabled
             Layout.fillWidth: true
             Layout.preferredHeight: Kirigami.Units.gridUnit * 8
             homeTeam: root.selectedMatchValue("homeTeam", i18nc("@info:placeholder", "Home team"))
@@ -678,50 +758,8 @@ Item {
             loading: root.heroLoading()
         }
 
-        Rectangle {
-            visible: !root.simpleMode
-            Layout.fillWidth: true
-            Layout.preferredHeight: 34
-            Layout.leftMargin: -Kirigami.Units.largeSpacing
-            Layout.rightMargin: -Kirigami.Units.largeSpacing
-            radius: height / 2
-            color: root.withAlpha(Kirigami.Theme.alternateBackgroundColor, 0.5)
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 3
-                spacing: 0
-
-                WeatherStyleTab {
-                    label: i18n("Live")
-                    active: root.activeTab === 0
-                    visible: root.tabVisible(0)
-                    onClicked: root.activateTab(0)
-                }
-
-                WeatherStyleTab {
-                    label: i18n("Schedules")
-                    active: root.activeTab === 1
-                    visible: root.tabVisible(1)
-                    onClicked: root.activateTab(1)
-                }
-
-                WeatherStyleTab {
-                    label: i18n("Recent Results")
-                    active: root.activeTab === 2
-                    visible: root.tabVisible(2)
-                    onClicked: root.activateTab(2)
-                }
-
-                WeatherStyleTab {
-                    label: i18n("Tables")
-                    active: root.activeTab === 3
-                    visible: root.tabVisible(3)
-                    onClicked: root.activateTab(3)
-                }
-
-            }
-
+        TabBarRow {
+            visible: !root.simpleMode && root.tabsPosition !== "bottom"
         }
 
         Kirigami.InlineMessage {
@@ -737,14 +775,25 @@ Item {
             Layout.fillHeight: true
             currentIndex: root.activeTab
 
-            LiveTab {
-                liveModel: root.liveModel
+            // The Live tab IS the compact league overview: every followed league
+            // is a row (those with live matches expanded by default, the rest
+            // collapsed), ordered by the user's configured priority.
+            LeaguesTab {
+                leaguesModel: root.leaguesModel
                 favoriteTeam: root.favoriteTeam
-                loading: root.liveLoading
-                selectedIndex: root.selectedLiveIndex
-                onMatchSelected: (index) => {
-                    root.selectedLiveIndex = index;
-                }
+                loading: root.liveLoading || root.schedulesLoading
+                collapsedGroups: root.leaguesCollapsedGroups
+                groupSummaries: root.leaguesGroupSummaries
+                showMatchActions: root.showMatchActions
+                matchActionsTick: root.matchActionsTick
+                matchNotifyState: root.matchNotifyState
+                matchPinnedState: root.matchPinnedState
+                matchFavoriteState: root.matchFavoriteState
+                teamFavoriteState: root.teamFavoriteState
+                onGroupToggled: (group) => root.leaguesGroupToggled(group)
+                onMatchNotifyToggled: (match) => root.matchNotifyToggled(match)
+                onMatchFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName)
+                onMatchPanelPinToggled: (match) => root.matchPanelPinToggled(match)
             }
 
             ScheduleTab {
@@ -869,7 +918,16 @@ Item {
                             showScore: modelData.showScore !== false
                             splitLeagueAndTimeLines: true
                             splitDateAndTimeLines: true
-                            favorite: root.isFavoriteTeam(modelData.homeTeam) || root.isFavoriteTeam(modelData.awayTeam)
+                            favorite: root.isFavoriteTeam(modelData.homeTeam) || root.isFavoriteTeam(modelData.awayTeam) || (root.matchActionsTick, root.matchFavoriteState(root.simpleMatchOf(modelData)))
+                            // One-click row actions, same as the tabbed layout.
+                            showMatchActions: root.showMatchActions
+                            matchNotifyOn: (root.matchActionsTick, root.matchNotifyState(root.simpleMatchOf(modelData)))
+                            matchPinnedToPanel: (root.matchActionsTick, root.matchPinnedState(root.simpleMatchOf(modelData)))
+                            homeIsFavorite: (root.matchActionsTick, root.teamFavoriteState(modelData.homeTeam || ""))
+                            awayIsFavorite: (root.matchActionsTick, root.teamFavoriteState(modelData.awayTeam || ""))
+                            onNotifyToggled: root.matchNotifyToggled(root.simpleMatchOf(modelData))
+                            onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName)
+                            onPanelPinToggled: root.matchPanelPinToggled(root.simpleMatchOf(modelData))
                         }
                     }
                 }
@@ -904,12 +962,16 @@ Item {
             }
         }
 
+        TabBarRow {
+            visible: !root.simpleMode && root.tabsPosition === "bottom"
+        }
+
         PlasmaComponents.Label {
             id: footerLabel
 
             Layout.fillWidth: true
             text: (root.lastUpdatedText.length > 0 ? root.lastUpdatedText : i18nc("@info:status", "Waiting for update"))
-                + " · " + i18nc("@info", "Powered by <a href=\"https://sportscore.com/\">SportScore</a>")
+                + " · " + root.poweredByText()
             color: Kirigami.Theme.textColor
             linkColor: Kirigami.Theme.linkColor
             horizontalAlignment: Text.AlignHCenter
@@ -921,6 +983,51 @@ Item {
             HoverHandler {
                 cursorShape: parent.hoveredLink.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
             }
+        }
+
+    }
+
+    component TabBarRow: Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: 34
+        Layout.leftMargin: -Kirigami.Units.largeSpacing
+        Layout.rightMargin: -Kirigami.Units.largeSpacing
+        radius: height / 2
+        color: root.withAlpha(Kirigami.Theme.alternateBackgroundColor, 0.5)
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 3
+            spacing: 0
+
+            WeatherStyleTab {
+                label: i18n("Live")
+                active: root.activeTab === 0
+                visible: root.tabVisible(0)
+                onClicked: root.activateTab(0)
+            }
+
+            WeatherStyleTab {
+                label: i18n("Schedules")
+                active: root.activeTab === 1
+                visible: root.tabVisible(1)
+                onClicked: root.activateTab(1)
+            }
+
+            WeatherStyleTab {
+                label: i18n("Recent Results")
+                active: root.activeTab === 2
+                visible: root.tabVisible(2)
+                onClicked: root.activateTab(2)
+            }
+
+            WeatherStyleTab {
+                label: i18n("Tables")
+                active: root.activeTab === 3
+                visible: root.tabVisible(3)
+                onClicked: root.activateTab(3)
+            }
+
         }
 
     }
@@ -1059,25 +1166,6 @@ Item {
                             height: width
                             radius: width / 2
                             color: root.liveColor
-
-                            SequentialAnimation on opacity {
-                                loops: Animation.Infinite
-                                running: hero.isLiveMatch()
-
-                                NumberAnimation {
-                                    from: 1
-                                    to: 0.35
-                                    duration: 650
-                                    easing.type: Easing.InOutQuad
-                                }
-
-                                NumberAnimation {
-                                    from: 0.35
-                                    to: 1
-                                    duration: 650
-                                    easing.type: Easing.InOutQuad
-                                }
-                            }
                         }
 
                         PlasmaComponents.Label {
@@ -1208,6 +1296,7 @@ Item {
                 anchors.fill: parent
                 sourceUrl: heroTeam.badge
                 fallbackIcon: "applications-games"
+                fallbackEmoji: SportVisuals.emoji(root.sport)
                 fallbackOpacity: 0.9
             }
 
@@ -1270,27 +1359,12 @@ Item {
             verticalAlignment: Text.AlignVCenter
             elide: Text.ElideRight
             font.bold: tab.active
-
-            Behavior on opacity {
-                NumberAnimation {
-                    duration: 140
-                }
-
-            }
-
         }
 
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: tab.clicked()
-        }
-
-        Behavior on color {
-            ColorAnimation {
-                duration: 140
-            }
-
         }
 
     }
@@ -1503,6 +1577,7 @@ Item {
                 Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                 Layout.preferredHeight: Layout.preferredWidth
                 sourceUrl: crest
+                fallbackEmoji: SportVisuals.emoji(root.sport)
             }
 
             PlasmaComponents.Label {
@@ -1642,6 +1717,7 @@ Item {
             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
             Layout.preferredHeight: Layout.preferredWidth
             sourceUrl: badge
+            fallbackEmoji: SportVisuals.emoji(root.sport)
         }
 
         PlasmaComponents.Label {

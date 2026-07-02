@@ -19,20 +19,85 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import org.kde.plasma.components as PlasmaComponents
 
 Kirigami.FormLayout {
     id: tooltipTab
+
+    required property var configRoot
 
     Kirigami.Separator {
         Kirigami.FormData.label: i18nc("@title:group", "Tooltip")
         Kirigami.FormData.isSection: true
     }
 
-    Label {
+    RowLayout {
+        Kirigami.FormData.label: i18nc("@label:spinbox", "Live matches:")
+        spacing: Kirigami.Units.smallSpacing
+
+        SpinBox {
+            id: liveMatchesLimit
+
+            from: 1
+            to: 30
+            stepSize: 1
+            editable: true
+            value: Math.min(30, Math.max(1, tooltipTab.configRoot.cfg_tooltipLiveMatchesLimit || 5))
+            onValueModified: tooltipTab.configRoot.cfg_tooltipLiveMatchesLimit = value
+        }
+
+        PlasmaComponents.Label {
+            text: i18ncp("@label:spinbox", "match", "matches", liveMatchesLimit.value)
+        }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18nc("@label:spinbox", "Schedules days ahead:")
+        spacing: Kirigami.Units.smallSpacing
+
+        SpinBox {
+            id: scheduleDaysAhead
+
+            from: 1
+            to: 5
+            stepSize: 1
+            editable: true
+            value: Math.min(5, Math.max(1, tooltipTab.configRoot.cfg_tooltipScheduleDaysAhead || 1))
+            onValueModified: tooltipTab.configRoot.cfg_tooltipScheduleDaysAhead = value
+        }
+
+        PlasmaComponents.Label {
+            text: i18ncp("@label:spinbox", "day", "days", scheduleDaysAhead.value)
+        }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18nc("@label:spinbox", "Recent results days back:")
+        spacing: Kirigami.Units.smallSpacing
+
+        SpinBox {
+            id: recentDaysBack
+
+            from: 1
+            to: 5
+            stepSize: 1
+            editable: true
+            value: Math.min(5, Math.max(1, tooltipTab.configRoot.cfg_tooltipRecentDaysBack || 5))
+            onValueModified: tooltipTab.configRoot.cfg_tooltipRecentDaysBack = value
+        }
+
+        PlasmaComponents.Label {
+            text: i18ncp("@label:spinbox", "day", "days", recentDaysBack.value)
+        }
+    }
+
+    Kirigami.InlineMessage {
         Kirigami.FormData.label: ""
         Layout.fillWidth: true
-        opacity: 0.7
-        text: i18nc("@info", "No tooltip appearance options are available yet.")
-        wrapMode: Text.WordWrap
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+        visible: true
+        showCloseButton: true
+        type: Kirigami.MessageType.Information
+        text: i18nc("@info", "How many live matches to list, how many days ahead to look for upcoming fixtures, and how many days back to look for finished matches in the panel's hover tooltip.")
     }
 }

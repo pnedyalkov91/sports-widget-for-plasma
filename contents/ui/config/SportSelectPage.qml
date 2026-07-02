@@ -17,7 +17,6 @@
 
 import "../../code/SportVisuals.js" as SportVisuals
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
@@ -39,17 +38,19 @@ ColumnLayout {
             level: 2
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
+            visible: true
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
             text: i18nc("@info", "Select the sport that should drive schedules, tables and fixtures.")
-            opacity: 0.72
-            wrapMode: Text.WordWrap
         }
     }
 
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         visible: true
+        showCloseButton: true
         type: Kirigami.MessageType.Information
         text: i18nc("@info", "Pick a sport to start. Next you can follow the most popular competitions worldwide, or browse every country and league.")
     }

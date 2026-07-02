@@ -17,6 +17,7 @@
 
 import "../code/providers/ProviderCatalog.js" as ProviderCatalog
 import "../code/providers/SportScoreSports.js" as SportScoreSports
+import "../code/SportVisuals.js" as SportVisuals
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -456,6 +457,7 @@ Item {
                 Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                 Layout.preferredHeight: Layout.preferredWidth
                 sourceUrl: crest
+                fallbackEmoji: SportVisuals.emoji(root.sport)
             }
 
             PlasmaComponents.Label {

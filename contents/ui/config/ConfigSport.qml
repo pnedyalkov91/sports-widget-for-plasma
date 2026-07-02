@@ -32,7 +32,7 @@ KCM.SimpleKCM {
     implicitHeight: Kirigami.Units.gridUnit * 22
     readonly property bool wizardFirstStepActive: root.pageIndex === 1 && wizardLoader.item && wizardLoader.item.pageIndex === 0
     // While a wizard subpage overlay (league/country) covers the page, it scrolls
-    // with its own ScrollView — drop the outer KCM scrollbar so only one shows.
+    // with its own ScrollView - drop the outer KCM scrollbar so only one shows.
     readonly property bool wizardOverlayActive: root.pageIndex === 1 && wizardLoader.item && wizardLoader.item.overlayActive
     readonly property bool suppressOuterScroll: root.wizardFirstStepActive || root.wizardOverlayActive
     verticalScrollBarPolicy: root.suppressOuterScroll ? Qt.ScrollBarAlwaysOff : Qt.ScrollBarAsNeeded
@@ -98,8 +98,8 @@ KCM.SimpleKCM {
     property bool cfg_calendarIcsExportEnabled: Plasmoid.configuration.calendarIcsExportEnabled
     property bool cfg_calendarAkonadiEnabled: Plasmoid.configuration.calendarAkonadiEnabled
     property int cfg_calendarReminderMinutes: Plasmoid.configuration.calendarReminderMinutes
-    property string cfg_notifyEntryExclusions: Plasmoid.configuration.notifyEntryExclusions
-    property string cfg_calendarEntryExclusions: Plasmoid.configuration.calendarEntryExclusions
+    property string cfg_notifyEntryInclusions: Plasmoid.configuration.notifyEntryInclusions
+    property string cfg_calendarEntryInclusions: Plasmoid.configuration.calendarEntryInclusions
 
     property string cfg_providerDefault: "sportscore"
     property string cfg_defaultSportDefault: "football"
@@ -145,8 +145,8 @@ KCM.SimpleKCM {
     property bool cfg_calendarIcsExportEnabledDefault: false
     property bool cfg_calendarAkonadiEnabledDefault: false
     property int cfg_calendarReminderMinutesDefault: 15
-    property string cfg_notifyEntryExclusionsDefault: "[]"
-    property string cfg_calendarEntryExclusionsDefault: "[]"
+    property string cfg_notifyEntryInclusionsDefault: "[]"
+    property string cfg_calendarEntryInclusionsDefault: "[]"
     readonly property string currentProvider: String(root.cfg_provider || "").trim()
     property string currentFollowMode: "league"
     property string currentEntryType: "competition"
@@ -191,7 +191,12 @@ KCM.SimpleKCM {
 
     function favoriteOptions() {
         if (!root.cfg_league || root.cfg_league.length === 0)
-            return [{ label: i18nc("@label", "No favorite team"), value: "" }];
+            return [
+                {
+                    label: i18nc("@label", "No favorite team"),
+                    value: ""
+                }
+            ];
 
         return [];
     }
@@ -406,11 +411,7 @@ KCM.SimpleKCM {
     function sameEntry(left, right) {
         const leftType = root.entryType(left);
         const rightType = root.entryType(right);
-        return String(left.sport || "") === String(right.sport || "")
-            && String(left.country || "") === String(right.country || "")
-            && ((leftType === "team" && rightType === "team") || String(left.league || "") === String(right.league || ""))
-            && String(left.favoriteTeam || "") === String(right.favoriteTeam || "")
-            && leftType === rightType;
+        return String(left.sport || "") === String(right.sport || "") && String(left.country || "") === String(right.country || "") && ((leftType === "team" && rightType === "team") || String(left.league || "") === String(right.league || "")) && String(left.favoriteTeam || "") === String(right.favoriteTeam || "") && leftType === rightType;
     }
 
     function saveOrReplaceLeague(entry, replaceIndex) {
@@ -521,6 +522,17 @@ KCM.SimpleKCM {
         root.pageIndex = 1;
     }
 
+    // Called by the applet config framework when the user clicks Apply or OK. The
+    // cfg_* aliases persist on their own; we additionally clear the wizard's
+    // session tracking so the "Added so far" reminder (which only nags about
+    // not-yet-saved session additions) disappears once everything is saved.
+    function saveConfig() {
+        if (wizardLoader.item) {
+            wizardLoader.item.sessionAddedEntries = [];
+            wizardLoader.item.pendingEntries = [];
+        }
+    }
+
     function setEntryIncludes(index, key, enabled) {
         const allowed = {
             "includeLive": true,
@@ -542,7 +554,7 @@ KCM.SimpleKCM {
     }
 
     // The config dialog runs in its own QML engine, so SportsApi needs its delay
-    // scheduler set here too — otherwise request retries, the post-504 cooldown and
+    // scheduler set here too - otherwise request retries, the post-504 cooldown and
     // the 5s ESPN-fallback deadline all fire instantly, so a failing SportScore
     // surfaces an error immediately instead of after a real timeout.
     Component {
@@ -554,7 +566,9 @@ KCM.SimpleKCM {
     }
 
     function scheduleNetworkDelay(callback, delayMs) {
-        const timer = networkDelayTimerComponent.createObject(root, { "interval": Math.max(0, Number(delayMs) || 0) });
+        const timer = networkDelayTimerComponent.createObject(root, {
+            "interval": Math.max(0, Number(delayMs) || 0)
+        });
         if (!timer) {
             callback();
             return;
@@ -569,12 +583,7 @@ KCM.SimpleKCM {
 
     Component.onCompleted: {
         SportsApi.setDelayScheduler(root.scheduleNetworkDelay);
-        if (!root.cfg_defaultSelectionMigrated
-                && root.cfg_selectedSports === "football"
-                && root.cfg_country === "england"
-                && root.cfg_league === "english-premier-league"
-                && root.cfg_favoriteTeam.length === 0
-                && root.savedLeagues().length === 0) {
+        if (!root.cfg_defaultSelectionMigrated && root.cfg_selectedSports === "football" && root.cfg_country === "england" && root.cfg_league === "english-premier-league" && root.cfg_favoriteTeam.length === 0 && root.savedLeagues().length === 0) {
             root.cfg_selectedSports = "";
             root.cfg_country = "";
             root.cfg_league = "";
@@ -597,7 +606,7 @@ KCM.SimpleKCM {
             initialEntry: root.wizardInitialEntry
             editingIndex: root.wizardEditingIndex
             onCloseRequested: root.pageIndex = 0
-            onFinishRequested: (entry) => root.finishWizard(entry)
+            onFinishRequested: entry => root.finishWizard(entry)
         }
     }
 
@@ -628,5 +637,4 @@ KCM.SimpleKCM {
             sourceComponent: sportWizardComponent
         }
     }
-
 }

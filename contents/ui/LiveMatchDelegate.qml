@@ -45,10 +45,25 @@ Item {
     property string espnEventId: ""
     property string espnSport: ""
     property string espnLeague: ""
+    // Public ESPN gamecast URL for this match (ESPN-sourced matches only), shown
+    // as a "Visit on ESPN" link in the expanded details. Soccer uses
+    // ".../match/_/gameId/", other sports ".../game/_/gameId/".
+    readonly property string espnMatchUrl: {
+        if (root.detailsProvider !== "espn" || root.espnEventId.length === 0)
+            return "";
+        const sportPath = root.espnSport.length > 0 ? root.espnSport.toLowerCase() : "soccer";
+        const verb = sportPath === "soccer" ? "match" : "game";
+        return "https://www.espn.com/" + sportPath + "/" + verb + "/_/gameId/" + root.espnEventId;
+    }
     property bool popular: false
     property bool favorite: false
     property bool selected: false
     property bool showScore: true
+    property bool showMatchActions: false
+    property bool matchNotifyOn: false
+    property bool matchPinnedToPanel: false
+    property bool homeIsFavorite: false
+    property bool awayIsFavorite: false
     property bool splitLeagueAndTimeLines: false
     property bool splitDateAndTimeLines: false
     property real scoreRowHeight: 0
@@ -62,6 +77,10 @@ Item {
     // Persists across detailsLoader recreations (collapse/expand, periodic
     // detail resets) since `details` itself gets reset to {} while collapsed.
     property string cachedTrackerUrl: ""
+    // Selected details sub-tab, kept on the long-lived delegate so it survives the
+    // detailsLoader being torn down and rebuilt (e.g. when the row is scrolled out
+    // of and back into view), instead of snapping back to the first tab.
+    property int activeDetailsTab: 0
 
     onDetailsChanged: {
         const fresh = root.details && root.details.trackerUrl ? String(root.details.trackerUrl) : "";
@@ -85,6 +104,9 @@ Item {
     signal clicked()
     signal doubleClicked()
     signal requestExpand()
+    signal notifyToggled()
+    signal favoriteToggled(string teamName)
+    signal panelPinToggled()
 
     // Finished matches are immutable, so their details are cached on disk and
     // re-opened without another network request.
@@ -224,9 +246,17 @@ Item {
             showScore: root.showScore
             favorite: root.favorite
             selected: root.selected || root.expanded
+            showMatchActions: root.showMatchActions
+            matchNotifyOn: root.matchNotifyOn
+            matchPinnedToPanel: root.matchPinnedToPanel
+            homeIsFavorite: root.homeIsFavorite
+            awayIsFavorite: root.awayIsFavorite
             onClicked: root.clicked()
             onDoubleClicked: root.doubleClicked()
             onScoreInfoClicked: root._openDetailsTab()
+            onNotifyToggled: root.notifyToggled()
+            onFavoriteToggled: (teamName) => root.favoriteToggled(teamName)
+            onPanelPinToggled: root.panelPinToggled()
         }
 
         Loader {
@@ -245,7 +275,12 @@ Item {
                 errorText: root.detailsError
                 homeTeam: root.homeTeam
                 awayTeam: root.awayTeam
+                visitUrl: root.espnMatchUrl
                 sport: root.sport
+                // Restore the selected tab on (re)creation and write user changes
+                // back to the delegate, so it persists across loader teardown.
+                activeDetailsTab: root.activeDetailsTab
+                onActiveDetailsTabChanged: root.activeDetailsTab = activeDetailsTab
             }
         }
     }

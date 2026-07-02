@@ -837,7 +837,7 @@ ColumnLayout {
             // ESPN already ships a badge with each team option. Seed it and skip the
             // standings-derived badge lookup, which otherwise fans out up to 6
             // fetchLeagueTable calls per team (× up to 20 teams, re-run on every
-            // add) — a heavy main-thread storm now that standings return real data.
+            // add) - a heavy main-thread storm now that standings return real data.
             const optionBadge = String(option && option.badge || "").trim();
             if (optionBadge.length > 0) {
                 if (root.teamBadge(teamName).length === 0)
@@ -861,21 +861,23 @@ ColumnLayout {
             level: 2
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
+            visible: true
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
             text: root.configRoot
                 ? (root.configRoot.multiSelectEnabled
                     ? i18nc("@info", "Choose competitions and teams to follow for %1.", root.configRoot.countryLabel())
                     : i18nc("@info", "Edit the competition or team for %1.", root.configRoot.countryLabel()))
                 : ""
-            opacity: 0.72
-            wrapMode: Text.WordWrap
         }
     }
 
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         visible: true
+        showCloseButton: true
         type: Kirigami.MessageType.Information
         text: root.playerMode
             ? i18nc("@info", "Open a competition to follow it or pick players inside it, or follow a player directly from the list below.")
@@ -885,6 +887,7 @@ ColumnLayout {
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         visible: root.leagueLoadFailed && !root.loadingLeagues
+        showCloseButton: true
         type: Kirigami.MessageType.Error
         text: i18nc("@info", "SportScore is not responding right now, so competitions could not be loaded. Please try again later.")
         actions: [

@@ -504,9 +504,9 @@ Item {
         return root.pendingEntries.concat(root.currentEntries());
     }
 
-    // Summary of new additions in this wizard session — grouped by
+    // Summary of new additions in this wizard session - grouped by
     // "<sport> - <country>". Two sources, deduped by entryKey:
-    //   • sessionAddedEntries — competitions/teams followed instantly this session;
+    //   • sessionAddedEntries - competitions/teams followed instantly this session;
     //   • staged current-sport picks (cfg_selected*) and entries banked via
     //     "Add Another Sport", minus anything saved before this wizard opened.
     function sessionSummaryText() {
@@ -689,7 +689,7 @@ Item {
 
                 // On the Top/Country pages favourites are saved instantly and the
                 // dialog's own Apply/OK persists everything, so no "Done" button is
-                // needed there — hide it. It only appears to advance ("Next") or to
+                // needed there - hide it. It only appears to advance ("Next") or to
                 // open the review on the staged-flow's final page.
                 visible: !root.onPopularPage && !root.onCountryPage
                 icon.name: root.pageIndex === root.pageCount - 1 ? "dialog-ok-apply" : "go-next"
@@ -716,6 +716,7 @@ Item {
         anchors.topMargin: Kirigami.Units.smallSpacing
         anchors.left: parent.left
         anchors.right: parent.right
+        showCloseButton: true
         type: Kirigami.MessageType.Information
         // Session summary of new additions (staged + banked), shown on every page so
         // the user always sees what they have added so far, including countries. The
@@ -740,6 +741,7 @@ Item {
         anchors.topMargin: Kirigami.Units.smallSpacing
         anchors.left: parent.left
         anchors.right: parent.right
+        showCloseButton: true
         type: Kirigami.MessageType.Warning
         text: root.duplicateWarningText()
         visible: root.pageIndex === root.pageCount - 1 && text.length > 0
@@ -837,6 +839,7 @@ Item {
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
+                    showCloseButton: true
                     type: Kirigami.MessageType.Warning
                     text: root.duplicateWarningText(root.allPendingEntries())
                     visible: text.length > 0

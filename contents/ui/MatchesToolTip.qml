@@ -16,6 +16,7 @@
  */
 
 import "../code/SportsApi.js" as SportsApi
+import "../code/SportVisuals.js" as SportVisuals
 import QtQuick
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
@@ -26,6 +27,10 @@ Item {
 
     property var liveModel
     property var scheduleModel
+    property var recentModel
+    property int liveMatchesLimit: 5
+    property int scheduleDaysAhead: 1
+    property int recentDaysBack: 5
     readonly property int maximumRowsPerSection: 8
 
     function modelCount(model) {
@@ -57,7 +62,7 @@ Item {
 
     function liveRows() {
         const rows = [];
-        const count = Math.min(root.modelCount(root.liveModel), root.maximumRowsPerSection);
+        const count = Math.min(root.modelCount(root.liveModel), root.liveMatchesLimit);
         for (let index = 0; index < count; index += 1)
             rows.push(root.copyMatch(root.liveModel.get(index)));
         return rows;
@@ -67,7 +72,7 @@ Item {
         const candidates = [];
         const now = Date.now();
         const today = new Date();
-        const endOfTomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2).getTime();
+        const windowEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + root.scheduleDaysAhead).getTime();
         const count = root.modelCount(root.scheduleModel);
         for (let index = 0; index < count; index += 1) {
             const match = root.copyMatch(root.scheduleModel.get(index));
@@ -79,13 +84,32 @@ Item {
         }
 
         candidates.sort((left, right) => left.normalizedTimestamp - right.normalizedTimestamp);
-        let rows = candidates.filter(match => match.normalizedTimestamp < endOfTomorrow);
+        let rows = candidates.filter(match => match.normalizedTimestamp < windowEnd);
         if (rows.length === 0 && candidates.length > 0) {
             const first = new Date(candidates[0].normalizedTimestamp);
             const nextDayEnd = new Date(first.getFullYear(), first.getMonth(), first.getDate() + 1).getTime();
             rows = candidates.filter(match => match.normalizedTimestamp < nextDayEnd);
         }
         return rows.slice(0, root.maximumRowsPerSection);
+    }
+
+    function recentRows() {
+        const candidates = [];
+        const now = Date.now();
+        const today = new Date();
+        const windowStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - root.recentDaysBack).getTime();
+        const count = root.modelCount(root.recentModel);
+        for (let index = 0; index < count; index += 1) {
+            const match = root.copyMatch(root.recentModel.get(index));
+            const timestamp = root.normalizedTimestamp(match);
+            if (timestamp <= 0 || timestamp < windowStart || timestamp > now)
+                continue;
+            match.normalizedTimestamp = timestamp;
+            candidates.push(match);
+        }
+
+        candidates.sort((left, right) => right.normalizedTimestamp - left.normalizedTimestamp);
+        return candidates.slice(0, root.maximumRowsPerSection);
     }
 
     function liveStatus(match) {
@@ -158,10 +182,33 @@ Item {
             }
         }
 
+        Kirigami.Separator {
+            Layout.fillWidth: true
+            visible: (liveRepeater.count > 0 || upcomingRepeater.count > 0) && recentRepeater.count > 0
+        }
+
+        SectionTitle {
+            text: i18nc("@title:group", "Recent")
+            visible: recentRepeater.count > 0
+        }
+
+        Repeater {
+            id: recentRepeater
+            model: root.recentRows()
+
+            MatchRow {
+                required property var modelData
+
+                match: modelData
+                live: false
+                finished: true
+            }
+        }
+
         PlasmaComponents.Label {
             Layout.fillWidth: true
-            visible: liveRepeater.count === 0 && upcomingRepeater.count === 0
-            text: i18nc("@info:tooltip", "No live or upcoming matches")
+            visible: liveRepeater.count === 0 && upcomingRepeater.count === 0 && recentRepeater.count === 0
+            text: i18nc("@info:tooltip", "No live, upcoming or recent matches")
             color: Kirigami.Theme.disabledTextColor
             horizontalAlignment: Text.AlignHCenter
         }
@@ -179,6 +226,9 @@ Item {
 
         required property var match
         required property bool live
+        // Recent rows show the final score and finished date/time, like live
+        // rows show the score but unlike live rows the left label isn't red/bold.
+        property bool finished: false
 
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
@@ -197,23 +247,6 @@ Item {
                 visible: matchRow.live
                 radius: width / 2
                 color: Kirigami.Theme.negativeTextColor
-
-                SequentialAnimation on opacity {
-                    running: liveDot.visible
-                    loops: Animation.Infinite
-
-                    NumberAnimation {
-                        from: 1
-                        to: 0.25
-                        duration: 650
-                    }
-
-                    NumberAnimation {
-                        from: 0.25
-                        to: 1
-                        duration: 650
-                    }
-                }
             }
         }
 
@@ -230,6 +263,7 @@ Item {
 
         TeamBadge {
             sourceUrl: String(parent.match.homeBadge || "")
+            sport: String(parent.match.sport || "")
         }
 
         PlasmaComponents.Label {
@@ -247,7 +281,7 @@ Item {
             Layout.preferredWidth: Kirigami.Units.gridUnit * 3.2
             Layout.minimumWidth: Layout.preferredWidth
             Layout.maximumWidth: Layout.preferredWidth
-            text: parent.live ? root.scoreText(parent.match) : "-"
+            text: (parent.live || parent.finished) ? root.scoreText(parent.match) : "-"
             color: Kirigami.Theme.textColor
             horizontalAlignment: Text.AlignHCenter
             font.bold: true
@@ -266,11 +300,13 @@ Item {
 
         TeamBadge {
             sourceUrl: String(parent.match.awayBadge || "")
+            sport: String(parent.match.sport || "")
         }
     }
 
     component TeamBadge: Item {
         required property string sourceUrl
+        property string sport: ""
 
         Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
         Layout.preferredHeight: Layout.preferredWidth
@@ -279,6 +315,7 @@ Item {
             anchors.fill: parent
             sourceUrl: parent.sourceUrl
             fallbackIcon: "emblem-favorite"
+            fallbackEmoji: SportVisuals.emoji(parent.sport)
             fallbackOpacity: 0.45
         }
     }

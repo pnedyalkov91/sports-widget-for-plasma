@@ -46,11 +46,12 @@ ColumnLayout {
             level: 2
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
+            visible: root.subtitle.length > 0
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
             text: root.subtitle
-            opacity: 0.72
-            wrapMode: Text.WordWrap
         }
     }
 

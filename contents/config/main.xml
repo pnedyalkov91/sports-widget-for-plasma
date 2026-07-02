@@ -55,6 +55,23 @@
     <entry name="nationalTeamVisualStyle" type="String">
       <default>emblems</default>
     </entry>
+    <!-- Panel presentation: "detailed" shows the match (teams/score/badges,
+         per panelLayoutMode), "simple" shows only a compact count of live and
+         remaining matches with the sport icon (GNOME Colosseum style). -->
+    <entry name="panelMode" type="String">
+      <default>detailed</default>
+    </entry>
+    <!-- Simple-mode count format: "remaining" -> "N" (remaining games only);
+         "liveRemaining" -> "A / B" (live games / remaining games). -->
+    <entry name="panelCountsFormat" type="String">
+      <default>liveRemaining</default>
+    </entry>
+    <!-- Which scheduled matches the simple panel mode counts as "remaining":
+         "next24h" -> kickoff within the next 24 hours; "all" -> every upcoming
+         fixture in the panel scope. -->
+    <entry name="panelSimpleScheduleWindow" type="String">
+      <default>next24h</default>
+    </entry>
     <entry name="panelLayoutMode" type="String">
       <default>teamsAndBadges</default>
     </entry>
@@ -93,6 +110,17 @@
       <min>5</min>
       <max>300</max>
     </entry>
+    <!-- How the panel shows multiple live/upcoming matches: "rotate" cycles one
+         at a time (default), "stack" shows several side by side (Colosseum
+         style), capped by panelStackMaxMatches. -->
+    <entry name="panelMultiMatchMode" type="String">
+      <default>rotate</default>
+    </entry>
+    <entry name="panelStackMaxMatches" type="Int">
+      <default>3</default>
+      <min>2</min>
+      <max>8</max>
+    </entry>
     <entry name="widgetMatchRotationEnabled" type="Bool">
       <default>true</default>
     </entry>
@@ -110,8 +138,45 @@
     <entry name="widgetLayoutMode" type="String">
       <default>detailed</default>
     </entry>
+    <!-- Which scheduled matches the Simple widget layout lists alongside live
+         ones: "all" -> every upcoming fixture; "next24h" -> only those with a
+         kickoff within the next 24 hours. -->
+    <entry name="widgetSimpleScheduleWindow" type="String">
+      <default>all</default>
+    </entry>
+    <!-- Show the featured match ("hero") above the tabs in the Detailed layout. -->
+    <entry name="widgetHeroEnabled" type="Bool">
+      <default>true</default>
+    </entry>
+    <!-- Where the tab bar sits in the Detailed layout: "top" (above the tab
+         content) or "bottom" (below it). -->
+    <entry name="widgetTabsPosition" type="String">
+      <default>top</default>
+    </entry>
+    <!-- Legacy tab-visibility preset (all/liveStats/liveTables/liveOnly). Kept so
+         existing setups migrate to the per-tab switches below; no longer written
+         by the settings UI. -->
     <entry name="widgetTabs" type="String">
       <default>all</default>
+    </entry>
+    <!-- Per-tab visibility switches ("Visible tabs"). Live and Schedules are the
+         core tabs; Recent Results and Tables can be hidden individually. Tables
+         is additionally hidden automatically for sports without standings. -->
+    <entry name="showTabLive" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="showTabSchedules" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="showTabRecent" type="Bool">
+      <default>true</default>
+    </entry>
+    <entry name="showTabTables" type="Bool">
+      <default>true</default>
+    </entry>
+    <!-- Show the one-click bell / star / pin action icons on each match row. -->
+    <entry name="showMatchRowActions" type="Bool">
+      <default>true</default>
     </entry>
     <!-- How many recent matches to show per team/competition group in the
          Recent Results tab. -->
@@ -137,6 +202,25 @@
       <default>5</default>
       <min>1</min>
       <max>30</max>
+    </entry>
+    <!-- How many live matches to list in the panel hover tooltip. -->
+    <entry name="tooltipLiveMatchesLimit" type="Int">
+      <default>5</default>
+      <min>1</min>
+      <max>30</max>
+    </entry>
+    <!-- How many days ahead to look for upcoming fixtures in the tooltip. -->
+    <entry name="tooltipScheduleDaysAhead" type="Int">
+      <default>1</default>
+      <min>1</min>
+      <max>5</max>
+    </entry>
+    <!-- How many days back to look for finished matches in the tooltip's
+         Recent section. -->
+    <entry name="tooltipRecentDaysBack" type="Int">
+      <default>5</default>
+      <min>1</min>
+      <max>5</max>
     </entry>
     <entry name="prioritizePopular" type="Bool">
       <default>false</default>
@@ -195,11 +279,28 @@
       <min>0</min>
       <max>1440</max>
     </entry>
-    <entry name="notifyEntryExclusions" type="String">
+    <entry name="notifyEntryInclusions" type="String">
       <default>[]</default>
     </entry>
-    <entry name="calendarEntryExclusions" type="String">
+    <entry name="calendarEntryInclusions" type="String">
       <default>[]</default>
+    </entry>
+    <!-- Per-match overrides set with the one-click row icons (bell / pin). Each
+         is a JSON object keyed by a stable match key (league|home|away|day),
+         mapping to true. Pruned automatically once a match has finished, so
+         these never grow without bound. -->
+    <entry name="perMatchNotify" type="String">
+      <default>{}</default>
+    </entry>
+    <entry name="perMatchPanelPins" type="String">
+      <default>{}</default>
+    </entry>
+    <!-- Teams favourited with the one-click row star. JSON object keyed by the
+         normalized team name -> true. Lighter weight than a full saved-sports
+         entry: it flags the team as favourite for ordering/highlighting and
+         panel selection without changing the followed competitions. -->
+    <entry name="quickFavoriteTeams" type="String">
+      <default>{}</default>
     </entry>
   </group>
 </kcfg>

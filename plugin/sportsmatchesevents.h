@@ -28,7 +28,7 @@ class QFileSystemWatcher;
 // A Plasma calendar-events plugin that surfaces the matches the Sports widget
 // follows directly inside the Plasma calendar (the date-menu dropdown), entirely
 // in memory. It reads a small, inert JSON snapshot written by the widget and
-// never touches Akonadi, an .ics resource, or the PIM indexer — so it cannot
+// never touches Akonadi, an .ics resource, or the PIM indexer - so it cannot
 // make plasmashell hang (the failure mode the previous Akonadi path had).
 class SportsMatchesEventsPlugin : public CalendarEvents::CalendarEventsPlugin
 {

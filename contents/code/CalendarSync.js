@@ -143,7 +143,7 @@ var EVENT_COLOR = "#27ae60";
 
 // Builds the inert JSON snapshot consumed by the bundled Plasma calendar-events
 // plugin (plugin/sportsmatchesevents). The plugin feeds these straight to the
-// Plasma calendar in memory — no .ics, no Akonadi, no PIM indexer — so it cannot
+// Plasma calendar in memory - no .ics, no Akonadi, no PIM indexer - so it cannot
 // hang plasmashell. Returns a JSON string: { "matches": [ {startMs, ...} ] }.
 //
 // Each entry carries:

@@ -27,6 +27,10 @@ Item {
     property bool collapsible: false
     property bool collapsed: false
     property bool loading: false
+    // Optional trailing summary (e.g. "3 matches") and a live-match count shown
+    // as a small red pill, used by the Leagues tab.
+    property string badgeText: ""
+    property int liveCount: 0
 
     signal toggled()
 
@@ -81,6 +85,31 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
             color: root.withAlpha(Kirigami.Theme.separatorColor, 0.5)
+        }
+
+        Rectangle {
+            Layout.preferredWidth: liveCountLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+            Layout.preferredHeight: Kirigami.Units.iconSizes.small + 2
+            radius: height / 2
+            visible: root.liveCount > 0
+            color: Kirigami.Theme.negativeTextColor
+
+            PlasmaComponents.Label {
+                id: liveCountLabel
+
+                anchors.centerIn: parent
+                text: i18ncp("@label number of live matches", "%1 live", "%1 live", root.liveCount)
+                color: Kirigami.Theme.backgroundColor
+                font.bold: true
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+            }
+        }
+
+        PlasmaComponents.Label {
+            text: root.badgeText
+            visible: root.badgeText.length > 0
+            color: Kirigami.Theme.disabledTextColor
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
         }
     }
 

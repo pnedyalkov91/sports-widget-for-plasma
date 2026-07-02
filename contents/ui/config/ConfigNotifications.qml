@@ -43,8 +43,8 @@ KCM.SimpleKCM {
     property alias cfg_calendarReminderMinutes: calendarReminderMinutes.value
 
     readonly property string calendarIcsFileHint: "~/.local/share/sports-widget-for-plasma/sports-matches.ics"
-    property string cfg_notifyEntryExclusions: Plasmoid.configuration.notifyEntryExclusions
-    property string cfg_calendarEntryExclusions: Plasmoid.configuration.calendarEntryExclusions
+    property string cfg_notifyEntryInclusions: Plasmoid.configuration.notifyEntryInclusions
+    property string cfg_calendarEntryInclusions: Plasmoid.configuration.calendarEntryInclusions
 
     // Detect whether the native Plasma calendar plugin is installed, by checking
     // the Qt plugin paths plasmashell scans. "unknown" until the check returns.
@@ -91,26 +91,44 @@ KCM.SimpleKCM {
         return league.length > 0 ? league : i18nc("@item", "Competition");
     }
 
-    function isExcluded(exclusionsJson, key) {
+    // Per-entry Notify/Calendar are off by default, so a saved entry counts as
+    // "included" only once its key is explicitly listed here.
+    function isIncluded(inclusionsJson, key) {
         try {
-            return JSON.parse(exclusionsJson || "[]").indexOf(key) >= 0;
+            return JSON.parse(inclusionsJson || "[]").indexOf(key) >= 0;
         } catch (error) {
             return false;
         }
     }
 
-    function withExclusion(exclusionsJson, key, excluded) {
+    function withInclusion(inclusionsJson, key, included) {
         let list = [];
         try {
-            const parsed = JSON.parse(exclusionsJson || "[]");
+            const parsed = JSON.parse(inclusionsJson || "[]");
             list = Array.isArray(parsed) ? parsed.map(String) : [];
         } catch (error) {
             list = [];
         }
         list = list.filter(existing => existing !== key);
-        if (excluded)
+        if (included)
             list.push(key);
         return JSON.stringify(list);
+    }
+
+    function setAllIncluded(included) {
+        if (!included) {
+            root.cfg_notifyEntryInclusions = "[]";
+            return;
+        }
+        root.cfg_notifyEntryInclusions = JSON.stringify(root.savedEntries.map(entry => MatchNotifications.entryKey(entry)));
+    }
+
+    function setAllCalendarIncluded(included) {
+        if (!included) {
+            root.cfg_calendarEntryInclusions = "[]";
+            return;
+        }
+        root.cfg_calendarEntryInclusions = JSON.stringify(root.savedEntries.map(entry => MatchNotifications.entryKey(entry)));
     }
 
     property bool cfg_notificationsEnabledDefault: false
@@ -126,6 +144,8 @@ KCM.SimpleKCM {
     property bool cfg_calendarIcsExportEnabledDefault: false
     property bool cfg_calendarAkonadiEnabledDefault: false
     property int cfg_calendarReminderMinutesDefault: 15
+    property string cfg_notifyEntryInclusionsDefault: "[]"
+    property string cfg_calendarEntryInclusionsDefault: "[]"
 
     Kirigami.FormLayout {
         anchors.fill: parent
@@ -142,13 +162,13 @@ KCM.SimpleKCM {
             text: i18nc("@option:check", "Enabled")
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
-            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+            visible: true
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
             text: i18nc("@info", "Show a notification for matches in the competitions and teams you follow.")
-            wrapMode: Text.WordWrap
-            font: Kirigami.Theme.smallFont
-            color: Kirigami.Theme.disabledTextColor
         }
 
         CheckBox {
@@ -183,15 +203,17 @@ KCM.SimpleKCM {
         CheckBox {
             id: notifyDetailedEvents
 
-            text: i18nc("@option:check", "Detailed events (scorer, cards, substitutions, extra time, penalties) — football only")
+            text: i18nc("@option:check", "Detailed events (scorer, cards, substitutions, extra time, penalties) - football only")
             enabled: notificationsEnabled.checked
         }
 
         Kirigami.InlineMessage {
             Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
             visible: notifyDetailedEvents.checked
+            showCloseButton: true
             type: Kirigami.MessageType.Information
-            text: i18nc("@info", "Polls each live football match for its scorer/cards/substitutions/extra time/penalty shootout on a separate, slower timer (every 90s). This means extra network requests per live match you follow, on top of the regular score refresh — leave this off if you'd rather minimize requests.")
+            text: i18nc("@info", "Polls each live football match for its scorer/cards/substitutions/extra time/penalty shootout on a separate, slower timer (every 90s). This means extra network requests per live match you follow, on top of the regular score refresh - leave this off if you'd rather minimize requests.")
         }
 
         CheckBox {
@@ -244,27 +266,38 @@ KCM.SimpleKCM {
             text: i18nc("@option:check", "Enabled")
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
-            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+            visible: true
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
             text: i18nc("@info", "Upcoming fixtures from the competitions and teams you follow are shown directly in the Plasma calendar (the date/clock pop-up), kept in sync automatically. This runs entirely in memory and never uses Akonadi, so it cannot slow down or freeze Plasma.")
-            wrapMode: Text.WordWrap
-            font: Kirigami.Theme.smallFont
-            color: Kirigami.Theme.disabledTextColor
         }
 
         Kirigami.InlineMessage {
             Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
             visible: root.calendarPluginState === "installed"
+            showCloseButton: true
             type: Kirigami.MessageType.Positive
             text: i18nc("@info", "Calendar plugin detected. If matches still don't appear, make sure the \"Sports Widget matches\" plugin is enabled in the Plasma calendar settings.")
         }
 
         Kirigami.InlineMessage {
             Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
             visible: root.calendarPluginState === "missing"
+            showCloseButton: true
             type: Kirigami.MessageType.Warning
-            text: i18nc("@info", "The native calendar plugin is not installed, so matches won't appear in the Plasma calendar yet. Build and install it from the widget's plugin/ folder (see the README), then restart Plasma.")
+            text: i18nc("@info", "The native calendar plugin is not installed, so matches won't appear in the Plasma calendar yet. Build and install it from the widget's plugin/ folder, then restart Plasma.")
+            actions: [
+                Kirigami.Action {
+                    text: i18nc("@action:button", "View README") // qmllint disable unqualified
+                    icon.name: "internet-web-browser"
+                    onTriggered: Qt.openUrlExternally("https://github.com/pnedyalkov91/sports-widget-for-plasma/blob/main/plugin/README.md")
+                }
+            ]
         }
 
         Switch {
@@ -275,15 +308,13 @@ KCM.SimpleKCM {
             enabled: calendarSyncEnabled.checked
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
-            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
             visible: calendarIcsExportEnabled.checked
-            text: i18nc("@info", "Also writes a standard iCalendar (.ics) file you can import into or subscribe to from any calendar app (Google Calendar, Thunderbird, GNOME, mobile…). It is only a file — it is never registered with Akonadi, so it cannot affect Plasma. File:\n%1", root.calendarIcsFileHint)
-            textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            font: Kirigami.Theme.smallFont
-            color: Kirigami.Theme.disabledTextColor
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
+            text: i18nc("@info", "Also writes a standard iCalendar (.ics) file you can import into or subscribe to from any calendar app (Google Calendar, Thunderbird, GNOME, mobile…). It is only a file - it is never registered with Akonadi, so it cannot affect Plasma. File:\n%1", root.calendarIcsFileHint)
         }
 
         Switch {
@@ -296,9 +327,11 @@ KCM.SimpleKCM {
 
         Kirigami.InlineMessage {
             Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
             visible: calendarAkonadiEnabled.checked
+            showCloseButton: true
             type: Kirigami.MessageType.Warning
-            text: i18nc("@info", "Unstable — not recommended. This registers the .ics as a live Akonadi (KDE PIM) calendar. On some systems Akonadi re-indexes every match on each update and can freeze Plasma for several seconds. Prefer the native calendar plugin above; only enable this if you specifically need an Akonadi calendar and accept the risk.")
+            text: i18nc("@info", "Unstable - not recommended. This registers the .ics as a live Akonadi (KDE PIM) calendar. On some systems Akonadi re-indexes every match on each update and can freeze Plasma for several seconds. Prefer the native calendar plugin above; only enable this if you specifically need an Akonadi calendar and accept the risk.")
         }
 
         RowLayout {
@@ -327,17 +360,17 @@ KCM.SimpleKCM {
         }
 
         Item {
-            Kirigami.FormData.label: i18nc("@title:group", "Per competition / team")
+            Kirigami.FormData.label: i18nc("@title:group", "Competition / team notifications")
             Kirigami.FormData.isSection: true
         }
 
-        Label {
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
-            Layout.maximumWidth: Kirigami.Units.gridUnit * 22
-            text: i18nc("@info", "Choose which of your followed competitions and teams trigger notifications and appear in the calendar.")
-            wrapMode: Text.WordWrap
-            font: Kirigami.Theme.smallFont
-            color: Kirigami.Theme.disabledTextColor
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+            visible: true
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
+            text: i18nc("@info", "Choose which of your followed competitions and teams trigger notifications and appear in the calendar. Off by default for new entries.")
         }
 
         Label {
@@ -346,6 +379,26 @@ KCM.SimpleKCM {
             text: i18nc("@info:placeholder", "No competitions or teams added yet. Add some from the Sport page.")
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.disabledTextColor
+        }
+
+        RowLayout {
+            Kirigami.FormData.label: i18nc("@label", "Global notifications and calendar:")
+            spacing: Kirigami.Units.largeSpacing
+            visible: root.savedEntries.length > 0
+
+            Switch {
+                text: i18nc("@option:check", "Notify")
+                enabled: notificationsEnabled.checked
+                checked: root.savedEntries.length > 0 && root.savedEntries.every(entry => root.isIncluded(root.cfg_notifyEntryInclusions, MatchNotifications.entryKey(entry)))
+                onToggled: root.setAllIncluded(checked)
+            }
+
+            Switch {
+                text: i18nc("@option:check", "Calendar")
+                enabled: calendarSyncEnabled.checked
+                checked: root.savedEntries.length > 0 && root.savedEntries.every(entry => root.isIncluded(root.cfg_calendarEntryInclusions, MatchNotifications.entryKey(entry)))
+                onToggled: root.setAllCalendarIncluded(checked)
+            }
         }
 
         Repeater {
@@ -361,18 +414,18 @@ KCM.SimpleKCM {
                 Kirigami.FormData.label: SportVisuals.emoji(String(entryRow.modelData.sport || "")) + " " + root.entryLabel(entryRow.modelData)
                 spacing: Kirigami.Units.largeSpacing
 
-                CheckBox {
+                Switch {
                     text: i18nc("@option:check", "Notify")
                     enabled: notificationsEnabled.checked
-                    checked: !root.isExcluded(root.cfg_notifyEntryExclusions, entryRow.entryKey)
-                    onToggled: root.cfg_notifyEntryExclusions = root.withExclusion(root.cfg_notifyEntryExclusions, entryRow.entryKey, !checked)
+                    checked: root.isIncluded(root.cfg_notifyEntryInclusions, entryRow.entryKey)
+                    onToggled: root.cfg_notifyEntryInclusions = root.withInclusion(root.cfg_notifyEntryInclusions, entryRow.entryKey, checked)
                 }
 
-                CheckBox {
+                Switch {
                     text: i18nc("@option:check", "Calendar")
                     enabled: calendarSyncEnabled.checked
-                    checked: !root.isExcluded(root.cfg_calendarEntryExclusions, entryRow.entryKey)
-                    onToggled: root.cfg_calendarEntryExclusions = root.withExclusion(root.cfg_calendarEntryExclusions, entryRow.entryKey, !checked)
+                    checked: root.isIncluded(root.cfg_calendarEntryInclusions, entryRow.entryKey)
+                    onToggled: root.cfg_calendarEntryInclusions = root.withInclusion(root.cfg_calendarEntryInclusions, entryRow.entryKey, checked)
                 }
             }
         }

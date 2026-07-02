@@ -1,4 +1,4 @@
-# Sports Widget — Plasma calendar plugin
+# Sports Widget - Plasma calendar plugin
 
 This is a small native **Plasma calendar-events plugin** that shows the matches you
 follow in the Sports widget directly in the Plasma calendar (the date/clock pop-up),
@@ -19,7 +19,7 @@ This plugin avoids that completely:
   reconciles or indexes it.
 - This plugin reads that JSON and feeds the matches to the Plasma calendar
   **in memory**, via `CalendarEvents::CalendarEventsPlugin::dataReady()`.
-- **No `.ics`, no Akonadi resource, no PIM indexer** — so it cannot hang plasmashell.
+- **No `.ics`, no Akonadi resource, no PIM indexer** - so it cannot hang plasmashell.
 
 ## Build & install
 
@@ -41,7 +41,7 @@ Plasma only loads a calendar plugin if **(a)** the `.so` is on Qt's plugin path 
    (`/usr/lib64/qt6/plugins/plasmacalendarplugins`, via sudo) by default, which Qt
    always scans. To install per-user instead (`SYSTEM_INSTALL=0 sh install.sh`), Qt
    must also scan `~/.local/lib64/qt6/plugins`, so export `QT_PLUGIN_PATH` for the
-   session — e.g. drop a line in `~/.config/plasma-workspace/env/qt-plugin-path.sh`:
+   session - e.g. drop a line in `~/.config/plasma-workspace/env/qt-plugin-path.sh`:
 
    ```sh
    export QT_PLUGIN_PATH="$HOME/.local/lib64/qt6/plugins${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
@@ -74,16 +74,16 @@ is left untouched.
 ## Akonadi (optional, unstable)
 
 The widget also has an opt-in switch to register the exported `.ics` as a live
-Akonadi/KDE PIM calendar. It is **not recommended** — on some systems Akonadi
-re-indexes every event on each update and can freeze Plasma — which is exactly why
+Akonadi/KDE PIM calendar. It is **not recommended** - on some systems Akonadi
+re-indexes every event on each update and can freeze Plasma - which is exactly why
 this in-memory plugin exists and is the default. The Akonadi path lives in the
 widget (`CalendarSync.resourceEnsureScript` / `resourceOfflineScript`), not in this
 plugin.
 
 ## Files
 
-- `sportsmatchesevents.h` / `.cpp` — the plugin implementation.
-- `SportsMatchesEventsConfig.qml` — the config page shown in Plasma calendar settings.
-- `metadata.json` — plugin metadata (embedded into the `.so`).
-- `install.sh` — compiles with `g++` + `moc` and installs the plugin + config QML.
-- `uninstall.sh` — removes the installed plugin and disables it.
+- `sportsmatchesevents.h` / `.cpp` - the plugin implementation.
+- `SportsMatchesEventsConfig.qml` - the config page shown in Plasma calendar settings.
+- `metadata.json` - plugin metadata (embedded into the `.so`).
+- `install.sh` - compiles with `g++` + `moc` and installs the plugin + config QML.
+- `uninstall.sh` - removes the installed plugin and disables it.

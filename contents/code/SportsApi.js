@@ -93,6 +93,13 @@ function espnScoreboardRunner(options, mode) {
     return (onRows, onErr) => fetchEspnScoreboard(plan.espnSport, plan.league, mode, options, onRows, onErr);
 }
 
+// Live / fixtures / recent / table route to ESPN when it covers the entry, and
+// otherwise to SportScore's JSON widget API (/api/widget/{matches,team,standings}).
+// The earlier plasmashell freeze came from scraping SportScore's ~680 KB HTML pages
+// with backtracking regexes on the UI thread; the JSON widgets are small documents
+// that JSON.parse in well under a millisecond, so SportScore-only leagues (e.g. the
+// Bulgarian First League, which ESPN doesn't carry) work again without the freeze.
+// The HTML page scrapers remain only for the config wizard's browsing/badges.
 function fetchLiveScores(options, onSuccess, onError) {
     if (isEspnNativeRequest(options)) {
         tryEspnMatches(options, "live", onSuccess, onError, () => finish(onSuccess, []));
@@ -104,35 +111,69 @@ function fetchLiveScores(options, onSuccess, onError) {
     }
 
     const sportScoreRunner = (onRows, onErr) => {
-        let pending = 2;
-        let rows = [];
-        let errors = [];
-
-        function complete(nextRows, error) {
-            rows = rows.concat(arrayValue(nextRows));
-            if (stringValue(error).length > 0)
-                errors.push(stringValue(error));
-            pending -= 1;
-            if (pending > 0)
-                return;
-
-            rows = sortMatches(dedupeMatchesForSport(rows, options && (options.sports || options.sport)));
-            if (rows.length > 0)
-                onRows(rows);
-            else if (errors.length >= 2)
-                onErr(errors.join(", "));
-            else
-                onRows(rows);
-        }
-
-        fetchSportScoreGlobalLiveMatches(options, liveRows => complete(liveRows, ""), error => complete([], error));
+        const deliver = rows => enrichSportScoreLiveMinutes(rows, onRows);
         if (isTeamRequest(options))
-            fetchSportScoreTeamMatches(options, "live", liveRows => complete(liveRows, ""), error => complete([], error));
+            fetchSportScoreTeamMatches(options, "live", deliver, onErr);
         else
-            fetchSportScoreCompetitionMatches(options, "live", liveRows => complete(liveRows, ""), error => complete([], error));
+            fetchSportScoreCompetitionMatches(options, "live", deliver, onErr);
+    };
+    fetchByCoverage(espnScoreboardRunner(options, "live"), sportScoreRunner, onSuccess, onError);
+}
+
+// SportScore's feed-level widgets (matches/team) carry only the phase
+// ("1st half") - the actual clock (live_minute, e.g. "67" or "90+") exists only
+// in the single-match widget. Enrich live rows with one small match-widget
+// request each, memoized per match briefly so the 60 s live poll costs at most
+// one request per live match (the endpoint itself is edge-cached 60 s). Rows
+// are delivered unchanged when a lookup fails - the phase label remains.
+const SPORTSCORE_LIVE_MINUTE_TTL_MS = 45000;
+const SPORTSCORE_LIVE_MINUTE_MAX_LOOKUPS = 12;
+const _sportScoreLiveMinuteCache = {};
+
+function enrichSportScoreLiveMinutes(rows, onDone) {
+    const list = arrayValue(rows);
+    const targets = list.filter(row => row && isLiveStatus(row.status)
+        && stringValue(row.liveUrl).length > 0
+        && normalizedLiveMinute(stringValue(row.minute)).length === 0)
+        .slice(0, SPORTSCORE_LIVE_MINUTE_MAX_LOOKUPS);
+    if (targets.length === 0) {
+        finish(onDone, list);
+        return;
+    }
+
+    let pending = targets.length;
+    const settle = () => {
+        pending -= 1;
+        if (pending <= 0)
+            finish(onDone, list);
     };
 
-    fetchByCoverage(espnScoreboardRunner(options, "live"), sportScoreRunner, onSuccess, onError);
+    targets.forEach(row => {
+        const key = stringValue(row.liveUrl);
+        const cached = _sportScoreLiveMinuteCache[key];
+        if (cached && (Date.now() - cached.ts) < SPORTSCORE_LIVE_MINUTE_TTL_MS) {
+            if (cached.minute.length > 0)
+                row.minute = cached.minute;
+            settle();
+            return;
+        }
+
+        requestText(cacheBustedUrl(key), text => {
+            let minute = "";
+            try {
+                const payload = JSON.parse(text);
+                minute = sportScoreLiveMinute(payload && payload.match, row.status, row.sport);
+            } catch (error) {
+                minute = "";
+            }
+            // Cache misses too, so a match without a clock doesn't get re-queried
+            // on every poll.
+            _sportScoreLiveMinuteCache[key] = { ts: Date.now(), minute: minute };
+            if (minute.length > 0)
+                row.minute = minute;
+            settle();
+        }, settle);
+    });
 }
 
 function fetchScoresFixtures(options, onSuccess, onError) {
@@ -216,7 +257,7 @@ function fetchTeamCompetitions(options, onSuccess, onError) {
     }
 
     // ESPN-covered team: its competition IS the ESPN league it plays in. Return
-    // that directly (selecting it loads the ESPN standings) — never touch
+    // that directly (selecting it loads the ESPN standings) - never touch
     // SportScore for an ESPN entry.
     const plan = espnPlan(options);
     if (plan) {
@@ -243,9 +284,61 @@ function fetchTeamCompetitions(options, onSuccess, onError) {
         return;
     }
 
+    // SportScore team: the JSON team widget already tags each of the team's
+    // matches with its competition - one small request keyed by slug alone (no
+    // page id needed). Deriving the list from those labels avoids the page route
+    // entirely. That route was the "add a team" freeze: a saved team path
+    // without SportScore's id segment (the standings widget's team_url has none)
+    // forced resolveSportScoreTeamPath to scrape the country page plus up to 64
+    // competition pages on the UI thread just to recover the id. The page scrape
+    // remains only for teams the widget doesn't index at all.
+    // Ask for the widget's full 30-match window regardless of the caller's own
+    // fixture limits - more matches means better competition coverage.
+    fetchSportScoreTeamWidgetMatches(Object.assign({}, options, { limit: 30, fixtureLimit: 30 }), rows => {
+        if (rows.length === 0) {
+            fetchTeamCompetitionsFromTeamPage(options, onSuccess, onError);
+            return;
+        }
+
+        finish(onSuccess, sportScoreCompetitionsFromWidgetMatches(rows, options));
+    }, () => fetchTeamCompetitionsFromTeamPage(options, onSuccess, onError));
+}
+
+function fetchTeamCompetitionsFromTeamPage(options, onSuccess, onError) {
     fetchSportScoreTeamPage(options, page => {
         finish(onSuccess, sportScoreTeamCompetitions(page.html, options));
     }, error => finish(onError, error));
+}
+
+// Rows in the sportScoreTeamCompetitions shape, derived from the team widget's
+// normalized match list: one row per distinct competition label. `path`/`url`
+// stay empty - the table dropdown works from slug + country via the standings
+// widget, and the HTML table fallback can resolve a path from the slug in the
+// rare case the widget can't serve the competition.
+function sportScoreCompetitionsFromWidgetMatches(rows, options) {
+    const country = ProviderCatalog.slugForValue(options && options.country);
+    const seen = {};
+    const out = [];
+    arrayValue(rows).forEach(match => {
+        const label = stringValue(match && match.league).trim();
+        const slug = ProviderCatalog.slugForValue(label);
+        if (label.length === 0 || slug.length === 0 || seen[slug])
+            return;
+        seen[slug] = true;
+        out.push({
+            label: label,
+            slug: slug,
+            value: slug,
+            country: country,
+            path: "",
+            url: ""
+        });
+    });
+
+    out.sort((left, right) => competitionPriority(left.label) === competitionPriority(right.label)
+        ? stringValue(left.label).localeCompare(stringValue(right.label))
+        : competitionPriority(right.label) - competitionPriority(left.label));
+    return out;
 }
 
 // Competitions per (sport, country) rarely change within a session, but are
@@ -404,14 +497,40 @@ function fetchTeamBadge(options, onSuccess, onError) {
         return;
     }
 
-    fetchSportScoreTeamPage(options, page => {
-        finish(onSuccess, sportScoreTeamBadge(page.html));
-    }, () => finish(onSuccess, ""));
+    // The team widget envelope carries the crest directly (team.logo) - one
+    // small JSON request instead of scraping the team's HTML page. limit=1
+    // keeps the payload minimal; the page scrape stays as the fallback for
+    // teams the widget doesn't index.
+    function fetchFromTeamPage() {
+        fetchSportScoreTeamPage(options, page => {
+            finish(onSuccess, sportScoreTeamBadge(page.html));
+        }, () => finish(onSuccess, ""));
+    }
+
+    const widgetUrl = sportScoreTeamWidgetUrl(Object.assign({}, options, { limit: 1, fixtureLimit: 1 }));
+    if (widgetUrl.length === 0) {
+        fetchFromTeamPage();
+        return;
+    }
+
+    requestText(cacheBustedUrl(widgetUrl), text => {
+        let badge = "";
+        try {
+            const payload = JSON.parse(text);
+            badge = absoluteSportScoreUrl(payload && payload.team && payload.team.logo);
+        } catch (error) {
+            badge = "";
+        }
+        if (badge.length > 0)
+            finish(onSuccess, badge);
+        else
+            fetchFromTeamPage();
+    }, fetchFromTeamPage);
 }
 
 function fetchLiveMatchDetails(options, onSuccess, onError) {
     // Details follow the match's own source: an ESPN match uses ESPN's incident
-    // feed, a SportScore match uses SportScore's widget — never the other provider,
+    // feed, a SportScore match uses SportScore's widget - never the other provider,
     // even for a shared sport where both could in principle answer.
     if (stringValue(options && options.detailsProvider) === "espn") {
         fetchEspnLiveMatchDetails(options, onSuccess);
@@ -551,7 +670,7 @@ function sportScorePlayerComparison(html) {
         const homeValue = cells[i];
         const label = cells[i + 1];
         const awayValue = cells[i + 2];
-        const empty = v => v.length === 0 || v === "N/A" || v === "—" || v.toLowerCase() === "unknown";
+        const empty = v => v.length === 0 || v === "N/A" || v === "-" || v.toLowerCase() === "unknown";
         if (label.length > 0 && (!empty(homeValue) || !empty(awayValue)))
             rows.push({ label, homeValue, awayValue });
     }
@@ -621,22 +740,60 @@ function fetchEspnLiveMatchDetails(options, onSuccess) {
         return;
     }
 
-    if (sport !== "football" || espnSport.length === 0 || espnLeague.length === 0 || eventId.length === 0) {
+    if (espnSport.length === 0 || espnLeague.length === 0 || eventId.length === 0) {
         finish(onSuccess, emptyLiveMatchDetails());
         return;
     }
 
-    fetchEspnMatchIncidents(espnSport, espnLeague, eventId, stringValue(options && options.homeTeam), stringValue(options && options.awayTeam), events => {
-        finish(onSuccess, Object.assign(emptyLiveMatchDetails(), {
+    // Two best-effort feeds make up the details panel:
+    //   • summary  - boxscore team stats (Statistics tab) + venue/attendance/referee
+    //                and half-time score (Information tab). All ESPN sports.
+    //   • plays    - goal/card/sub incidents (Details/events tab). Football only;
+    //                the plays feed is empty/uninformative for other sports.
+    // Either may be unavailable; we surface whatever came back rather than failing.
+    let pending = 2;
+    let summary = null;
+    let events = [];
+
+    function done() {
+        pending -= 1;
+        if (pending > 0)
+            return;
+        // Prefer the summary's keyEvents (structured team/participants, and includes
+        // subs + cards, not just goals) when present; fall back to the plays feed.
+        const summaryEvents = summary ? arrayValue(summary.eventRows) : [];
+        const detailEvents = summaryEvents.length > 0 ? summaryEvents : events;
+        const base = Object.assign(emptyLiveMatchDetails(), {
             sourceProvider: "ESPN",
             statsProvider: "ESPN",
             competition: stringValue(options && options.league),
-            summaryRows: sportScoreWidgetSummaryRows(events),
-            homeEvents: events.filter(row => row.side === "home"),
-            awayEvents: events.filter(row => row.side === "away"),
-            events
-        }));
-    }, () => finish(onSuccess, emptyLiveMatchDetails()));
+            summaryRows: sportScoreWidgetSummaryRows(detailEvents),
+            homeEvents: detailEvents.filter(row => row.side === "home"),
+            awayEvents: detailEvents.filter(row => row.side === "away"),
+            events: detailEvents
+        });
+        if (summary) {
+            base.statsRows = arrayValue(summary.statsRows);
+            base.matchInfoRows = arrayValue(summary.matchInfoRows);
+            base.halfTimeScore = stringValue(summary.halfTimeScore);
+            base.leaderRows = arrayValue(summary.leaderRows);
+            if (summary.lineups)
+                base.lineups = summary.lineups;
+            if (summary.playerBox)
+                base.playerBox = summary.playerBox;
+        }
+        finish(onSuccess, base);
+    }
+
+    fetchEspnMatchSummary(espnSport, espnLeague, eventId, sport, options,
+        result => { summary = result; done(); }, () => done());
+
+    if (sport === "football") {
+        fetchEspnMatchIncidents(espnSport, espnLeague, eventId, stringValue(options && options.homeTeam),
+            stringValue(options && options.awayTeam), rows => { events = arrayValue(rows); done(); }, () => done());
+    } else {
+        done();
+    }
 }
 
 function emptyLiveMatchDetails() {
@@ -654,6 +811,8 @@ function emptyLiveMatchDetails() {
         awayStats: {},
         summaryRows: [],
         statsRows: [],
+        leaderRows: [],
+        playerBox: null,
         homeEvents: [],
         awayEvents: [],
         events: [],
@@ -992,10 +1151,10 @@ function canUseSportScore(options) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ESPN provider — the SOLE source for every sport/competition/team it covers (the
+// ESPN provider - the SOLE source for every sport/competition/team it covers (the
 // SportScore sports + the ESPN-native sports). SportScore is used only for entries
 // ESPN does not cover at all (no plan), never as a runtime fallback for an ESPN
-// hiccup — routing is decided once, up front, by coverage (see fetchByCoverage).
+// hiccup - routing is decided once, up front, by coverage (see fetchByCoverage).
 // Uses the same hardened request queue; ESPN requests bypass SportScore's post-504
 // cooldown (ignoreCooldown) so a failing SportScore never throttles ESPN.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1005,7 +1164,7 @@ function espnPlan(options) {
     return EspnSports.espnLeagueForEntry({
         sport: normalizedSport(options && (options.sports || options.sport)),
         // A followed team carries no league of its own, but does carry the
-        // competition it was followed from (teamLeague) so ESPN can scope it —
+        // competition it was followed from (teamLeague) so ESPN can scope it -
         // essential for international/multi-league comps where country can't.
         league: stringValue(options && (options.league || options.teamLeague)),
         country: stringValue(options && options.country)
@@ -1034,18 +1193,25 @@ function tryEspnMatches(options, mode, onSuccess, onError, onNoEspn) {
     }, () => onNoEspn());
 }
 
-// Coverage-based routing — no instability fallback. Each entry is served by
+// Coverage-based routing - no instability fallback. Each entry is served by
 // exactly ONE provider, decided up front by ESPN coverage:
 //   • ESPN covers it (espnRunner !== null) → ESPN exclusively, even if ESPN
 //     returns an empty result. We never retry against SportScore just because
-//     ESPN was momentarily empty or errored — ESPN is the reliable source, and
+//     ESPN was momentarily empty or errored - ESPN is the reliable source, and
 //     racing/falling back to SportScore is exactly the instability we're avoiding.
-//   • ESPN does not cover it (espnRunner === null) → SportScore exclusively
-//     (e.g. a club or league ESPN doesn't carry).
-//   espnRunner(onRows, onErr) — the ESPN path, or null when ESPN has no plan.
-//   sportScoreRunner(onRows, onErr) — the SportScore path (uncovered entries only).
+//   • ESPN does not cover it (espnRunner === null) → the supplied sportScoreRunner,
+//     or an empty result when that is null too. Live/fixtures/recent/table pass a
+//     null SportScore runner (those modes are ESPN-only - see fetchLiveScores), so
+//     an ESPN-uncovered entry simply yields no rows there instead of scraping a
+//     huge SportScore HTML page on the UI thread.
+//   espnRunner(onRows, onErr) - the ESPN path, or null when ESPN has no plan.
+//   sportScoreRunner(onRows, onErr) - the SportScore path, or null to disable it.
 function fetchByCoverage(espnRunner, sportScoreRunner, onSuccess, onError) {
     const runner = espnRunner || sportScoreRunner;
+    if (!runner) {
+        finish(onSuccess, []);
+        return;
+    }
     runner(rows => finish(onSuccess, rows), err => finish(onError, err));
 }
 
@@ -1067,7 +1233,7 @@ function espnClampDays(value, fallback, max) {
 }
 
 // How far ahead the fixtures window may reach. Larger than the back cap because
-// fixtures are sparse (a few per league) — a wide look-ahead is cheap and is what
+// fixtures are sparse (a few per league) - a wide look-ahead is cheap and is what
 // surfaces next-season fixtures during the off-season (e.g. an August restart when
 // "today" is late June), instead of an empty Schedules tab. Upper bound for the
 // user-configurable "Schedules days ahead" setting (max one year).
@@ -1111,6 +1277,23 @@ function espnStatusFromState(state, completed) {
     return "Upcoming";
 }
 
+// ESPN keeps the live match clock in status.displayClock ("63'", "90'+7'");
+// status.type.shortDetail is often only the phase ("1st Half", "HT"). For
+// football the clock is the live label users expect. Other sports keep
+// shortDetail, which already combines clock and period ("5:32 - 3rd Quarter").
+function espnLiveMinute(sportValue, statusObject, statusText) {
+    // A break phase beats the frozen clock: at half time the clock still reads
+    // "45'", which would look like play is running.
+    if (/^ht$|half[\s-]?time|break/i.test(stringValue(statusText).trim()))
+        return statusText;
+    if (normalizedSport(sportValue) === "football") {
+        const clock = stringValue(statusObject && statusObject.displayClock).trim();
+        if (clock.length > 0 && clock !== "0'" && clock !== "0:00")
+            return clock;
+    }
+    return statusText;
+}
+
 function normalizeEspnEvent(event, sportValue, options) {
     const competition = arrayValue(event && event.competitions)[0] || {};
     const competitors = arrayValue(competition.competitors);
@@ -1129,7 +1312,8 @@ function normalizeEspnEvent(event, sportValue, options) {
     if (!home || !away)
         return null;
 
-    const statusType = (competition.status && competition.status.type) || (event && event.status && event.status.type) || {};
+    const statusObject = competition.status || (event && event.status) || {};
+    const statusType = statusObject.type || {};
     const status = espnStatusFromState(statusType.state, statusType.completed);
     const statusText = stringValue(statusType.shortDetail || statusType.detail || statusType.description);
     const timestamp = Date.parse(stringValue(event && event.date));
@@ -1146,7 +1330,7 @@ function normalizeEspnEvent(event, sportValue, options) {
         awayScore: status === "Upcoming" ? "" : stringValue(away.score),
         status,
         statusText,
-        minute: status === "Live" ? statusText : "",
+        minute: status === "Live" ? espnLiveMinute(sportValue, statusObject, statusText) : "",
         startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
         timestamp: Number.isFinite(timestamp) ? timestamp : 0,
         matchday: "",
@@ -1252,7 +1436,7 @@ function normalizeEspnTennisMatch(competition, tournamentName, sportValue, optio
         matchPath: "",
         liveUrl: "",
         // Set-by-set breakdown (details-panel shape) carried on the row, so the
-        // details panel can show it without a separate fetch — ESPN has no tennis
+        // details panel can show it without a separate fetch - ESPN has no tennis
         // match-details endpoint. Surfaced by fetchEspnLiveMatchDetails.
         espnTennisSets: espnTennisSetsDetails(home, away),
         detailsProvider: "espn",
@@ -1281,10 +1465,183 @@ function normalizeEspnTennisScoreboard(payload, sportValue, options) {
     return rows;
 }
 
+// One ESPN MMA fight (a competition on the event) → a head-to-head match row.
+// Fights carry two athlete competitors and a winner flag but no running score, so
+// the score columns stay blank and the winner is shown via the status/round line.
+function normalizeEspnMmaFight(competition, cardName, sportValue, options) {
+    const competitors = arrayValue(competition && competition.competitors);
+    if (competitors.length < 2)
+        return null;
+    const home = competitors[0];
+    const away = competitors[1];
+    const homeAthlete = (home && home.athlete) || {};
+    const awayAthlete = (away && away.athlete) || {};
+    const homeName = stringValue(homeAthlete.displayName || homeAthlete.fullName);
+    const awayName = stringValue(awayAthlete.displayName || awayAthlete.fullName);
+    if (homeName.length === 0 || awayName.length === 0)
+        return null;
+
+    const statusType = (competition.status && competition.status.type) || {};
+    const status = espnStatusFromState(statusType.state, statusType.completed);
+    const timestamp = Date.parse(stringValue(competition.date || (options && options.eventDate)));
+    // Weight class / card segment, if present, used as the "round" line.
+    const segment = stringValue(competition.type && (competition.type.text || competition.type.abbreviation));
+    // Result line for a finished fight: who won.
+    const winner = home && home.winner === true ? homeName : (away && away.winner === true ? awayName : "");
+    const resultText = status === "Finished" && winner.length > 0
+        ? winner + " def." : stringValue(statusType.shortDetail || statusType.description);
+
+    return {
+        id: "espn-" + stringValue(competition.id),
+        sport: sportValue,
+        league: cardName || stringValue(options && options.leagueLabel),
+        homeTeam: homeName,
+        awayTeam: awayName,
+        // No running score in the feed; show the winner via the score column as a
+        // checkmark-style "W"/"L" only once finished, blank otherwise.
+        homeScore: status === "Finished" && home && home.winner === true ? "W" : (status === "Finished" && winner.length > 0 ? "L" : ""),
+        awayScore: status === "Finished" && away && away.winner === true ? "W" : (status === "Finished" && winner.length > 0 ? "L" : ""),
+        status,
+        statusText: resultText,
+        minute: status === "Live" ? stringValue(statusType.shortDetail) : "",
+        startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        matchday: segment,
+        group: segment,
+        stadium: stringValue(competition.venue && competition.venue.fullName),
+        homeBadge: stringValue(homeAthlete.flag && homeAthlete.flag.href),
+        awayBadge: stringValue(awayAthlete.flag && awayAthlete.flag.href),
+        poster: "",
+        popular: false,
+        matchPath: "",
+        liveUrl: "",
+        detailsProvider: "espn",
+        statsProvider: "espn",
+        sourceProvider: "ESPN",
+        espnEventId: stringValue(competition.id),
+        espnSport: stringValue(options && options.espnSport),
+        espnLeague: stringValue(options && options.espnLeague)
+    };
+}
+
+// MMA scoreboards list each fight as a competition on the event (the fight card).
+function normalizeEspnMmaScoreboard(payload, sportValue, options) {
+    let rows = [];
+    arrayValue(payload && payload.events).forEach(event => {
+        const card = stringValue(event && event.name);
+        const eventDate = stringValue(event && event.date);
+        const merged = Object.assign({}, options, { eventDate: eventDate });
+        arrayValue(event && event.competitions).forEach(competition => {
+            const row = normalizeEspnMmaFight(competition, card, sportValue, merged);
+            if (row)
+                rows.push(row);
+        });
+    });
+    return rows;
+}
+
+// Position label for a leaderboard competitor: prefer an explicit position, else
+// the 1-based finishing/standing order.
+function espnLeaderboardPosition(competitor, fallbackOrder) {
+    const pos = competitor && competitor.status && competitor.status.position;
+    const explicit = stringValue(pos && (pos.displayName || pos.abbreviation || pos.id));
+    if (explicit.length > 0)
+        return explicit;
+    const order = numberValue(competitor && competitor.order) || fallbackOrder;
+    return order > 0 ? "P" + order : "";
+}
+
+// Golf / racing are leaderboards, not head-to-head, but the UI delegate is two-
+// sided. Represent each event as a single row "leader vs runner-up", with the
+// event name as the competition. When a specific player is followed
+// (filterEspnRowsForEntry uses favoriteTeam), surface that player as the home side
+// against the leader instead, so a follower sees their own standing.
+function normalizeEspnLeaderboardEvent(event, sportValue, options) {
+    const competition = arrayValue(event && event.competitions)
+        // Pick the competition with the most competitors (the race/round with the
+        // full field, not an empty practice session).
+        .reduce((best, c) => (arrayValue(c && c.competitors).length > arrayValue(best && best.competitors).length ? c : best), null);
+    const competitors = arrayValue(competition && competition.competitors)
+        .slice()
+        .sort((a, b) => (numberValue(a && a.order) || 9999) - (numberValue(b && b.order) || 9999));
+    if (competitors.length < 1)
+        return null;
+
+    const eventName = stringValue(event && event.name);
+    const statusType = (competition.status && competition.status.type) || (event && event.status && event.status.type) || {};
+    const status = espnStatusFromState(statusType.state, statusType.completed);
+    const timestamp = Date.parse(stringValue((competition && competition.date) || (event && event.date)));
+
+    const leader = competitors[0];
+    const followed = stringValue(options && options.favoriteTeam);
+    // Home side: the followed player if they are in this field, else the leader.
+    let home = leader;
+    if (followed.length > 0) {
+        const mine = competitors.find(c => sameTeamName((c.athlete || {}).displayName || (c.athlete || {}).fullName, followed));
+        if (mine)
+            home = mine;
+    }
+    // Away side: the leader (or runner-up when the followed player IS the leader).
+    let away = (home === leader) ? (competitors[1] || null) : leader;
+
+    const homeAthlete = (home && home.athlete) || {};
+    const awayAthlete = (away && away.athlete) || {};
+    const homeName = stringValue(homeAthlete.displayName || homeAthlete.fullName);
+    if (homeName.length === 0)
+        return null;
+    const awayName = stringValue(awayAthlete.displayName || awayAthlete.fullName);
+
+    return {
+        id: "espn-" + stringValue(event && event.id),
+        sport: sportValue,
+        league: eventName || stringValue(options && options.leagueLabel),
+        homeTeam: homeName,
+        awayTeam: awayName.length > 0 ? awayName : eventName,
+        homeScore: status === "Upcoming" ? "" : (stringValue(home.score) || espnLeaderboardPosition(home, 1)),
+        awayScore: status === "Upcoming" || awayName.length === 0 ? "" : (stringValue(away.score) || espnLeaderboardPosition(away, 2)),
+        status,
+        statusText: stringValue(statusType.shortDetail || statusType.detail || statusType.description),
+        minute: status === "Live" ? stringValue(statusType.shortDetail) : "",
+        startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        matchday: eventName,
+        group: eventName,
+        stadium: stringValue((competition && competition.venue && competition.venue.fullName)
+            || (event && event.circuit && event.circuit.fullName)),
+        homeBadge: stringValue(homeAthlete.flag && homeAthlete.flag.href),
+        awayBadge: stringValue(awayAthlete.flag && awayAthlete.flag.href),
+        poster: "",
+        popular: false,
+        matchPath: "",
+        liveUrl: "",
+        detailsProvider: "espn",
+        statsProvider: "espn",
+        sourceProvider: "ESPN",
+        espnEventId: stringValue(event && event.id),
+        espnSport: stringValue(options && options.espnSport),
+        espnLeague: stringValue(options && options.espnLeague)
+    };
+}
+
+function normalizeEspnLeaderboardScoreboard(payload, sportValue, options) {
+    let rows = [];
+    arrayValue(payload && payload.events).forEach(event => {
+        const row = normalizeEspnLeaderboardEvent(event, sportValue, options);
+        if (row)
+            rows.push(row);
+    });
+    return rows;
+}
+
 function normalizeEspnScoreboard(payload, sportValue, leagueLabel, options) {
     const merged = Object.assign({ leagueLabel: leagueLabel }, options || {});
-    if (normalizedSport(sportValue) === "tennis")
+    const sport = normalizedSport(sportValue);
+    if (sport === "tennis")
         return normalizeEspnTennisScoreboard(payload, sportValue, merged);
+    if (sport === "mma")
+        return normalizeEspnMmaScoreboard(payload, sportValue, merged);
+    if (sport === "golf" || sport === "racing")
+        return normalizeEspnLeaderboardScoreboard(payload, sportValue, merged);
 
     const league = stringValue((payload && payload.leagues && payload.leagues[0] && payload.leagues[0].name)) || leagueLabel;
     return arrayValue(payload && payload.events)
@@ -1315,7 +1672,7 @@ function filterEspnMatchesForMode(rows, mode) {
 // (fixtures) / most-recent (recent) of this many is far more than the UI shows.
 const ESPN_MODE_MATCH_LIMIT = 40;
 // "Recent results" deliberately shows a whole year of finished matches, so its
-// cap is far higher than the unified-window default — a full football season is
+// cap is far higher than the unified-window default - a full football season is
 // ~38 league matches plus cup ties per club, and a year-to-date competition view
 // can hold many more. Still bounded so a huge tournament can't flood the models.
 const ESPN_RECENT_MODE_MATCH_LIMIT = 300;
@@ -1347,6 +1704,20 @@ function espnYearStartDate() {
     return espnDate(new Date(now.getFullYear(), 0, 1).getTime());
 }
 
+// Date window for the "live" fetch: yesterday..tomorrow (ESPN YYYYMMDD range).
+// ESPN files each match under its UTC kickoff date, but espnDate() formats in the
+// user's LOCAL time, so a single "today" window misses a live match whenever local
+// and UTC fall on different calendar days (e.g. a 21:00 UTC kickoff is already
+// "tomorrow" for a UTC+3 user) — and a match starting late in the day can run past
+// midnight UTC regardless of timezone. A ±1-day window covers both cases; it stays
+// narrow (3 days) so the live refresh doesn't pull a freeze-inducing payload, and
+// the status filter still keeps only the genuinely-live rows.
+function espnLiveDates() {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    return espnDate(now - day) + "-" + espnDate(now + day);
+}
+
 // Deliver one mode's rows from an already-fetched unified window. Used for
 // live/fixtures only; "recent" is routed to its own year-to-date fetch upstream
 // (see fetchEspnScoreboard) and never reaches here.
@@ -1356,29 +1727,43 @@ function deliverEspnMode(espnSport, league, mode, options, rows, onSuccess) {
 
 // Short-lived cache + in-flight de-dup, both keyed by espnSport|league. A saved
 // entry's live, fixtures and recent tabs each ask for the SAME league's
-// scoreboard, differing only by status filter — and several entries fire them all
+// scoreboard, differing only by status filter - and several entries fire them all
 // at once right after saving. Fetching and JSON.parsing that payload 3× per entry
 // on the UI thread is what froze the widget. Instead we fetch one unified window
 // per league, parse it once, and serve every waiter's mode from the result.
 const ESPN_SCOREBOARD_TTL_MS = 20000;
 const _espnScoreboardCache = {};
 const _espnScoreboardWaiters = {};
+// Recent results only change when a match finishes, but the year-to-date payload
+// behind them (≈865 KB for a busy competition) is expensive to JSON.parse on the
+// UI thread. While matches are live the full refresh tightens to every 5 min
+// (smartActiveFullRefreshMs); a 20 s TTL meant every one of those refreshes
+// re-downloaded and re-parsed the payload per league — the periodic plasmashell
+// freeze. The TTL must exceed that cadence (not merely match it, or the cache is
+// always just-expired when the next refresh lands): at 10 min every other full
+// refresh is served warm, and a finished match still reaches Recent within
+// minutes.
+const ESPN_RECENT_TTL_MS = 10 * 60 * 1000;
+const _espnRecentCache = {};
+const _espnRecentWaiters = {};
 
 // One-shot scoreboard fetch over an explicit date window; parses once and returns
 // just the requested mode's rows. Does NOT touch the unified cache/dedup. A higher
 // `limit` is needed for wide windows, since ESPN returns matches ascending and
-// caps at the limit — too low a cap drops the most recent matches.
+// caps at the limit - too low a cap drops the most recent matches.
 function fetchEspnScoreboardWindow(espnSport, league, dates, mode, options, onSuccess, onError, limit, modeLimit) {
     const sportValue = normalizedSport(options && (options.sports || options.sport)) || EspnSports.normalizedSport(espnSport);
     const leagueLabel = stringValue(options && options.leagueLabel);
     const merged = Object.assign({}, options, { espnSport: espnSport, espnLeague: league });
     requestText(cacheBustedUrl(espnScoreboardUrl(espnSport, league, dates, limit)), text => {
         let rows = [];
-        try {
-            rows = normalizeEspnScoreboard(JSON.parse(text), sportValue, leagueLabel, merged);
-        } catch (error) {
-            rows = [];
-        }
+        rows = profileSync("espnScoreboardWindow parse", league + "/" + mode + ", text=" + stringValue(text).length + "B", () => {
+            try {
+                return normalizeEspnScoreboard(JSON.parse(text), sportValue, leagueLabel, merged);
+            } catch (error) {
+                return [];
+            }
+        });
         finish(onSuccess, espnRowsForMode(filterEspnRowsForEntry(rows, options), mode, modeLimit));
     }, error => finish(onError, error || "Unable to load ESPN scoreboard"), { ignoreCooldown: true });
 }
@@ -1391,12 +1776,36 @@ function fetchEspnScoreboard(espnSport, league, mode, options, onSuccess, onErro
     const key = espnSport + "|" + league;
 
     // Recent always needs its own year-to-date window, which is far wider than the
-    // unified live/fixtures window — fetch it directly instead of pulling (and
-    // caching) the narrow unified window only to discard it.
+    // unified live/fixtures window - fetch it directly instead of pulling (and
+    // caching) the narrow unified window only to discard it. De-dup + cache the
+    // recent fetch per league, since several scope entries on the same league each
+    // ask for it at once and the year-to-date payload (≈865 KB for a busy comp) is
+    // expensive to JSON.parse on the UI thread - parsing it once per refresh
+    // instead of once per entry removes a second main-thread stall (see the
+    // _sportScoreGlobalLive cache for the same pattern on the SportScore side).
     if (mode === "recent") {
+        const recentCached = _espnRecentCache[key];
+        if (recentCached && (Date.now() - recentCached.ts) < ESPN_RECENT_TTL_MS) {
+            finish(onSuccess, recentCached.rows);
+            return;
+        }
+        if (_espnRecentWaiters[key]) {
+            _espnRecentWaiters[key].push({ onSuccess: onSuccess, onError: onError });
+            return;
+        }
+        _espnRecentWaiters[key] = [{ onSuccess: onSuccess, onError: onError }];
+
         const dates = espnYearStartDate() + "-" + espnDate(Date.now());
-        fetchEspnScoreboardWindow(espnSport, league, dates, "recent", options,
-            onSuccess, onError, ESPN_RECENT_FALLBACK_LIMIT, ESPN_RECENT_MODE_MATCH_LIMIT);
+        fetchEspnScoreboardWindow(espnSport, league, dates, "recent", options, rows => {
+            _espnRecentCache[key] = { ts: Date.now(), rows: rows };
+            const waiters = _espnRecentWaiters[key] || [];
+            delete _espnRecentWaiters[key];
+            waiters.forEach(waiter => finish(waiter.onSuccess, rows));
+        }, error => {
+            const waiters = _espnRecentWaiters[key] || [];
+            delete _espnRecentWaiters[key];
+            waiters.forEach(waiter => finish(waiter.onError, error));
+        }, ESPN_RECENT_FALLBACK_LIMIT, ESPN_RECENT_MODE_MATCH_LIMIT);
         return;
     }
 
@@ -1409,10 +1818,12 @@ function fetchEspnScoreboard(espnSport, league, mode, options, onSuccess, onErro
 
     // Live refresh fires on its own ~60s timer. Pulling the whole unified window
     // (e.g. an in-progress World Cup ≈ 100 matches) every cycle just to filter the
-    // few live ones blocks the UI thread — the cause of the periodic freeze. When
-    // the cache is cold, fetch only the narrow "today" window for live instead.
+    // few live ones blocks the UI thread - the cause of the periodic freeze. When
+    // the cache is cold, fetch only a narrow yesterday..tomorrow window for live -
+    // wide enough to catch matches around the UTC/local date boundary (see
+    // espnLiveDates), still small enough to parse without freezing.
     if (mode === "live") {
-        fetchEspnScoreboardWindow(espnSport, league, espnDate(Date.now()), mode, options, onSuccess, onError);
+        fetchEspnScoreboardWindow(espnSport, league, espnLiveDates(), mode, options, onSuccess, onError);
         return;
     }
 
@@ -1513,7 +1924,7 @@ function normalizeEspnStandings(payload, leagueLabel) {
 }
 
 // ESPN standings carry no recent form, so derive it (last results, oldest→newest)
-// per team from the league's finished matches — the same data we already fetch for
+// per team from the league's finished matches - the same data we already fetch for
 // the recent/fixtures tabs.
 function espnAppendForm(map, team, result) {
     const key = normalizedTeamName(team);
@@ -1709,9 +2120,78 @@ function fetchEspnTeams(espnSport, league, options, onSuccess, onError) {
     }, error => finish(onError, error || "Unable to load ESPN teams"), { ignoreCooldown: true });
 }
 
+// One ESPN athlete → a followable row in the SAME shape as fetchEspnTeams, so the
+// wizard's team UI / follow flow works unchanged: a followed player is stored as a
+// "team" entry whose favoriteTeam is the player's name, which the scoreboard path
+// filters on (see filterEspnRowsForEntry). Returns null for an unnamed athlete.
+function espnAthleteRow(athlete, options) {
+    athlete = athlete || {};
+    const label = stringValue(athlete.displayName || athlete.fullName
+        || (stringValue(athlete.firstName) + " " + stringValue(athlete.lastName)).trim());
+    if (label.length === 0)
+        return null;
+    const headshot = athlete.headshot && typeof athlete.headshot === "object"
+        ? stringValue(athlete.headshot.href) : stringValue(athlete.headshot);
+    return {
+        label: label,
+        value: label,
+        slug: ProviderCatalog.slugForValue(athlete.id || label),
+        teamSlug: ProviderCatalog.slugForValue(athlete.id || label),
+        teamPath: "",
+        // Prefer the headshot; fall back to the country flag so the row is never
+        // iconless. The UI's "im-user" placeholder covers neither.
+        badge: headshot.length > 0 ? headshot
+            : (athlete.flag && typeof athlete.flag === "object" ? stringValue(athlete.flag.href) : ""),
+        country: stringValue(athlete.citizenshipCountry && athlete.citizenshipCountry.name)
+            || stringValue(athlete.flagAltText) || stringValue(options && options.country)
+    };
+}
+
+// Players for golf / mma / racing: their athletes are the event's competitors (the
+// tournament field, the fight card, the race grid), exposed inline on the
+// scoreboard - no rankings feed. Collect competitors across every event and every
+// competition within it (MMA fight cards and racing weekends split into several
+// competitions), deduped by name. Returns the fetchEspnTeams row shape.
+function fetchEspnEventPlayers(espnSport, league, options, onSuccess, onError) {
+    if (stringValue(espnSport).length === 0 || stringValue(league).length === 0) {
+        finish(onSuccess, []);
+        return;
+    }
+    // Use a wide fixed window (not the user's narrow scoreboard window), so the
+    // field/grid is found even between events: racing grids and golf fields only
+    // populate during an event, so look back ~120 days and ahead ~60 to catch the
+    // most recent or next one regardless of when the wizard is opened.
+    const day = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const dates = espnDate(now - 120 * day) + "-" + espnDate(now + 60 * day);
+    const url = espnScoreboardUrl(espnSport, league, dates);
+    requestText(cacheBustedUrl(url), text => {
+        let rows = [];
+        try {
+            const payload = JSON.parse(text);
+            const seen = {};
+            arrayValue(payload && payload.events).forEach(event => {
+                arrayValue(event && event.competitions).forEach(competition => {
+                    arrayValue(competition && competition.competitors).forEach(competitor => {
+                        const row = espnAthleteRow(competitor && competitor.athlete, options);
+                        if (!row || seen[row.slug || row.label.toLowerCase()])
+                            return;
+                        seen[row.slug || row.label.toLowerCase()] = true;
+                        rows.push(row);
+                    });
+                });
+            });
+        } catch (error) {
+            rows = [];
+        }
+        rows.sort((a, b) => stringValue(a.label).localeCompare(stringValue(b.label)));
+        finish(onSuccess, rows);
+    }, error => finish(onError, error || "Unable to load ESPN players"), { ignoreCooldown: true });
+}
+
 // Tennis (and other player sports) have no roster, but ESPN's rankings feed lists
 // the currently ranked athletes for a tour. Return them in the SAME row shape as
-// fetchEspnTeams so the wizard's team UI / follow flow works unchanged — a followed
+// fetchEspnTeams so the wizard's team UI / follow flow works unchanged - a followed
 // player is stored as a "team" entry whose favoriteTeam is the player's name, which
 // the scoreboard path filters on (see espnRowsForMode). Rows keep ranking order.
 function fetchEspnTennisPlayers(espnSport, league, options, onSuccess, onError) {
@@ -1727,28 +2207,11 @@ function fetchEspnTennisPlayers(espnSport, league, options, onSuccess, onError) 
             const ranks = arrayValue(payload && payload.rankings && payload.rankings[0] && payload.rankings[0].ranks);
             const seen = {};
             ranks.forEach(rank => {
-                const athlete = (rank && rank.athlete) || {};
-                const label = stringValue(athlete.displayName || athlete.fullName
-                    || (stringValue(athlete.firstName) + " " + stringValue(athlete.lastName)).trim());
-                const slug = ProviderCatalog.slugForValue(athlete.id || label);
-                if (label.length === 0 || seen[slug || label.toLowerCase()])
+                const row = espnAthleteRow(rank && rank.athlete, options);
+                if (!row || seen[row.slug || row.label.toLowerCase()])
                     return;
-                seen[slug || label.toLowerCase()] = true;
-                const headshot = athlete.headshot && typeof athlete.headshot === "object"
-                    ? stringValue(athlete.headshot.href) : stringValue(athlete.headshot);
-                rows.push({
-                    label: label,
-                    value: label,
-                    slug: slug,
-                    teamSlug: slug,
-                    teamPath: "",
-                    // Prefer the headshot; fall back to the country flag so the row is
-                    // never iconless. The UI's "im-user" placeholder covers neither.
-                    badge: headshot.length > 0 ? headshot
-                        : (athlete.flag && typeof athlete.flag === "object" ? stringValue(athlete.flag.href) : ""),
-                    country: stringValue(athlete.citizenshipCountry && athlete.citizenshipCountry.name)
-                        || stringValue(athlete.flagAltText) || stringValue(options && options.country)
-                });
+                seen[row.slug || row.label.toLowerCase()] = true;
+                rows.push(row);
             });
         } catch (error) {
             rows = [];
@@ -1769,10 +2232,12 @@ function espnPlayKind(playType) {
         return "yellow";
     if (value === "red-card" || value === "yellow-red-card" || value === "second-yellow-card")
         return "red";
-    // Real ESPN type names observed: "goal", "goal---header", "goal---volley",
-    // "goal---free-kick", "own-goal", "penalty---scored". A missed/saved penalty
-    // is a different type (not a scoring play) and is intentionally excluded.
-    if (value.indexOf("goal") >= 0 || value === "penalty---scored")
+    // Real ESPN GOAL type names: "goal", "goal---header", "goal---volley",
+    // "goal---free-kick", "own-goal", "penalty---scored". Match these precisely -
+    // a substring test on "goal" wrongly catches "goal-kick" (a restart, NOT a
+    // score), which produced phantom goals in the Details tab. A missed/saved
+    // penalty ("penalty---saved") is not a scoring play and is excluded.
+    if (value === "goal" || value === "own-goal" || value.indexOf("goal---") === 0 || value === "penalty---scored")
         return "goal";
     // Match-period transition markers (no player attached), verified against a
     // real match that went to extra time and penalties: "start-extra-time" (90'
@@ -1790,7 +2255,7 @@ function espnPlayKind(playType) {
 
 // Which side (home/away) an ESPN play belongs to, inferred from the team name
 // mentioned in its text (e.g. "Gabriel Jesus (Arsenal)...") rather than
-// dereferencing the play's team $ref — saves a request per incident.
+// dereferencing the play's team $ref - saves a request per incident.
 function espnPlaySide(play, homeTeam, awayTeam) {
     const text = stringValue(play && (play.text || play.shortText));
     const parenMatch = /\(([^)]+)\)/.exec(text);
@@ -1811,13 +2276,13 @@ function espnPlaySide(play, homeTeam, awayTeam) {
 }
 
 // shortText is consistently "<Player Name> <Label>", e.g. "Gabriel Jesus Goal",
-// "Jean-Philippe Mateta Goal - Head" (label can be truncated — shortText has a
+// "Jean-Philippe Mateta Goal - Head" (label can be truncated - shortText has a
 // fixed length), "Malo Gusto Own Goal", "Wesley Fofana Red Card",
 // "Gabriel Magalhães Substituti". Strip the known label prefix to get the name.
 // Substitutions need the long "text" field instead, to get both players:
 // "Substitution, Arsenal. Gabriel Magalhães replaces Riccardo Calafiori."
 // Some subs add a trailing reason ESPN doesn't separate out, e.g. "...replaces
-// Adam Wharton because of an injury." — stop at that clause too, not just "."
+// Adam Wharton because of an injury." - stop at that clause too, not just "."
 function espnPlayPlayer(play, kind) {
     if (kind === "substitution") {
         const text = stringValue(play && play.text);
@@ -1858,12 +2323,472 @@ function espnStripShortTextLabel(play, labelPrefixPattern) {
     return shortText;
 }
 
+// Player text for a keyEvent of a given kind. Subs read "<in> -> <out>" from the two
+// participants; everything else is the first participant's name. Falls back to the
+// shortText label-strip (the plays-feed heuristic) when participants are absent.
+function espnKeyEventPlayer(event, kind) {
+    const participants = arrayValue(event && event.participants)
+        .map(participant => stringValue(participant && participant.athlete && participant.athlete.displayName))
+        .filter(name => name.length > 0);
+    if (kind === "substitution") {
+        if (participants.length >= 2)
+            return participants[0] + " -> " + participants[1];
+        if (participants.length === 1)
+            return participants[0];
+    }
+    if (participants.length >= 1)
+        return participants[0];
+    // No structured participants: reuse the shortText heuristic.
+    if (kind === "goal")
+        return espnStripShortTextLabel(event, /^(Goal|Own Goal|Penalty)/i);
+    if (kind === "substitution")
+        return espnStripShortTextLabel(event, /^(Substitut)/i);
+    return espnStripShortTextLabel(event, /^(Yellow Card|Red Card)/i);
+}
+
+// ESPN summary "keyEvents" -> incident rows in the same shape as
+// fetchEspnMatchIncidents ({ side, kind, minute, label, player, sideLabel }). Unlike
+// the plays feed, keyEvents carries a structured team {id, displayName} and
+// participant athletes, so the side and players are read directly instead of parsed
+// out of the text. Filtered to the incident kinds the Details tab renders (goals,
+// cards, subs, period markers); other entries (delays, kickoff) are dropped.
+function espnKeyEventsRows(keyEvents, homeTeamId, awayTeamId, homeTeam, awayTeam) {
+    return arrayValue(keyEvents).map(event => {
+        const kind = espnPlayKind(event && event.type && event.type.type);
+        if (kind.length === 0)
+            return null;
+        const teamId = stringValue(event && event.team && event.team.id);
+        const teamName = stringValue(event && event.team && event.team.displayName);
+        let side = "";
+        if (teamId.length > 0 && teamId === stringValue(homeTeamId))
+            side = "home";
+        else if (teamId.length > 0 && teamId === stringValue(awayTeamId))
+            side = "away";
+        else if (sameTeamName(teamName, homeTeam))
+            side = "home";
+        else if (sameTeamName(teamName, awayTeam))
+            side = "away";
+        const player = espnKeyEventPlayer(event, kind);
+        const minute = stringValue(event && event.clock && event.clock.displayValue).replace(/'$/, "");
+        return {
+            side,
+            kind,
+            minute,
+            label: kind === "substitution" ? player : kind,
+            player,
+            sideLabel: side === "home" ? "HOME" : side === "away" ? "AWAY" : ""
+        };
+    }).filter(row => row && (row.player.length > 0 || row.kind.length > 0));
+}
+
+// Parse one ESPN boxscore stat value (a displayValue string) to a number for the
+// comparison bar. Plain ("15"), ratio ("0.8"), percent ("57"), and compound
+// ("47-82", "24/35", "22:35") forms all appear; for compound values we use the
+// FIRST number (made, completions, minutes) as the magnitude to compare.
+function espnStatNumber(displayValue) {
+    const text = stringValue(displayValue);
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : 0;
+}
+
+// home/away ratios for one stat's comparison bar. A percentage/share stat uses its
+// own value (0..1 read as a ratio, >1 as already-percent); everything else uses each
+// side's portion of the pair total.
+function espnStatRatios(name, homeNum, awayNum) {
+    if (EspnSports.isPercentStat(name)) {
+        const toRatio = value => value > 1 ? value / 100 : value;
+        return { home: Math.max(0, Math.min(1, toRatio(homeNum))), away: Math.max(0, Math.min(1, toRatio(awayNum))) };
+    }
+    const total = homeNum + awayNum;
+    return { home: total > 0 ? homeNum / total : 0, away: total > 0 ? awayNum / total : 0 };
+}
+
+// ESPN boxscore team stats -> statsRows in the SAME shape the UI renders for
+// SportScore (see sportScoreWidgetStatsRows): { kind, label, homeValue, awayValue,
+// homeRaw, awayRaw, homeRatio, awayRatio }. `home`/`away` are the two boxscore.teams
+// entries (already oriented to the match's home/away side). Curated + ordered per
+// sport (EspnSports.statOrder); unlisted sports show every stat in feed order.
+function espnSummaryStatsRows(home, away, sportValue) {
+    function statMap(team) {
+        const map = {};
+        arrayValue(team && team.statistics).forEach(stat => {
+            const name = stringValue(stat && stat.name);
+            if (name.length > 0)
+                map[name] = stat;
+        });
+        return map;
+    }
+    const homeStats = statMap(home);
+    const awayStats = statMap(away);
+
+    const order = EspnSports.statOrder(sportValue);
+    let names = order.slice();
+    if (names.length === 0) {
+        // No curation for this sport: show every stat the home side reports, in order.
+        names = arrayValue(home && home.statistics).map(stat => stringValue(stat && stat.name)).filter(name => name.length > 0);
+    }
+
+    return names.map(name => {
+        const homeStat = homeStats[name];
+        const awayStat = awayStats[name];
+        if (!homeStat && !awayStat)
+            return null;
+        const label = stringValue((homeStat && homeStat.label) || (awayStat && awayStat.label) || name);
+        const homeDisplay = stringValue(homeStat && homeStat.displayValue);
+        const awayDisplay = stringValue(awayStat && awayStat.displayValue);
+        const homeNum = espnStatNumber(homeDisplay);
+        const awayNum = espnStatNumber(awayDisplay);
+        const ratios = espnStatRatios(name, homeNum, awayNum);
+        return {
+            kind: sportScoreStatKind(label),
+            label,
+            homeValue: espnStatDisplay(name, homeDisplay, homeNum),
+            awayValue: espnStatDisplay(name, awayDisplay, awayNum),
+            homeRaw: homeNum,
+            awayRaw: awayNum,
+            homeRatio: ratios.home,
+            awayRatio: ratios.away
+        };
+    }).filter(row => row !== null);
+}
+
+// Panel display text for one stat value. Percentage stats are shown as whole
+// percents: ESPN reports some as a 0..1 ratio (passPct 0.8 -> "80%") and some as an
+// already-scaled percent (fieldGoalPct 57 -> "57%"); both end up as "N%". Non-
+// percentage values pass through as ESPN formatted them (e.g. "47-82", "22:35").
+function espnStatDisplay(name, displayValue, num) {
+    const text = stringValue(displayValue);
+    if (EspnSports.isPercentStat(name)) {
+        if (/%/.test(text))
+            return text;
+        const percent = num > 1 ? num : num * 100;
+        return Math.round(percent) + "%";
+    }
+    return text.length > 0 ? text : "0";
+}
+
+// Half-time score from the header competitors' per-period linescores (first period
+// each). Returns "" when the match hasn't reached half-time / has no linescores.
+function espnSummaryHalfTimeScore(home, away) {
+    const homeFirst = arrayValue(home && home.linescores)[0];
+    const awayFirst = arrayValue(away && away.linescores)[0];
+    if (!homeFirst || !awayFirst)
+        return "";
+    const h = stringValue(homeFirst.displayValue || homeFirst.value);
+    const a = stringValue(awayFirst.displayValue || awayFirst.value);
+    return h.length > 0 && a.length > 0 ? h + " - " + a : "";
+}
+
+// Venue / attendance / referee from the summary's gameInfo, plus recent form and
+// head-to-head from `extras` -> matchInfoRows in the shape the Information tab
+// renders ({ label, value }). startTime is appended so the kick-off line is
+// consistent with the rest of the app. `extras` = { homeForm, awayForm, headToHead }.
+function espnSummaryInfoRows(gameInfo, halfTime, extras, options) {
+    let rows = [];
+    function append(label, value) {
+        value = stringValue(value);
+        if (value.length > 0)
+            rows.push({ label, value });
+    }
+    const startTime = stringValue(options && options.startTime);
+    append("Kick-off", startTime);
+    append("Half-time", halfTime);
+    const venue = (gameInfo && gameInfo.venue) || {};
+    const address = venue.address || {};
+    const venueName = stringValue(venue.fullName);
+    const city = stringValue(address.city);
+    append("Venue", venueName.length > 0 && city.length > 0 ? venueName + ", " + city : venueName || city);
+    const attendance = numberValue(gameInfo && gameInfo.attendance);
+    if (attendance > 0)
+        append("Attendance", attendance.toLocaleString());
+    const referee = arrayValue(gameInfo && gameInfo.officials)
+        .map(official => stringValue(official && official.displayName)).filter(name => name.length > 0)[0];
+    append("Referee", referee);
+    // Recent form (W/D/L over the last five) for each side, and the head-to-head
+    // record between them - low-priority context, so listed after the match facts.
+    const safe = extras || {};
+    const homeName = stringValue(options && options.homeTeam);
+    const awayName = stringValue(options && options.awayTeam);
+    append((homeName.length > 0 ? homeName : "Home") + " form", safe.homeForm);
+    append((awayName.length > 0 ? awayName : "Away") + " form", safe.awayForm);
+    append("Head-to-head", safe.headToHead);
+    return rows;
+}
+
+// Which boxscore.teams entry is the match's home/away side. ESPN tags each with a
+// homeAway via the header competitors; fall back to array order (teams[0]=home).
+function espnSummarySides(payload) {
+    const teams = arrayValue(payload && payload.boxscore && payload.boxscore.teams);
+    const competitors = arrayValue(payload && payload.header && payload.header.competitions
+        && payload.header.competitions[0] && payload.header.competitions[0].competitors);
+    function sideFor(team) {
+        const id = stringValue(team && team.team && team.team.id);
+        const match = competitors.find(c => stringValue(c && c.team && c.team.id) === id || stringValue(c && c.id) === id);
+        return stringValue(match && match.homeAway);
+    }
+    let home = teams.find(team => sideFor(team) === "home") || teams[0] || null;
+    let away = teams.find(team => sideFor(team) === "away") || (teams[1] === home ? teams[0] : teams[1]) || null;
+    // Carry the header competitor (for linescores) alongside each boxscore team.
+    function competitorFor(team) {
+        const id = stringValue(team && team.team && team.team.id);
+        return competitors.find(c => stringValue(c && c.team && c.team.id) === id) || null;
+    }
+    return { home, away, homeCompetitor: competitorFor(home), awayCompetitor: competitorFor(away) };
+}
+
+// One ESPN roster player -> the player shape the lineup UI renders (matches
+// sportScoreWidgetPlayers): { name, number, position, captain, rating }.
+function espnLineupPlayer(player) {
+    const athlete = (player && player.athlete) || {};
+    const position = (player && player.position) || {};
+    return {
+        name: stringValue(athlete.displayName || athlete.fullName),
+        number: stringValue(player && player.jersey),
+        position: stringValue(position.displayName || position.abbreviation),
+        captain: player && player.captain === true,
+        rating: ""
+    };
+}
+
+// ESPN summary rosters -> the lineups object the Information tab already renders
+// (same shape as sportScoreWidgetLineups): starting XI + substitutes per side, plus
+// each side's formation. A "starter" is the XI; everyone else is a substitute.
+// Returns null when rosters are absent (e.g. lineups not yet published, or a sport
+// ESPN gives no roster for) so the caller leaves lineups untouched.
+function espnSummaryLineups(rosters) {
+    const list = arrayValue(rosters);
+    if (list.length === 0)
+        return null;
+    const homeRoster = list.find(r => stringValue(r && r.homeAway) === "home") || list[0];
+    const awayRoster = list.find(r => stringValue(r && r.homeAway) === "away")
+        || (list[1] === homeRoster ? list[0] : list[1]) || {};
+
+    function players(roster, wantStarters) {
+        return arrayValue(roster && roster.roster)
+            .filter(player => (player && player.starter === true) === wantStarters)
+            .map(espnLineupPlayer)
+            .filter(player => player.name.length > 0);
+    }
+
+    const lineups = {
+        confirmed: true,
+        homeFormation: stringValue(homeRoster && homeRoster.formation),
+        awayFormation: stringValue(awayRoster && awayRoster.formation),
+        homeCoach: "",
+        awayCoach: "",
+        homeStarting: players(homeRoster, true),
+        awayStarting: players(awayRoster, true),
+        homeSubstitutes: players(homeRoster, false),
+        awaySubstitutes: players(awayRoster, false)
+    };
+    // No actual players parsed (e.g. roster stubs without athletes): treat as absent.
+    if (lineups.homeStarting.length === 0 && lineups.awayStarting.length === 0
+        && lineups.homeSubstitutes.length === 0 && lineups.awaySubstitutes.length === 0)
+        return null;
+    return lineups;
+}
+
+// ESPN summary "leaders" -> per-category top-performer rows pairing each side's best
+// player: [{ category, homeName, homeValue, awayName, awayValue }]. ESPN lists the
+// same categories for each team (Points/Assists/Rebounds, Total Shots/Saves…); we
+// align them by category name so each row compares the two teams' leaders. Returns
+// [] when leaders are absent. `homeId`/`awayId` are the team ids from espnSummarySides.
+function espnSummaryLeaders(leaders, homeId, awayId) {
+    const list = arrayValue(leaders);
+    if (list.length === 0)
+        return [];
+    function teamLeaders(teamId, fallbackIndex) {
+        const byId = list.find(entry => stringValue(entry && entry.team && entry.team.id) === stringValue(teamId));
+        return (byId || list[fallbackIndex] || {}).leaders || [];
+    }
+    const homeCats = arrayValue(teamLeaders(homeId, 0));
+    const awayCats = arrayValue(teamLeaders(awayId, 1));
+
+    function topOf(categories, name) {
+        const category = arrayValue(categories).find(cat => stringValue(cat && cat.name) === name);
+        const top = arrayValue(category && category.leaders)[0];
+        if (!top)
+            return { name: "", value: "" };
+        const athlete = (top.athlete) || {};
+        return { name: stringValue(athlete.displayName || athlete.shortName), value: stringValue(top.displayValue) };
+    }
+
+    let rows = [];
+    homeCats.forEach(category => {
+        const name = stringValue(category && category.name);
+        const label = stringValue(category && category.displayName) || name;
+        if (name.length === 0)
+            return;
+        const home = topOf(homeCats, name);
+        const away = topOf(awayCats, name);
+        if (home.name.length === 0 && away.name.length === 0)
+            return;
+        rows.push({ category: label, homeName: home.name, homeValue: home.value, awayName: away.name, awayValue: away.value });
+    });
+    return rows;
+}
+
+// Recent-form string ("W W D L L", oldest->newest) for one team from its
+// lastFiveGames events. ESPN already orders these oldest-first.
+function espnFormString(teamForm) {
+    return arrayValue(teamForm && teamForm.events)
+        .map(event => stringValue(event && event.gameResult).toUpperCase())
+        .filter(result => result === "W" || result === "D" || result === "L")
+        .join(" ");
+}
+
+// Last-5 form per side as { homeForm, awayForm } W/D/L strings, or {} when absent.
+// Aligns each lastFiveGames entry to the match's home/away team by id.
+function espnSummaryForm(lastFiveGames, homeId, awayId) {
+    const list = arrayValue(lastFiveGames);
+    if (list.length === 0)
+        return {};
+    const byId = id => list.find(entry => stringValue(entry && entry.team && entry.team.id) === stringValue(id));
+    const home = byId(homeId) || list[0];
+    const away = byId(awayId) || (list[1] === home ? list[0] : list[1]);
+    return { homeForm: espnFormString(home), awayForm: espnFormString(away) };
+}
+
+// Head-to-head record as a "1W 0D 1L" string from the HOME team's perspective, plus
+// the count, or "" when there are no prior meetings. headToHeadGames is given from
+// one team's perspective (its gameResult), which we orient to the home team.
+function espnSummaryHeadToHead(headToHeadGames, homeId) {
+    const list = arrayValue(headToHeadGames);
+    if (list.length === 0)
+        return "";
+    const perspective = list.find(entry => stringValue(entry && entry.team && entry.team.id)) || list[0];
+    const events = arrayValue(perspective && perspective.events);
+    if (events.length === 0)
+        return "";
+    // gameResult is from `perspective.team`; flip if that isn't the home side.
+    const perspectiveIsHome = stringValue(perspective && perspective.team && perspective.team.id) === stringValue(homeId);
+    let win = 0, draw = 0, loss = 0;
+    events.forEach(event => {
+        const result = stringValue(event && event.gameResult).toUpperCase();
+        if (result === "D") { draw += 1; return; }
+        const homeWin = perspectiveIsHome ? result === "W" : result === "L";
+        if (homeWin) win += 1; else loss += 1;
+    });
+    return win + "W " + draw + "D " + loss + "L";
+}
+
+// One curated box-score section for one team: maps the configured column labels to
+// each athlete's matching stats. `teamPlayers` is a boxscore.players[] entry (one
+// team); `section` is a config from EspnSports.playerBoxSections. Returns null when
+// the configured group/columns aren't present so empty sections don't render.
+function espnPlayerBoxSection(teamPlayers, section) {
+    const groups = arrayValue(teamPlayers && teamPlayers.statistics);
+    // "" matches the single/unnamed group; otherwise match by group name.
+    const wantGroup = stringValue(section && section.group);
+    const group = wantGroup.length === 0
+        ? (groups[0] || null)
+        : groups.find(g => stringValue(g && g.name).toLowerCase() === wantGroup.toLowerCase());
+    if (!group)
+        return null;
+    const labels = arrayValue(group.labels).map(stringValue);
+    // Column label -> its index in each athlete's stats array.
+    const colIndex = arrayValue(section && section.columns)
+        .map(label => ({ label, index: labels.indexOf(label) }))
+        .filter(col => col.index >= 0);
+    if (colIndex.length === 0)
+        return null;
+
+    const rows = arrayValue(group.athletes)
+        .filter(entry => entry && entry.didNotPlay !== true)
+        .map(entry => {
+            const athlete = (entry.athlete) || {};
+            const stats = arrayValue(entry.stats);
+            return {
+                name: stringValue(athlete.shortName || athlete.displayName),
+                number: stringValue(athlete.jersey),
+                starter: entry.starter === true,
+                values: colIndex.map(col => stringValue(stats[col.index]))
+            };
+        })
+        .filter(row => row.name.length > 0);
+    if (rows.length === 0)
+        return null;
+    return { title: stringValue(section && section.title), columns: colIndex.map(col => col.label), rows };
+}
+
+// Per-player box score for both sides -> { home: [section], away: [section] } where
+// each section is { title, columns:[label], rows:[{ name, number, starter, values }]}.
+// Curated per sport (EspnSports.playerBoxSections); returns null when the sport has
+// no box score or none of the configured sections produced rows.
+function espnSummaryPlayerBox(playersByTeam, sportValue, homeId, awayId) {
+    const sections = EspnSports.playerBoxSections(sportValue);
+    if (sections.length === 0)
+        return null;
+    const teams = arrayValue(playersByTeam);
+    if (teams.length === 0)
+        return null;
+    const byId = id => teams.find(team => stringValue(team && team.team && team.team.id) === stringValue(id));
+    const homeTeam = byId(homeId) || teams[0];
+    const awayTeam = byId(awayId) || (teams[1] === homeTeam ? teams[0] : teams[1]);
+
+    function build(teamPlayers) {
+        return sections.map(section => espnPlayerBoxSection(teamPlayers, section)).filter(s => s !== null);
+    }
+    const home = build(homeTeam);
+    const away = build(awayTeam);
+    if (home.length === 0 && away.length === 0)
+        return null;
+    return { home, away };
+}
+
+// Fetches ESPN's rich match summary (boxscore team stats, gameInfo, linescores) and
+// builds the statsRows / matchInfoRows / halfTimeScore the details panel renders -
+// the same fields the SportScore path fills. Best-effort: any failure yields an
+// empty result so the caller can fall back to the incidents-only details.
+function fetchEspnMatchSummary(espnSport, espnLeague, eventId, sportValue, options, onSuccess, onError) {
+    if (stringValue(espnSport).length === 0 || stringValue(espnLeague).length === 0 || stringValue(eventId).length === 0) {
+        finish(onSuccess, null);
+        return;
+    }
+    const url = ESPN_SITE_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(espnLeague)
+        + "/summary?event=" + encodeURIComponent(eventId);
+    requestText(cacheBustedUrl(url), text => {
+        let result = null;
+        try {
+            const payload = JSON.parse(text);
+            const sides = espnSummarySides(payload);
+            const home = Object.assign({}, sides.home, { linescores: sides.homeCompetitor && sides.homeCompetitor.linescores });
+            const away = Object.assign({}, sides.away, { linescores: sides.awayCompetitor && sides.awayCompetitor.linescores });
+            // Only football has a meaningful "half-time" - elsewhere the first
+            // linescore is a quarter/period, so labelling it half-time would mislead.
+            const halfTime = normalizedSport(sportValue) === "football" ? espnSummaryHalfTimeScore(home, away) : "";
+            const homeId = sides.home && sides.home.team && sides.home.team.id;
+            const awayId = sides.away && sides.away.team && sides.away.team.id;
+            const form = espnSummaryForm(payload && payload.lastFiveGames, homeId, awayId);
+            const extras = {
+                homeForm: form.homeForm,
+                awayForm: form.awayForm,
+                headToHead: espnSummaryHeadToHead(payload && payload.headToHeadGames, homeId)
+            };
+            const homeName = stringValue(options && options.homeTeam);
+            const awayName = stringValue(options && options.awayTeam);
+            result = {
+                statsRows: espnSummaryStatsRows(home, away, sportValue),
+                matchInfoRows: espnSummaryInfoRows(payload && payload.gameInfo, halfTime, extras, options),
+                halfTimeScore: halfTime,
+                lineups: espnSummaryLineups(payload && payload.rosters),
+                leaderRows: espnSummaryLeaders(payload && payload.leaders, homeId, awayId),
+                playerBox: espnSummaryPlayerBox(payload && payload.boxscore && payload.boxscore.players, sportValue, homeId, awayId),
+                eventRows: espnKeyEventsRows(payload && payload.keyEvents, homeId, awayId, homeName, awayName)
+            };
+        } catch (error) {
+            result = null;
+        }
+        finish(onSuccess, result);
+    }, error => finish(onError, error || "Unable to load ESPN match summary"), { ignoreCooldown: true });
+}
+
 // Fetches the play-by-play feed for one ESPN event and filters/normalizes it to
 // goal/card/substitution incidents in the same row shape as
 // sportScoreWidgetIncidents(): { side, kind, minute, label, player, sideLabel }.
 // Best-effort: this is an undocumented ESPN endpoint, so failures or an empty
 // result just mean "no incidents available" rather than an error worth
-// surfacing — callers should treat onSuccess([]) and onError the same way.
+// surfacing - callers should treat onSuccess([]) and onError the same way.
 function fetchEspnMatchIncidents(espnSport, espnLeague, eventId, homeTeam, awayTeam, onSuccess, onError) {
     if (stringValue(espnSport).length === 0 || stringValue(espnLeague).length === 0 || stringValue(eventId).length === 0) {
         finish(onSuccess, []);
@@ -1944,13 +2869,18 @@ function resolveSportScoreTeamPath(options, onSuccess, onError) {
         return;
     }
 
+    // Bounded sweep: recovering one team's id-bearing path must not fan out
+    // into the full 64-competition country scan (each page is a UI-thread
+    // parse). The top competitions cover the overwhelmingly common case; a team
+    // deeper in the pyramid simply resolves empty and its caller degrades the
+    // same way it does for a team SportScore doesn't list at all.
     fetchSportScoreCountryTeams(sport, country, rows => {
         const match = (Array.isArray(rows) ? rows : []).find(row => {
             const rowSlug = ProviderCatalog.slugForValue(row && row.teamSlug);
             return (teamSlug.length > 0 && rowSlug === teamSlug) || sameTeamName(row && (row.value || row.label), team);
         });
         finish(onSuccess, sportScorePathFromUrl(match && match.teamPath));
-    }, onError);
+    }, onError, 16);
 }
 
 function isCanonicalSportScoreTeamPath(path, sport) {
@@ -1967,6 +2897,11 @@ function isCanonicalSportScoreTeamPath(path, sport) {
     return tail.length >= 4 && tail[tail.length - 1].length > 0;
 }
 
+// Team matches (live/fixtures/recent) try the JSON team widget (/api/widget/team/)
+// first - one small edge-cached request per team - and fall back to scraping the
+// team's HTML page (plus its competition pages) when the widget returns nothing
+// (e.g. a team it doesn't index). The widget keeps the common case fast/light; the
+// HTML fallback restores coverage for teams missing from the widget feed.
 function fetchSportScoreTeamMatches(options, mode, onSuccess, onError) {
     if (mode === "fixtures") {
         fetchSportScoreTeamWidgetMatches(options, rows => {
@@ -1980,26 +2915,34 @@ function fetchSportScoreTeamMatches(options, mode, onSuccess, onError) {
         return;
     }
 
-    // Recent results: the team widget JSON (/api/widget/team/) returns this season's
-    // finished matches in ONE edge-cached request, versus the page path that fetches
-    // the team page plus up to ~10 competition pages (11 large HTML fetches) — the
-    // cause of the slow Recent Results. Use the widget first and only fall back to
-    // page-scraping when it returns nothing (e.g. a team it doesn't index).
     if (mode === "recent") {
         const recentCap = numberValue(options && options.recentResultsPerTeam) || 200;
         fetchSportScoreTeamWidgetMatches(widgetOptionsForRecent(options), rows => {
-            const recent = filterSportScoreMatchesForMode(rows, "recent");
-            if (recent.length > 0) {
-                finish(onSuccess, sortRecentMatches(dedupeMatches(recent)).slice(0, recentCap));
+            if (rows.length === 0) {
+                fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError);
                 return;
             }
 
-            fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError);
+            finish(onSuccess, sortRecentMatches(dedupeMatches(filterSportScoreMatchesForMode(rows, "recent"))).slice(0, recentCap));
         }, () => fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError));
         return;
     }
 
-    fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError);
+    // The widget reliably reports a team's in-progress match (verified even for
+    // teams far down the league pyramid), so rows without a live one mean the
+    // team simply isn't playing right now. Falling back to the page scrape in
+    // that case - as this used to - re-scraped the team page plus up to 10
+    // competition pages on every 60 s live poll for as long as the team was NOT
+    // playing, which froze plasmashell for seconds at a time. Only a team the
+    // widget doesn't index at all (zero rows) warrants the page fallback.
+    fetchSportScoreTeamWidgetMatches(options, rows => {
+        if (rows.length === 0) {
+            fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError);
+            return;
+        }
+
+        finish(onSuccess, sortMatches(dedupeMatches(filterSportScoreMatchesForMode(rows, "live"))));
+    }, () => fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError));
 }
 
 // The team widget caps at 30 matches; ask for the max so recent results reach as
@@ -2009,6 +2952,13 @@ function widgetOptionsForRecent(options) {
 }
 
 function fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError) {
+    const cacheKey = sportScoreTeamRowsKey(options, mode);
+    const cachedRows = cachedSportScorePageRows(cacheKey, mode);
+    if (cachedRows) {
+        finish(onSuccess, cachedRows);
+        return;
+    }
+
     fetchSportScoreTeamPage(options, page => {
         const teamName = stringValue(options && options.favoriteTeam) || stringValue(sportScoreTeamProfile(page.html, options).label);
         const teamRows = filterSportScoreMatchesForMode(
@@ -2016,18 +2966,27 @@ function fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError) 
             mode
         );
 
+        // A team's in-progress match is always on its own page - the (up to 10)
+        // competition-page harvest below exists to reach a full season of
+        // fixtures/results, which live mode never needs. Skipping it keeps the
+        // worst-case live-poll scrape at one page instead of eleven.
+        if (mode === "live") {
+            finish(onSuccess, rememberSportScorePageRows(cacheKey, sortMatches(dedupeMatches(teamRows))));
+            return;
+        }
+
         const competitions = sportScoreTeamCompetitions(page.html, options)
             .filter(row => stringValue(row && row.path).length > 0)
             .slice(0, 10);
 
         // The team's own SportScore page lists only a few of its newest matches.
         // For "recent" that's far short of a full season, so (like fixtures/live)
-        // also harvest the team's matches out of each of its competition pages —
+        // also harvest the team's matches out of each of its competition pages -
         // those carry the whole season's fixtures, finished ones included.
         if (mode === "recent") {
             const recentCap = numberValue(options && options.recentResultsPerTeam) || 200;
             if (competitions.length === 0) {
-                finish(onSuccess, sortRecentMatches(dedupeMatches(teamRows)).slice(0, recentCap));
+                finish(onSuccess, rememberSportScorePageRows(cacheKey, sortRecentMatches(dedupeMatches(teamRows)).slice(0, recentCap)));
                 return;
             }
 
@@ -2039,13 +2998,13 @@ function fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError) 
                         .filter(match => matchBelongsToTeam(match, teamName)));
                 });
                 rows = filterSportScoreMatchesForMode(rows, "recent");
-                finish(onSuccess, sortRecentMatches(dedupeMatches(rows)).slice(0, recentCap));
+                finish(onSuccess, rememberSportScorePageRows(cacheKey, sortRecentMatches(dedupeMatches(rows)).slice(0, recentCap)));
             });
             return;
         }
 
         if (competitions.length === 0) {
-            finish(onSuccess, sortMatches(dedupeMatches(teamRows)));
+            finish(onSuccess, rememberSportScorePageRows(cacheKey, sortMatches(dedupeMatches(teamRows))));
             return;
         }
 
@@ -2056,7 +3015,7 @@ function fetchSportScoreTeamMatchesFromPages(options, mode, onSuccess, onError) 
                 rows = rows.concat(normalizeSportScoreMatchPage(competitionPage.html, label, options)
                     .filter(match => matchBelongsToTeam(match, teamName)));
             });
-            finish(onSuccess, (mode === "live" ? sortMatches : sortUpcomingMatches)(dedupeMatches(filterSportScoreMatchesForMode(rows, mode))));
+            finish(onSuccess, rememberSportScorePageRows(cacheKey, sortUpcomingMatches(dedupeMatches(filterSportScoreMatchesForMode(rows, mode)))));
         });
     }, onError);
 }
@@ -2133,60 +3092,164 @@ function normalizeSportScoreTeamWidgetMatch(match, options) {
     };
 }
 
+// Competition-scoped matches first try the global JSON feed filtered to this
+// entry's competition (the JSON widget has no per-competition endpoint). That feed
+// is capped at ~50 matches worldwide, so it only covers a competition that happens
+// to be in the global slice right now; when it yields nothing for this entry we
+// fall back to scraping the competition's own HTML page, which carries the league's
+// full live/recent/upcoming list. JSON keeps the common case light; the HTML page
+// restores coverage for the many leagues the global feed doesn't include.
 function fetchSportScoreCompetitionMatches(options, mode, onSuccess, onError) {
-    fetchSportScoreCompetitionPage(options, page => {
-        const rows = filterSportScoreMatchesForMode(normalizeSportScoreMatchPage(page.html, sportScoreLeagueLabel(options), options), mode);
-        finish(onSuccess, mode === "recent" ? sortRecentMatches(dedupeMatches(rows)) : sortMatches(dedupeMatches(rows)));
-    }, onError, true);
+    fetchSportScoreGlobalMatches(options, rows => {
+        const scoped = filterSportScoreMatchesForMode(rows.filter(match => matchBelongsToCompetition(match, options)), mode);
+        if (scoped.length > 0) {
+            finish(onSuccess, mode === "recent" ? sortRecentMatches(dedupeMatches(scoped)) : sortMatches(dedupeMatches(scoped)));
+            return;
+        }
+
+        fetchSportScoreCompetitionMatchesFromPage(options, mode, onSuccess, onError);
+    }, () => fetchSportScoreCompetitionMatchesFromPage(options, mode, onSuccess, onError));
 }
 
-function fetchSportScoreGlobalLiveMatches(options, onSuccess, onError) {
-    const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
-    if (sport === "basketball") {
-        fetchSportScoreBasketballGlobalLiveMatches(options, onSuccess, onError);
+function fetchSportScoreCompetitionMatchesFromPage(options, mode, onSuccess, onError) {
+    const deliver = pageRows => {
+        const rows = filterSportScoreMatchesForMode(pageRows, mode);
+        finish(onSuccess, mode === "recent" ? sortRecentMatches(dedupeMatches(rows)) : sortMatches(dedupeMatches(rows)));
+    };
+
+    // The cache holds the page's UNFILTERED rows so one scrape serves every mode
+    // (the 60 s live poll, plus fixtures/recent from the 5 min full refresh)
+    // within its TTL, instead of the live poll re-scraping this same page every
+    // cycle whenever the competition sits outside the global feed's ~50-match
+    // slice - the main remaining plasmashell freeze.
+    const cacheKey = sportScoreCompetitionRowsKey(options);
+    const cachedRows = cachedSportScorePageRows(cacheKey, mode);
+    if (cachedRows) {
+        deliver(cachedRows);
         return;
     }
 
-    requestText(cacheBustedUrl(SPORTSCORE_BASE_URL + SportScoreSports.rootPath(sport)), html => {
-        const rows = filterSportScoreMatchesForMode(normalizeSportScoreMatchPage(html, "", options), "live");
-        finish(onSuccess, sortMatches(dedupeMatches(rows)));
-    }, onError);
+    fetchSportScoreCompetitionPage(options, page => {
+        deliver(rememberSportScorePageRows(cacheKey, normalizeSportScoreMatchPage(page.html, sportScoreLeagueLabel(options), options)));
+    }, onError, true);
 }
 
-function fetchSportScoreBasketballGlobalLiveMatches(options, onSuccess, onError) {
-    const url = SPORTSCORE_BASE_URL + "/api/widget/matches/?sport=basketball&limit=" + SPORTSCORE_MATCH_LIMIT;
-    let pending = 2;
-    let rows = [];
-    let errors = [];
+// True when a global-feed match belongs to the entry's competition. The entry's
+// league label is matched (case-insensitively, normalized) against the match's
+// competition name. When the entry carries no usable league label, fall back to
+// including the match (the global feed is already sport-scoped).
+function matchBelongsToCompetition(match, options) {
+    const wanted = normalizedTeamName(stringValue(options && (options.leagueLabel || options.league)));
+    if (wanted.length === 0)
+        return true;
+    const comp = normalizedTeamName(stringValue(match && match.league));
+    if (comp.length === 0)
+        return false;
+    return comp === wanted || comp.indexOf(wanted) >= 0 || wanted.indexOf(comp) >= 0;
+}
 
-    function complete(nextRows, error) {
-        rows = rows.concat(arrayValue(nextRows));
-        if (stringValue(error).length > 0)
-            errors.push(stringValue(error));
-        pending -= 1;
-        if (pending > 0)
-            return;
+// All SportScore match data for live/fixtures/recent now comes from the JSON
+// widget API (/api/widget/matches/?sport=&limit=50) instead of scraping the
+// ~680 KB live HTML page. The JSON payload is a small (≤50 match) document that
+// JSON.parses in well under a millisecond, versus the 25-58 ms backtracking-regex
+// parse of the HTML page that froze plasmashell. We fetch it once per sport and
+// share + briefly cache the normalized rows across every concurrent scope entry
+// (mirrors the ESPN scoreboard cache/dedup), so N followed leagues cost ONE fetch
+// and ONE parse per refresh rather than N. Competition- and team-scoped requests
+// filter this same global feed (see fetchSportScoreCompetitionMatches), and team
+// requests additionally use the per-team widget for full-season recent results.
+const SPORTSCORE_GLOBAL_TTL_MS = 20000;
+const _sportScoreGlobalCache = {};
+const _sportScoreGlobalWaiters = {};
 
-        rows = sortMatches(dedupeMatchesForSport(filterSportScoreMatchesForMode(rows, "live"), "basketball"));
-        if (rows.length > 0 || errors.length < 2) {
-            finish(onSuccess, rows);
-        } else {
-            finish(onError, errors.join(", "));
-        }
+// Parsed-rows cache for the HTML page-scrape fallbacks below. A scrape means a
+// ~680 KB page download plus a backtracking-regex parse on the UI thread, and
+// the 60 s live poll used to hit it on EVERY cycle for any SportScore-only
+// entry with nothing currently live - the "few seconds" plasmashell freeze.
+// Caching the normalized rows per page identity bounds that to one parse per
+// TTL window. Live deliveries demand a fresher cache than fixtures/recent so
+// live minute/score still track reasonably.
+const SPORTSCORE_PAGE_ROWS_TTL_MS = 5 * 60 * 1000;
+const SPORTSCORE_PAGE_ROWS_LIVE_TTL_MS = 2 * 60 * 1000;
+const _sportScorePageRowsCache = {};
+
+function cachedSportScorePageRows(key, mode) {
+    const cached = key.length > 0 ? _sportScorePageRowsCache[key] : null;
+    if (!cached)
+        return null;
+
+    const ttl = mode === "live" ? SPORTSCORE_PAGE_ROWS_LIVE_TTL_MS : SPORTSCORE_PAGE_ROWS_TTL_MS;
+    return (Date.now() - cached.ts) < ttl ? cached.rows : null;
+}
+
+function rememberSportScorePageRows(key, rows) {
+    if (key.length > 0)
+        _sportScorePageRowsCache[key] = { ts: Date.now(), rows: rows };
+    return rows;
+}
+
+function sportScoreCompetitionRowsKey(options) {
+    const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
+    const path = sportScorePathFromUrl(options && (options.competitionPath || options.leaguePath));
+    const identity = path.length > 0 ? path : ProviderCatalog.slugForValue(options && options.league);
+    if (identity.length === 0)
+        return "";
+
+    // A season-specific request resolves to a different page (see
+    // sportScoreRequestedSeasonPath), so it must not share the default page's rows.
+    const season = stringValue(options && (options.seasonId || options.seasonKey || options.seasonLabel));
+    return "competition|" + sport + "|" + identity + "|" + season;
+}
+
+function sportScoreTeamRowsKey(options, mode) {
+    const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
+    let identity = sportScorePathFromUrl(options && (options.teamPath || options.teamUrl));
+    if (identity.length === 0)
+        identity = ProviderCatalog.slugForValue(options && options.teamSlug);
+    if (identity.length === 0)
+        identity = ProviderCatalog.slugForValue(options && options.favoriteTeam);
+    if (identity.length === 0)
+        return "";
+
+    // The team fallback caches its final mode-shaped result (live scrapes fewer
+    // pages than fixtures/recent), so the mode is part of the identity.
+    return "team|" + sport + "|" + identity + "|" + mode;
+}
+
+// Fetch + normalize the global SportScore match feed for a sport (all statuses),
+// cached/deduped per sport. Callers filter by mode/entry themselves.
+function fetchSportScoreGlobalMatches(options, onSuccess, onError) {
+    const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
+
+    const cached = _sportScoreGlobalCache[sport];
+    if (cached && (Date.now() - cached.ts) < SPORTSCORE_GLOBAL_TTL_MS) {
+        finish(onSuccess, cached.rows);
+        return;
     }
 
-    requestText(cacheBustedUrl(url), text => {
-        try {
-            const payload = JSON.parse(text);
-            complete(normalizeSportScoreTeamWidgetMatches(payload, options), "");
-        } catch (error) {
-            complete([], String(error));
-        }
-    }, error => complete([], error));
+    if (_sportScoreGlobalWaiters[sport]) {
+        _sportScoreGlobalWaiters[sport].push({ onSuccess: onSuccess, onError: onError });
+        return;
+    }
+    _sportScoreGlobalWaiters[sport] = [{ onSuccess: onSuccess, onError: onError }];
 
-    requestText(cacheBustedUrl(SPORTSCORE_BASE_URL + SportScoreSports.rootPath("basketball")), html => {
-        complete(normalizeSportScoreMatchPage(html, "", options), "");
-    }, error => complete([], error));
+    const url = SPORTSCORE_BASE_URL + "/api/widget/matches/?sport=" + encodeURIComponent(sport) + "&limit=" + SPORTSCORE_MATCH_LIMIT;
+    requestText(cacheBustedUrl(url), text => {
+        let rows = [];
+        try {
+            rows = dedupeMatchesForSport(normalizeSportScoreTeamWidgetMatches(JSON.parse(text), options), sport);
+        } catch (error) {
+            rows = [];
+        }
+        _sportScoreGlobalCache[sport] = { ts: Date.now(), rows: rows };
+        const waiters = _sportScoreGlobalWaiters[sport] || [];
+        delete _sportScoreGlobalWaiters[sport];
+        waiters.forEach(waiter => finish(waiter.onSuccess, rows));
+    }, error => {
+        const waiters = _sportScoreGlobalWaiters[sport] || [];
+        delete _sportScoreGlobalWaiters[sport];
+        waiters.forEach(waiter => finish(waiter.onError, error || "Unable to load SportScore matches"));
+    });
 }
 
 function fetchSportScoreCompetitionPagesByRows(competitions, onDone) {
@@ -2211,6 +3274,38 @@ function fetchSportScoreCompetitionPagesByRows(competitions, onDone) {
     });
 }
 
+// League tables prefer the JSON standings widget (/api/widget/standings/) and
+// enrich/cross-check it against the competition's HTML page: the HTML table carries
+// recent form and team crests the JSON lacks, and is used outright when it has more
+// complete points than the widget. When the widget can't serve the competition we
+// fall back to scraping the HTML table directly.
+//
+// The HTML table rows are cached: the page scrape used to run on EVERY table
+// refresh (every 5 min while matches are live) even when the standings API
+// succeeded, just to re-derive the same form badges. Enrichment tolerates an
+// hour-old scrape (form changes once per matchday); when the HTML is the ONLY
+// table source (standings API 404s) it stays fresher so points track finishing
+// matches within a refresh cycle or two.
+const SPORTSCORE_TABLE_HTML_TTL_MS = 60 * 60 * 1000;
+const SPORTSCORE_TABLE_HTML_SOLE_SOURCE_TTL_MS = 10 * 60 * 1000;
+const _sportScoreTableHtmlCache = {};
+
+function fetchSportScoreTableHtmlRows(options, maxAgeMs, onRows, onError) {
+    const key = sportScoreCompetitionRowsKey(options);
+    const cached = key.length > 0 ? _sportScoreTableHtmlCache[key] : null;
+    if (cached && (Date.now() - cached.ts) < maxAgeMs) {
+        finish(onRows, cached.rows);
+        return;
+    }
+
+    fetchSportScoreCompetitionPage(options, page => {
+        const rows = normalizeSportScoreCompetitionTablePage(page.html, sportScoreLeagueLabel(options), options);
+        if (key.length > 0)
+            _sportScoreTableHtmlCache[key] = { ts: Date.now(), rows: rows };
+        finish(onRows, rows);
+    }, onError, true);
+}
+
 function fetchSportScoreLeagueTable(options, onSuccess, onError) {
     if (!canUseSportScore(options)) {
         finish(onSuccess, []);
@@ -2218,16 +3313,15 @@ function fetchSportScoreLeagueTable(options, onSuccess, onError) {
     }
 
     function fetchFromCompetitionPage() {
-        fetchSportScoreCompetitionPage(options, page => {
-            finish(onSuccess, normalizeSportScoreCompetitionTablePage(page.html, sportScoreLeagueLabel(options), options));
-        }, error => finish(onError, error), true);
+        fetchSportScoreTableHtmlRows(options, SPORTSCORE_TABLE_HTML_SOLE_SOURCE_TTL_MS,
+            rows => finish(onSuccess, rows),
+            error => finish(onError, error));
     }
 
     function fetchCompetitionPageForComparison(apiRows) {
-        fetchSportScoreCompetitionPage(options, page => {
-            const htmlRows = normalizeSportScoreCompetitionTablePage(page.html, sportScoreLeagueLabel(options), options);
-            finish(onSuccess, shouldPreferSportScoreHtmlStandings(apiRows, htmlRows) ? htmlRows : mergeSportScoreHtmlFormsIntoStandings(apiRows, htmlRows));
-        }, () => finish(onSuccess, apiRows), true);
+        fetchSportScoreTableHtmlRows(options, SPORTSCORE_TABLE_HTML_TTL_MS,
+            htmlRows => finish(onSuccess, shouldPreferSportScoreHtmlStandings(apiRows, htmlRows) ? htmlRows : mergeSportScoreHtmlFormsIntoStandings(apiRows, htmlRows)),
+            () => finish(onSuccess, apiRows));
     }
 
     if (!canUseSportScoreWidgetStandings(options)) {
@@ -2285,12 +3379,49 @@ function mergeSportScoreHtmlFormsIntoStandings(apiRows, htmlRows) {
     });
 }
 
+// The standings widget keys on the competition's CANONICAL site slug - the
+// segment before the trailing id in its page path, e.g.
+// /football/competition/bulgaria/bulgarian-first-league/kn54qllhn0qvy9d/ →
+// "bulgarian-first-league". Slugifying the display label instead often produces
+// a near-miss ("First League" → "first-league"), and the endpoint answers 404
+// "Competition not found" - which silently sent perfectly servable leagues down
+// the heavy HTML-scrape fallback. Prefer the slug embedded in the entry's path.
+function sportScoreCompetitionSlugFromPath(path) {
+    const normalized = sportScorePathFromUrl(path);
+    if (normalized.length === 0)
+        return "";
+
+    const segments = normalized.replace(/^\/+/, "").replace(/\/+$/, "").split("/");
+    const compIndex = segments.indexOf("competition");
+    if (compIndex < 0 || compIndex + 1 >= segments.length)
+        return "";
+
+    // After "competition" the path may carry a country segment, then the slug,
+    // then optionally the numeric-ish page id and/or a season ("2026",
+    // "2025-2026"). Drop id/season tails and take the last remaining segment.
+    const candidates = segments.slice(compIndex + 1).filter(segment =>
+        !/^\d{4}(-\d{4})?$/.test(segment)
+        && !(/^(?=.*\d)[a-z0-9]{12,}$/.test(segment)));
+    if (candidates.length === 0)
+        return "";
+
+    return ProviderCatalog.slugForValue(candidates[candidates.length - 1]);
+}
+
+function sportScoreStandingsSlug(options) {
+    const fromPath = sportScoreCompetitionSlugFromPath(options && (options.competitionPath || options.leaguePath));
+    if (fromPath.length > 0)
+        return fromPath;
+
+    return ProviderCatalog.slugForValue(options && options.league);
+}
+
 function canUseSportScoreWidgetStandings(options) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
     if (sport !== "football")
         return false;
 
-    const slug = ProviderCatalog.slugForValue(options && options.league);
+    const slug = sportScoreStandingsSlug(options);
     if (slug.length === 0)
         return false;
 
@@ -2304,7 +3435,7 @@ function canUseSportScoreWidgetStandings(options) {
 
 function fetchSportScoreWidgetStandings(options, onSuccess, onError) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
-    const slug = ProviderCatalog.slugForValue(options && options.league);
+    const slug = sportScoreStandingsSlug(options);
     if (slug.length === 0) {
         finish(onSuccess, []);
         return;
@@ -2403,19 +3534,64 @@ function dedupeCompetitionTeamOptions(rows, country) {
 function fetchSportScoreCompetitionPageTeams(options, onSuccess, onError) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
     fetchSportScoreCompetitionPage(options, page => {
-        const rows = teamsFromSportScoreCompetitionPage(page.html, { label: stringValue(options && options.leagueLabel) }, 0, sport);
+        let rows = teamsFromSportScoreCompetitionPage(page.html, { label: stringValue(options && options.leagueLabel) }, 0, sport);
+        // A competition page without a teams card or standings table (e.g. a
+        // regional league SportScore carries only fixtures for, like the Darwin
+        // Premier League) still names every team in its match rows - harvest
+        // those from the page we already fetched. Without this, the caller's
+        // last resort swept the whole country's competition pages (Australia:
+        // 170 competitions) with UI-thread parses - a multi-second freeze.
+        if (rows.length === 0)
+            rows = teamsFromSportScoreMatchRows(normalizeSportScoreMatchPage(page.html, stringValue(options && options.leagueLabel), options), options);
         finish(onSuccess, dedupeCompetitionTeamOptions(rows, options && options.country));
     }, error => finish(onError, error), true);
 }
 
+// Team option rows (extractSportScoreTeamLinks shape) derived from a page's
+// normalized match rows: one row per distinct team name. teamPath stays empty -
+// team follow/fetch paths key on the slug, which the JSON team widget accepts.
+function teamsFromSportScoreMatchRows(matches, options) {
+    const leagueLabel = stringValue(options && options.leagueLabel);
+    const seen = {};
+    const rows = [];
+    arrayValue(matches).forEach(match => {
+        [
+            { name: stringValue(match && match.homeTeam), badge: stringValue(match && match.homeBadge) },
+            { name: stringValue(match && match.awayTeam), badge: stringValue(match && match.awayBadge) }
+        ].forEach(side => {
+            const label = side.name.trim();
+            const slug = ProviderCatalog.slugForValue(label);
+            if (label.length === 0 || slug.length === 0 || seen[slug])
+                return;
+            seen[slug] = true;
+            rows.push({
+                label: label,
+                value: label,
+                teamSlug: slug,
+                teamPath: "",
+                badge: side.badge,
+                leagues: leagueLabel.length > 0 ? [leagueLabel] : []
+            });
+        });
+    });
+    rows.sort((left, right) => left.label.localeCompare(right.label));
+    return rows;
+}
+
 function fetchCompetitionTeams(options, onSuccess, onError) {
     const plan = espnPlan(options);
+    const sport0 = normalizedSport(options && (options.sports || options.sport)) || "football";
 
-    // Player sports (tennis): there is no roster, so offer ESPN's ranked players to
-    // follow instead. The competition's Top page already comes from ESPN (ATP/WTA),
-    // so this is ESPN-only — never SportScore.
+    // Player ("event") sports have no roster, so offer ESPN's athletes to follow
+    // instead. ESPN-only - never SportScore. The player list comes from one of two
+    // places depending on the sport (see EspnSports.playerSource):
+    //   tennis            → the tour rankings feed (top ranked players);
+    //   golf/mma/racing   → the event's competitors (field / fight card / grid).
     if (plan && EspnSports.usesPlayers(options && (options.sports || options.sport))) {
-        fetchEspnTennisPlayers(plan.espnSport, plan.league, options, onSuccess, onError);
+        if (EspnSports.playerSource(options && (options.sports || options.sport)) === "scoreboard")
+            fetchEspnEventPlayers(plan.espnSport, plan.league, options, onSuccess, onError);
+        else
+            fetchEspnTennisPlayers(plan.espnSport, plan.league, options, onSuccess, onError);
         return;
     }
 
@@ -2431,8 +3607,31 @@ function fetchCompetitionTeams(options, onSuccess, onError) {
     }
 
     // SportScore side: standings JSON first, then the HTML competition page (which
-    // lists teams even when there is no standings table), mirroring the wizard's
-    // original API-then-HTML behaviour.
+    // lists teams even when there is no standings table), and finally — when both
+    // come up empty (e.g. an off-season competition, or a scraped slug that doesn't
+    // resolve to a real SportScore competition like "bulgaria-championship-nalb") —
+    // the country page, which lists the country's teams directly. This last step is
+    // what keeps a country pick (Basketball → Bulgaria) showing real local teams
+    // instead of nothing.
+    const country = ProviderCatalog.slugForValue(options && options.country);
+    const tryCountryTeams = (onRows, onErr) => {
+        if (country.length === 0 || country === "world") {
+            onErr();
+            return;
+        }
+        // Bounded: this last resort exists so a country pick still shows local
+        // teams, not to enumerate the whole country - an unbounded sweep meant
+        // up to 64 page parses on the UI thread when a niche competition had no
+        // teams on its own page.
+        fetchSportScoreCountryTeams(sport0, country, rows => {
+            const teams = dedupeCompetitionTeamOptions(rows, options && options.country);
+            if (teams.length > 0)
+                onRows(teams);
+            else
+                onErr();
+        }, () => onErr(), 16);
+    };
+
     const sportScoreRunner = (onRows, onErr) => {
         fetchSportScoreWidgetStandings(options, rows => {
             const teams = dedupeCompetitionTeamOptions(rows, options && options.country);
@@ -2440,14 +3639,19 @@ function fetchCompetitionTeams(options, onSuccess, onError) {
                 onRows(teams);
                 return;
             }
-            fetchSportScoreCompetitionPageTeams(options, onRows, () => onRows([]));
+            fetchSportScoreCompetitionPageTeams(options, pageTeams => {
+                if (arrayValue(pageTeams).length > 0)
+                    onRows(pageTeams);
+                else
+                    tryCountryTeams(onRows, () => onRows([]));
+            }, () => tryCountryTeams(onRows, () => onRows([])));
         }, ssErr => {
             fetchSportScoreCompetitionPageTeams(options, htmlTeams => {
                 if (arrayValue(htmlTeams).length > 0)
                     onRows(htmlTeams);
                 else
-                    onErr(ssErr);
-            }, () => onErr(ssErr));
+                    tryCountryTeams(onRows, () => onErr(ssErr));
+            }, () => tryCountryTeams(onRows, () => onErr(ssErr)));
         });
     };
 
@@ -3018,9 +4222,9 @@ function sportScoreCricketStatus(block) {
 function normalizeSportScoreMatchRow(block, context, leagueLabel, options) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
     const label = sportScoreLiveAriaLabel(block);
-    const labelParts = label.split(" — ");
+    const labelParts = label.split(" - ");
     const teams = splitSportScoreTeams(htmlDecode(labelParts[0] || ""));
-    const league = htmlDecode(labelParts.slice(1).join(" — ")) || leagueLabel || sportScoreCompetitionLabelFromContext(context);
+    const league = htmlDecode(labelParts.slice(1).join(" - ")) || leagueLabel || sportScoreCompetitionLabelFromContext(context);
     const timestamp = Date.parse(firstDataUtc(block));
     const rawStatus = htmlText(sportScoreLiveValue(block, "status"));
     const homeScore = htmlText(sportScoreLiveValue(block, "home-score"));
@@ -3360,7 +4564,7 @@ function schemaTeamName(team) {
 
 function sportScoreLeagueFromDescription(value) {
     const text = stringValue(value);
-    const match = /—\s*(.*?)\s+football match/i.exec(text);
+    const match = /-\s*(.*?)\s+football match/i.exec(text);
     return match ? stringValue(match[1]) : "";
 }
 
@@ -3659,8 +4863,14 @@ function sportScoreSportFromPath(path) {
     return match ? match[1] : "";
 }
 
-function fetchSportScoreCountryTeams(sport, country, onSuccess, onError) {
+function fetchSportScoreCountryTeams(sport, country, onSuccess, onError, maxCompetitions) {
     const sportValue = normalizedSport(sport) || "football";
+    // The wizard's country browsing needs the full competition sweep; bounded
+    // callers (team-path resolution) pass a small cap so a single lookup can't
+    // fan out into dozens of page parses on the UI thread.
+    const competitionCap = numberValue(maxCompetitions) > 0
+        ? Math.min(numberValue(maxCompetitions), SPORTSCORE_COUNTRY_COMPETITION_LIMIT)
+        : SPORTSCORE_COUNTRY_COMPETITION_LIMIT;
     const sourcePath = SportScoreSports.usesPlayers(sportValue)
         ? SportScoreSports.rootPath(sportValue)
         : SportScoreSports.competitionSourcePath(sportValue, country);
@@ -3671,7 +4881,7 @@ function fetchSportScoreCountryTeams(sport, country, onSuccess, onError) {
             return;
         }
 
-        const competitions = sportScoreCompetitionLinks(html, country, sportValue).slice(0, SPORTSCORE_COUNTRY_COMPETITION_LIMIT);
+        const competitions = sportScoreCompetitionLinks(html, country, sportValue).slice(0, competitionCap);
         if (competitions.length === 0) {
             finish(onSuccess, dedupeTeamRows(rows));
             return;
@@ -3731,8 +4941,8 @@ function sportScoreCompetitionLinks(html, country, sport) {
     while ((match = expression.exec(page)) !== null) {
         const rowCountry = ProviderCatalog.slugForValue(match[2]);
         // The "International Tournaments" (world) view must show only genuinely
-        // international competitions — SportScore tags those with the "world" country
-        // segment — not every country's leagues from the global overview page.
+        // international competitions - SportScore tags those with the "world" country
+        // segment - not every country's leagues from the global overview page.
         if (rowCountry !== wantedCountry)
             continue;
 
@@ -3826,13 +5036,21 @@ function teamsFromSportScoreCountryPage(html, country, sport) {
             rows.push(nationalTeam);
     }
 
-    const popularStart = page.search(/<h2>Popular (?:teams|players)/i);
-    if (popularStart >= 0) {
-        const block = boundedHtmlBlock(page.slice(popularStart), "<h2>", "</div>");
+    // The teams list lives under a section header that is "Popular teams/players"
+    // on some pages (football) but "<Country> teams" on others (basketball etc.).
+    // Match either so a country pick lists that country's teams regardless of sport.
+    let teamsStart = page.search(/<h2[^>]*>\s*Popular (?:teams|players)/i);
+    if (teamsStart < 0)
+        teamsStart = page.search(/<h2[^>]*>\s*[^<]*\bteams\b/i);
+    if (teamsStart >= 0) {
+        const block = boundedHtmlBlock(page.slice(teamsStart), "<h2>", "</div>");
         extractSportScoreTeamLinks(block, sportValue).forEach(row => rows.push(row));
     }
 
-    if (SportScoreSports.usesPlayers(sportValue) && rows.length === 0)
+    // Fallback: if no recognizable section matched (or it yielded nothing) but the
+    // page does list teams, take them from the whole page. Covers layout drift and
+    // player sports whose list isn't under a "teams" header.
+    if (rows.length === 0)
         extractSportScoreTeamLinks(page, sportValue).forEach(row => rows.push(row));
 
     return rows.map((row, index) => withTeamRank(row, index));
@@ -3846,6 +5064,12 @@ function teamsFromSportScoreCompetitionPage(html, competition, competitionIndex,
     if (teamsAnchor >= 0) {
         const teamBlock = boundedHtmlBlock(page.slice(teamsAnchor), "<div class=\"side-card\"", "</div>");
         rows = extractSportScoreTeamLinks(teamBlock, sportValue);
+        // The side-card bounding cuts at the FIRST </div>, which on pages with
+        // nested markup captures an empty block even though the card lists every
+        // team (with id-bearing paths). Re-scan a fixed window after the anchor
+        // so those pages don't fall through to heavier fallbacks.
+        if (rows.length === 0)
+            rows = extractSportScoreTeamLinks(page.slice(teamsAnchor, teamsAnchor + 20000), sportValue);
     }
 
     if (rows.length === 0) {
@@ -3996,7 +5220,7 @@ function scheduleAfter(delayMs, callback) {
 }
 
 // A 404 means the resource genuinely doesn't exist (e.g. a competition with no
-// standings on SportScore) — that is "no data" / an empty result, not a provider
+// standings on SportScore) - that is "no data" / an empty result, not a provider
 // outage, so callers should treat it as empty rather than a retryable failure.
 function isHttpNotFound(message) {
     return stringValue(message).indexOf("HTTP 404") >= 0;
@@ -4026,7 +5250,7 @@ function noteSportScoreOutcome(succeeded, gatewayFailure) {
 
 function requestText(url, onSuccess, onError, opts) {
     const ignoreCooldown = Boolean(opts && opts.ignoreCooldown);
-    // SportScore is repeatedly failing — fail fast instead of enqueuing a request
+    // SportScore is repeatedly failing - fail fast instead of enqueuing a request
     // that will just time out (14s) and clog the queue behind it. ESPN (exempt)
     // is unaffected, so ESPN-covered entries keep loading normally.
     if (!ignoreCooldown && sportScoreBreakerOpen()) {
@@ -4051,7 +5275,7 @@ function pumpRequestQueue() {
 
     // Honour the post-504 cooldown only when a real scheduler is available;
     // otherwise proceed (avoids a busy retry loop without timed delays). The
-    // cooldown is set by the failing origin (SportScore) — cooldown-exempt jobs
+    // cooldown is set by the failing origin (SportScore) - cooldown-exempt jobs
     // (ESPN, the primary source) are still allowed straight through.
     if (_delayScheduler) {
         const remaining = _requestCooldownUntil - Date.now();
@@ -4221,7 +5445,7 @@ function cacheBustedUrl(url) {
 }
 
 // In-flight de-duplication for shared HTML pages (a team or competition page is
-// fetched by several callers — matches, competitions, badge, seasons, table).
+// fetched by several callers - matches, competitions, badge, seasons, table).
 // Concurrent requests for the same page collapse into a single network request;
 // nothing is held across requests, so freshness is unaffected.
 const _pageRequestsInFlight = {};
@@ -4441,6 +5665,24 @@ function normalizedTeamName(value) {
         .replace(/\b(fc|sc|cf|afc|club)\b/g, "")
         .replace(/\s+/g, " ")
         .trim();
+}
+
+// TEMP DIAGNOSTIC: time a synchronous block running on the QML/UI thread and log
+// it when it exceeds the threshold, so we can see which parse/normalize step is
+// stalling plasmashell during a live refresh. `extra` is appended for context
+// (e.g. input size, row count). Remove once the freeze cause is confirmed.
+const _PROFILE_MAIN_THREAD = false;
+const _PROFILE_LOG_THRESHOLD_MS = 8;
+
+function profileSync(label, extra, fn) {
+    if (!_PROFILE_MAIN_THREAD)
+        return fn();
+    const start = Date.now();
+    const result = fn();
+    const elapsed = Date.now() - start;
+    if (elapsed >= _PROFILE_LOG_THRESHOLD_MS)
+        console.warn("[sports-widget][profile] " + label + " took " + elapsed + "ms" + (extra ? " (" + extra + ")" : ""));
+    return result;
 }
 
 function finish(callback, value) {

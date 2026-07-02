@@ -30,7 +30,7 @@ Item {
     clip: true
 
     WebEngineView {
-        // Fixed render width — never scales, so text and images are crisp.
+        // Fixed render width - never scales, so text and images are crisp.
         width: root.referenceWidth
         height: root.height
 

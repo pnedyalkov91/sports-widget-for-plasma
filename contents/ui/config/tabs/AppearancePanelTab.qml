@@ -65,11 +65,89 @@ Kirigami.FormLayout {
         Kirigami.FormData.isSection: true
     }
 
+    // Whether the panel shows the match in detail or just a compact match count.
+    readonly property bool simpleMode: panelMode.currentValue === "simple"
+
+    ComboBox {
+        id: panelMode
+
+        Kirigami.FormData.label: i18nc("@label:listbox", "Panel mode:")
+        Layout.fillWidth: true
+        textRole: "label"
+        valueRole: "value"
+        model: [{
+            "label": i18nc("@item:inlistbox panel mode", "Detailed (show the match)"),
+            "value": "detailed"
+        }, {
+            "label": i18nc("@item:inlistbox panel mode", "Simple (match counts only)"),
+            "value": "simple"
+        }]
+        Component.onCompleted: currentIndex = panelTab.indexFor(model, panelTab.configRoot.cfg_panelMode || "detailed")
+        onActivated: panelTab.configRoot.cfg_panelMode = currentValue
+    }
+
+    ComboBox {
+        id: panelCountsFormat
+
+        Kirigami.FormData.label: i18nc("@label:listbox", "Show:")
+        visible: panelTab.simpleMode
+        Layout.fillWidth: true
+        textRole: "label"
+        valueRole: "value"
+        model: [{
+            "label": i18nc("@item:inlistbox", "Live / remaining (e.g. 3 / 11)"),
+            "value": "liveRemaining"
+        }, {
+            "label": i18nc("@item:inlistbox", "Remaining only (e.g. 11)"),
+            "value": "remaining"
+        }]
+        Component.onCompleted: currentIndex = panelTab.indexFor(model, panelTab.configRoot.cfg_panelCountsFormat || "liveRemaining")
+        onActivated: panelTab.configRoot.cfg_panelCountsFormat = currentValue
+    }
+
+    ComboBox {
+        id: panelSimpleScheduleWindow
+
+        Kirigami.FormData.label: i18nc("@label:listbox", "Count scheduled matches:")
+        visible: panelTab.simpleMode
+        Layout.fillWidth: true
+        textRole: "label"
+        valueRole: "value"
+        model: [{
+            "label": i18nc("@item:inlistbox scheduled matches window", "Next 24 hours"),
+            "value": "next24h"
+        }, {
+            "label": i18nc("@item:inlistbox scheduled matches window", "All future matches"),
+            "value": "all"
+        }]
+        Component.onCompleted: currentIndex = panelTab.indexFor(model, panelTab.configRoot.cfg_panelSimpleScheduleWindow || "next24h")
+        onActivated: panelTab.configRoot.cfg_panelSimpleScheduleWindow = currentValue
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+        visible: panelTab.simpleMode && panelSimpleScheduleWindow.currentValue === "all"
+        showCloseButton: true
+        type: Kirigami.MessageType.Information
+        text: i18nc("@info", "\"All future matches\" counts every upcoming fixture that is fetched, so the panel number can be higher than the widget list, which shows at most \"Matches per team/competition\" fixtures per competition (Widget → Scheduled).")
+    }
+
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+        visible: panelTab.simpleMode
+        showCloseButton: true
+        type: Kirigami.MessageType.Information
+        text: i18nc("@info", "Simple mode shows the sport icon and a match count instead of a match. The layout, rotation and emblem options below do not apply.")
+    }
+
     ComboBox {
         id: panelLayoutMode
 
-        Kirigami.FormData.label: i18nc("@label:listbox", "Panel layout:")
+        Kirigami.FormData.label: i18nc("@label:listbox", "Panel information:")
         Layout.fillWidth: true
+        visible: !panelTab.simpleMode
         textRole: "label"
         valueRole: "value"
         model: [{
@@ -91,13 +169,14 @@ Kirigami.FormLayout {
 
         Kirigami.FormData.label: i18nc("@label:checkbox", "Match rotation:")
         text: checked ? i18nc("@option:check", "Enabled") : i18nc("@option:check", "Disabled")
+        visible: !panelTab.simpleMode
         checked: panelTab.configRoot.cfg_panelMatchRotationEnabled
         onToggled: panelTab.configRoot.cfg_panelMatchRotationEnabled = checked
     }
 
     RowLayout {
         Kirigami.FormData.label: i18nc("@label:spinbox", "Rotation interval:")
-        visible: panelMatchRotation.checked
+        visible: !panelTab.simpleMode && panelMatchRotation.checked && panelMultiMatchMode.currentValue !== "stack"
         spacing: Kirigami.Units.smallSpacing
 
         SpinBox {
@@ -113,6 +192,42 @@ Kirigami.FormLayout {
 
         Label {
             text: i18ncp("@label:spinbox", "second", "seconds", panelRotationInterval.value)
+        }
+    }
+
+    ComboBox {
+        id: panelMultiMatchMode
+
+        Kirigami.FormData.label: i18nc("@label:listbox", "Multiple matches:")
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+        visible: !panelTab.simpleMode
+        textRole: "label"
+        valueRole: "value"
+        model: [
+            { "value": "rotate", "label": i18nc("@item:inlistbox panel multi-match mode", "Rotate one at a time") },
+            { "value": "stack", "label": i18nc("@item:inlistbox panel multi-match mode", "Show several side by side") }
+        ]
+        Component.onCompleted: currentIndex = panelTab.indexFor(model, panelTab.configRoot.cfg_panelMultiMatchMode || "rotate")
+        onActivated: panelTab.configRoot.cfg_panelMultiMatchMode = currentValue
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18nc("@label:spinbox", "Max matches shown:")
+        visible: !panelTab.simpleMode && panelMultiMatchMode.currentValue === "stack"
+        spacing: Kirigami.Units.smallSpacing
+
+        SpinBox {
+            id: panelStackMax
+
+            from: 2
+            to: 8
+            editable: true
+            value: Math.max(2, panelTab.configRoot.cfg_panelStackMaxMatches || 3)
+            onValueModified: panelTab.configRoot.cfg_panelStackMaxMatches = value
+        }
+
+        Label {
+            text: i18ncp("@label:spinbox", "match", "matches", panelStackMax.value)
         }
     }
 
@@ -202,6 +317,7 @@ Kirigami.FormLayout {
     RowLayout {
         Kirigami.FormData.label: i18nc("@label:checkbox", "Emblem size:")
         Layout.fillWidth: true
+        enabled: !panelTab.simpleMode
         spacing: Kirigami.Units.smallSpacing
 
         Switch {

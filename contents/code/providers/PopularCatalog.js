@@ -24,7 +24,7 @@
 // wizard page is seeded from this hand-curated catalog. Slugs follow SportScore's
 // "<country-adjective>-<name>" competition convention and "<name>" team convention
 // and are validated against the project's own history (the football set was in use
-// previously). Team/competition emblems are NOT stored here — they are fetched from
+// previously). Team/competition emblems are NOT stored here - they are fetched from
 // the JSON API (standings/matches) and cached, so this catalog stays small and stable.
 
 function stringValue(value) {

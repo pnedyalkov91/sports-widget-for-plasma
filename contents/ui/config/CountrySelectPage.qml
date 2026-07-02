@@ -60,6 +60,7 @@ SportStepPage {
     headerContent: Kirigami.InlineMessage {
         Layout.fillWidth: true
         visible: true
+        showCloseButton: true
         type: root.showCountryError ? Kirigami.MessageType.Error : Kirigami.MessageType.Information
         text: root.showCountryError
             ? i18nc("@info", "SportScore is not responding right now, so the list of countries could not be loaded. Please try again later.")

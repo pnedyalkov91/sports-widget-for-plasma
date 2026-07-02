@@ -30,8 +30,15 @@ Item {
     property string awayTeam: ""
     property string sport: ""
     property int activeDetailsTab: 0
+    // Public ESPN gamecast URL for this match (empty for non-ESPN matches); when
+    // set, a "Visit on ESPN" link is offered in the Information tab.
+    property string visitUrl: ""
     readonly property var summaryRows: details && details.summaryRows ? details.summaryRows : []
     readonly property var statsRows: details && details.statsRows ? details.statsRows : []
+    readonly property var leaderRows: details && details.leaderRows ? details.leaderRows : []
+    readonly property var playerBox: details && details.playerBox ? details.playerBox : null
+    readonly property var homePlayerSections: playerBox && Array.isArray(playerBox.home) ? playerBox.home : []
+    readonly property var awayPlayerSections: playerBox && Array.isArray(playerBox.away) ? playerBox.away : []
     readonly property var eventsRows: details && details.events ? details.events : []
     readonly property var matchInfoRows: details && details.matchInfoRows ? details.matchInfoRows : []
     readonly property var lineups: details && details.lineups ? details.lineups : ({})
@@ -56,9 +63,10 @@ Item {
     })
     readonly property bool hasSummary: summaryRows.some(row => Number(row.homeValue || 0) > 0 || Number(row.awayValue || 0) > 0)
     readonly property bool hasStats: statsRows.some(row => Number(row.homeRaw || 0) > 0 || Number(row.awayRaw || 0) > 0)
+    readonly property bool hasLeaders: leaderRows.some(row => String(row.homeName || "").length > 0 || String(row.awayName || "").length > 0)
     readonly property bool hasEvents: eventsRows.length > 0
     readonly property bool hasLineups: homeStarting.length > 0 || awayStarting.length > 0 || homeSubstitutes.length > 0 || awaySubstitutes.length > 0
-    readonly property bool hasInformation: matchInfoRows.length > 0 || competitionLogo.length > 0 || competitionName.length > 0 || homeFormation.length > 0 || awayFormation.length > 0 || hasLineups
+    readonly property bool hasInformation: matchInfoRows.length > 0 || competitionLogo.length > 0 || competitionName.length > 0 || homeFormation.length > 0 || awayFormation.length > 0 || hasLineups || root.visitUrl.length > 0
     readonly property var tennisSets: details && details.tennisSets ? details.tennisSets : null
     readonly property var tennisPlayerComparison: details && details.tennisPlayerComparison ? details.tennisPlayerComparison : null
     readonly property bool hasTennisSets: tennisSets !== null && Array.isArray(tennisSets.rows) && tennisSets.rows.length > 0
@@ -79,22 +87,41 @@ Item {
     }
     readonly property bool hasStatisticsTab: {
         const s = String(root.sport || "").toLowerCase();
-        return s !== "tennis" && s !== "basketball" && s !== "cricket";
+        // Tennis has its own player-comparison view, not the generic stat bars.
+        if (s === "tennis")
+            return false;
+        // Basketball/cricket had no stats from SportScore, so the tab was hidden;
+        // ESPN now supplies boxscore stats (and/or top performers), so show it
+        // whenever any of that data actually arrived.
+        if (s === "basketball" || s === "cricket")
+            return root.hasStats || root.hasSummary || root.hasLeaders;
+        return true;
     }
+    // Per-player box score (basketball/NHL/NFL): its own Players tab, shown only when
+    // the data actually arrived for this match.
+    readonly property bool hasPlayersTab: homePlayerSections.length > 0 || awayPlayerSections.length > 0
     // Temporary extra tab to preview the live tracker for football alongside
     // the existing Information/Details/Statistics tabs.
     readonly property bool hasFootballTracker: trackerUrl.length > 0 && String(root.sport || "").toLowerCase() === "football"
-    readonly property bool hasAnyDetails: hasInformation || hasEvents || halfTimeScore.length > 0 || hasTennisSets || hasTracker || hasFootballTracker || (hasStatisticsTab && (hasStats || hasSummary || hasTennisComparison))
+    readonly property bool hasAnyDetails: hasInformation || hasEvents || halfTimeScore.length > 0 || hasTennisSets || hasTracker || hasFootballTracker || hasPlayersTab || (hasStatisticsTab && (hasStats || hasSummary || hasTennisComparison || hasLeaders))
 
     property bool _autoSwitchedToTracker: hasTracker
+    // False until the initial property assignments settle, so the reset handlers
+    // below don't fire during construction - which would clobber the tab that the
+    // host (LiveMatchDelegate) restores when it rebuilds this component (e.g. after
+    // the row scrolls out of and back into view).
+    property bool _initialized: false
+    Component.onCompleted: _initialized = true
 
-    // Reset state when the user navigates to a different match.
-    onHomeTeamChanged: { activeDetailsTab = 0; _autoSwitchedToTracker = false; }
-    onAwayTeamChanged: { activeDetailsTab = 0; _autoSwitchedToTracker = false; }
-    onSportChanged:    { activeDetailsTab = 0; _autoSwitchedToTracker = false; }
+    // Reset the selected tab only when the component is genuinely retargeted to a
+    // different match in place (home/away/sport actually change after init), not on
+    // the initial bindings.
+    onHomeTeamChanged: if (_initialized) { activeDetailsTab = 0; _autoSwitchedToTracker = false; }
+    onAwayTeamChanged: if (_initialized) { activeDetailsTab = 0; _autoSwitchedToTracker = false; }
+    onSportChanged:    if (_initialized) { activeDetailsTab = 0; _autoSwitchedToTracker = false; }
 
     onDetailsChanged: {
-        // Do NOT reset activeDetailsTab here — details reload every few seconds for live
+        // Do NOT reset activeDetailsTab here - details reload every few seconds for live
         // matches (detailsIdentity includes timestamp). Resetting here would continuously
         // kick the user back to the Information tab while they watch the tracker.
         // Auto-switch to Details tab the first time a usable tracker arrives.
@@ -106,6 +133,29 @@ Item {
 
     function withAlpha(color, alpha) {
         return Qt.rgba(color.r, color.g, color.b, alpha);
+    }
+
+    // Deterministic index of each tab, computed from which conditional tabs are
+    // present, in declaration order: Information, Details, [Statistics], [Players],
+    // [Tracker]. Used so a tab click sets activeDetailsTab to the right value
+    // without depending on the TabBar's own (churning) index bookkeeping.
+    function tabIndex(name) {
+        if (name === "information")
+            return 0;
+        if (name === "details")
+            return 1;
+        let index = 2;
+        if (name === "statistics")
+            return root.hasStatisticsTab ? index : -1;
+        if (root.hasStatisticsTab)
+            index += 1;
+        if (name === "players")
+            return root.hasPlayersTab ? index : -1;
+        if (root.hasPlayersTab)
+            index += 1;
+        if (name === "tracker")
+            return root.hasFootballTracker ? index : -1;
+        return -1;
     }
 
     function statByLabel(label) {
@@ -252,17 +302,34 @@ Item {
             }
 
             PlasmaComponents.TabBar {
+                id: detailsTabBar
+
                 Layout.fillWidth: true
                 visible: !root.loading && root.errorText.length === 0 && root.hasAnyDetails
-                currentIndex: root.activeDetailsTab
-                onCurrentIndexChanged: root.activeDetailsTab = currentIndex
+                // One-way only: reflect the selected tab, but do NOT write the
+                // TabBar's currentIndex back to activeDetailsTab. The conditional
+                // tabs live in Repeaters, so adding/removing one (which happens while
+                // the panel is rebuilt during scrolling) makes the TabBar reset its
+                // currentIndex to 0 and would otherwise clobber the user's selection,
+                // snapping them back to Information. Selection changes only via an
+                // explicit TabButton click (onClicked below).
+                currentIndex: Math.min(root.activeDetailsTab, count - 1)
+
+                // A Qt Quick TabBar also cycles tabs on wheel/scroll events; swallow
+                // them so scrolling the panel can't change the tab either.
+                WheelHandler {
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    onWheel: function (event) { event.accepted = true; }
+                }
 
                 PlasmaComponents.TabButton {
                     text: i18nc("@tab:match details", "Information")
+                    onClicked: root.activeDetailsTab = 0
                 }
 
                 PlasmaComponents.TabButton {
                     text: i18nc("@tab:match details", "Details")
+                    onClicked: root.activeDetailsTab = 1
                 }
 
                 Repeater {
@@ -270,6 +337,16 @@ Item {
 
                     PlasmaComponents.TabButton {
                         text: i18nc("@tab:match details", "Statistics")
+                        onClicked: root.activeDetailsTab = root.tabIndex("statistics")
+                    }
+                }
+
+                Repeater {
+                    model: root.hasPlayersTab ? 1 : 0
+
+                    PlasmaComponents.TabButton {
+                        text: i18nc("@tab:match details", "Players")
+                        onClicked: root.activeDetailsTab = root.tabIndex("players")
                     }
                 }
 
@@ -278,14 +355,40 @@ Item {
 
                     PlasmaComponents.TabButton {
                         text: i18nc("@tab:match details", "Tracker")
+                        onClicked: root.activeDetailsTab = root.tabIndex("tracker")
                     }
                 }
             }
 
             StackLayout {
+                id: detailsStack
+
                 Layout.fillWidth: true
                 visible: !root.loading && root.errorText.length === 0 && root.hasAnyDetails
-                currentIndex: root.activeDetailsTab
+                // Clamp in the binding expression itself: if currentIndex ever
+                // exceeds the page count (e.g. a conditional page like Players or the
+                // tracker momentarily disappears while the panel rebuilds during a
+                // scroll), Qt would otherwise internally reassign currentIndex -
+                // BREAKING this binding - and the clamped value would stick even after
+                // the page returns. Keeping the expression in-range means the binding
+                // stays live and the view snaps back to the right tab when it returns.
+                currentIndex: Math.max(0, Math.min(root.activeDetailsTab, count - 1))
+
+                // A StackLayout's implicitHeight is the MAX of every page, so the
+                // expanded card would always be as tall as the tallest tab (e.g. the
+                // tracker) regardless of which tab is open. Size to the CURRENT page
+                // instead, so the expanded view height follows the visible content.
+                // Re-evaluated when the page or its content height changes.
+                readonly property Item currentItem: {
+                    const index = detailsStack.currentIndex;
+                    for (let i = 0; i < detailsStack.children.length; i += 1) {
+                        const child = detailsStack.children[i];
+                        if (child && child.StackLayout && child.StackLayout.index === index)
+                            return child;
+                    }
+                    return null;
+                }
+                Layout.preferredHeight: currentItem ? currentItem.implicitHeight : 0
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -315,6 +418,16 @@ Item {
                             elide: Text.ElideRight
                             font: Kirigami.Theme.smallFont
                         }
+                    }
+
+                    // "Visit on ESPN" - opens the match's public ESPN gamecast page
+                    // in the browser (ESPN-sourced matches only).
+                    PlasmaComponents.Button {
+                        Layout.alignment: Qt.AlignHCenter
+                        visible: root.visitUrl.length > 0
+                        icon.name: "globe"
+                        text: i18nc("@action:button open match on ESPN website", "Visit on ESPN")
+                        onClicked: Qt.openUrlExternally(root.visitUrl)
                     }
 
                     Repeater {
@@ -500,20 +613,75 @@ Item {
                         }
                     }
 
+                    // Top performers: each side's leading player per stat category.
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                        visible: root.hasLeaders
+                        spacing: 2
+
+                        PlasmaComponents.Label {
+                            Layout.fillWidth: true
+                            text: i18nc("@title:group match details", "Top performers")
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
+                        Repeater {
+                            model: root.leaderRows
+
+                            delegate: LeaderRow {
+                                Layout.fillWidth: true
+                                category: String(modelData.category || "")
+                                homeName: String(modelData.homeName || "")
+                                homeValue: String(modelData.homeValue || "")
+                                awayName: String(modelData.awayName || "")
+                                awayValue: String(modelData.awayValue || "")
+                            }
+                        }
+                    }
+
+                    // Nothing at all: full empty-state placeholder.
                     EmptyTabPlaceholder {
                         Layout.fillWidth: true
-                        visible: !root.hasStats && !root.hasSummary && !root.hasTennisComparison
+                        visible: !root.hasStats && !root.hasSummary && !root.hasTennisComparison && !root.hasLeaders
                         text: root.statisticsUnavailableText()
                     }
 
+                    // Some content (summary badges) but no detailed stat bars: a small
+                    // note clarifying the bars specifically are missing. Suppressed when
+                    // top performers are shown, since that already gives per-stat detail.
                     PlasmaComponents.Label {
                         Layout.fillWidth: true
-                        visible: !root.hasStats && root.hasSummary && !root.hasTennisComparison
+                        visible: !root.hasStats && root.hasSummary && !root.hasLeaders && !root.hasTennisComparison
                         text: root.statisticsUnavailableText()
                         color: Kirigami.Theme.disabledTextColor
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         font: Kirigami.Theme.smallFont
+                    }
+                }
+
+                // Players tab content: per-team, per-section box score tables.
+                Repeater {
+                    model: root.hasPlayersTab ? 1 : 0
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PlayerBoxTeam {
+                            Layout.fillWidth: true
+                            teamName: root.homeTeam
+                            sections: root.homePlayerSections
+                        }
+
+                        PlayerBoxTeam {
+                            Layout.fillWidth: true
+                            teamName: root.awayTeam
+                            sections: root.awayPlayerSections
+                        }
                     }
                 }
 
@@ -699,7 +867,7 @@ Item {
 
         PlasmaComponents.Label {
             Layout.preferredWidth: Kirigami.Units.gridUnit * 1.7
-            text: playerRow.number.length > 0 ? playerRow.number : "—"
+            text: playerRow.number.length > 0 ? playerRow.number : "-"
             color: Kirigami.Theme.disabledTextColor
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
@@ -962,7 +1130,7 @@ Item {
         PlasmaComponents.Label {
             Layout.alignment: Qt.AlignVCenter
             Layout.preferredWidth: Kirigami.Units.gridUnit * 2.5
-            text: eventRow.minute.length > 0 ? eventRow.minute + "'" : "—"
+            text: eventRow.minute.length > 0 ? eventRow.minute + "'" : "-"
             color: Kirigami.Theme.disabledTextColor
             horizontalAlignment: eventRow.alignRight ? Text.AlignRight : Text.AlignLeft
             font.bold: true
@@ -1099,6 +1267,149 @@ Item {
             horizontalAlignment: Text.AlignLeft
             elide: Text.ElideRight
             font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
+    }
+
+    // One "top performer" category: each side's leading player + their value, with
+    // the category label centred between (mirrors PlayerCompRow's 3-column layout).
+    component LeaderRow: RowLayout {
+        id: leaderRow
+
+        property string category: ""
+        property string homeName: ""
+        property string homeValue: ""
+        property string awayName: ""
+        property string awayValue: ""
+
+        spacing: Kirigami.Units.smallSpacing
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            text: leaderRow.homeName.length > 0 ? leaderRow.homeName + " (" + leaderRow.homeValue + ")" : ""
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideLeft
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
+
+        PlasmaComponents.Label {
+            text: leaderRow.category
+            color: Kirigami.Theme.disabledTextColor
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 6
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            text: leaderRow.awayName.length > 0 ? leaderRow.awayName + " (" + leaderRow.awayValue + ")" : ""
+            horizontalAlignment: Text.AlignLeft
+            elide: Text.ElideRight
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+        }
+    }
+
+    // One row in a box-score table: a player name on the left, fixed-width stat
+    // columns on the right. Used for both the header (bold column labels) and the
+    // per-player data rows, so they line up. `values` is the cell text per column.
+    component PlayerBoxRow: RowLayout {
+        id: playerBoxRow
+
+        property string name: ""
+        property var values: []
+        property bool header: false
+        property bool highlight: false
+
+        readonly property int columnWidth: Kirigami.Units.gridUnit * 2
+
+        spacing: Kirigami.Units.smallSpacing
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            text: playerBoxRow.name
+            elide: Text.ElideRight
+            color: playerBoxRow.header ? Kirigami.Theme.disabledTextColor : Kirigami.Theme.textColor
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+            font.bold: playerBoxRow.header || playerBoxRow.highlight
+        }
+
+        Repeater {
+            model: playerBoxRow.values
+
+            delegate: PlasmaComponents.Label {
+                Layout.preferredWidth: playerBoxRow.columnWidth
+                horizontalAlignment: Text.AlignRight
+                text: String(modelData || "")
+                color: playerBoxRow.header ? Kirigami.Theme.disabledTextColor : Kirigami.Theme.textColor
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                font.bold: playerBoxRow.header
+            }
+        }
+    }
+
+    // One team's box score: the team name, then each curated section (e.g. Skaters,
+    // Goalies / Passing, Rushing) as a small table with a column header and player
+    // rows. Starters are shown in bold.
+    component PlayerBoxTeam: ColumnLayout {
+        id: playerBoxTeam
+
+        property string teamName: ""
+        property var sections: []
+
+        spacing: Kirigami.Units.smallSpacing
+        visible: playerBoxTeam.sections.length > 0
+
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            Layout.topMargin: Kirigami.Units.smallSpacing
+            text: playerBoxTeam.teamName
+            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+            font.bold: true
+            elide: Text.ElideRight
+        }
+
+        Repeater {
+            model: playerBoxTeam.sections
+
+            delegate: ColumnLayout {
+                required property var modelData
+
+                Layout.fillWidth: true
+                spacing: 1
+
+                PlasmaComponents.Label {
+                    Layout.fillWidth: true
+                    visible: playerBoxTeam.sections.length > 1
+                    text: String(modelData.title || "")
+                    color: Kirigami.Theme.disabledTextColor
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    elide: Text.ElideRight
+                }
+
+                PlayerBoxRow {
+                    Layout.fillWidth: true
+                    header: true
+                    name: ""
+                    values: Array.isArray(modelData.columns) ? modelData.columns : []
+                }
+
+                Repeater {
+                    model: Array.isArray(modelData.rows) ? modelData.rows : []
+
+                    delegate: PlayerBoxRow {
+                        required property var modelData
+
+                        Layout.fillWidth: true
+                        name: String(modelData.number || "").length > 0
+                            ? String(modelData.number) + "  " + String(modelData.name || "")
+                            : String(modelData.name || "")
+                        values: Array.isArray(modelData.values) ? modelData.values : []
+                        highlight: modelData.starter === true
+                    }
+                }
+            }
         }
     }
 }

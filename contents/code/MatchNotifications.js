@@ -85,6 +85,12 @@ function scoreText(match) {
 
 function matchInScope(match, options) {
     options = options || {};
+
+    // A match the user explicitly opted in via the per-match bell always fires,
+    // regardless of the favourite-only filter.
+    if (typeof options.forceInclude === "function" && options.forceInclude(match))
+        return true;
+
     if (!options.favoriteOnly)
         return true;
 
@@ -147,7 +153,7 @@ function computeLiveNotifications(previous, liveMatches, options) {
 
         // When detailed events are on for this match, the incidents poll fires a
         // single enriched "goalscorer" notification instead (see
-        // computeIncidentNotifications) — skip this plain one to avoid double
+        // computeIncidentNotifications) - skip this plain one to avoid double
         // notifying the same goal.
         const hasDetailedEvents = typeof options.detailedEventsAvailable === "function" && options.detailedEventsAvailable(match);
         if (triggers.goals && !hasDetailedEvents && prev.live && entry.live && hasScores(match)
@@ -166,7 +172,7 @@ function computeLiveNotifications(previous, liveMatches, options) {
     // using its last known score (only when we have a real baseline to compare).
     // Exception: if the match vanished only because its competition/team's fetch
     // failed this refresh (see options.isUnreliable), it has not necessarily
-    // ended — a flaky provider response should not be read as full-time.
+    // ended - a flaky provider response should not be read as full-time.
     if (triggers.fullTime && hasBaseline) {
         const isUnreliable = typeof options.isUnreliable === "function" ? options.isUnreliable : null;
         Object.keys(previous).forEach(id => {
@@ -270,7 +276,7 @@ function notificationKindForIncident(kind) {
 //   match        - the match row (for building notification events)
 //   incidents    - current incident rows from fetchEspnMatchIncidents/
 //                  sportScoreWidgetIncidents
-//   triggers     - { goals, cards, substitutions, halfTime } — which kinds to
+//   triggers     - { goals, cards, substitutions, halfTime } - which kinds to
 //                  notify (halfTime also gates extratime/extratimesecondhalf/
 //                  shootout, the same "match phase changed" family)
 function computeIncidentNotifications(previousIds, match, incidents, triggers) {

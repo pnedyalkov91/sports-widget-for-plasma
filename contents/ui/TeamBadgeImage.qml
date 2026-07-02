@@ -17,16 +17,21 @@
 
 import QtQuick
 import org.kde.kirigami as Kirigami
+import "../code/SportVisuals.js" as SportVisuals
 
 Item {
     id: root
 
     property string sourceUrl: ""
     property string fallbackIcon: ""
+    // Emoji shown when there is no image and no country-flag emoji - e.g. the sport
+    // emoji (⚽) in place of a generic KDE placeholder icon. Takes precedence over
+    // fallbackIcon when set.
+    property string fallbackEmoji: ""
     property real fallbackOpacity: 0.5
     property int fillMode: Image.PreserveAspectFit
     readonly property bool systemL10nFlag: sourceUrl.indexOf("file:///usr/share/locale/l10n/") === 0
-    readonly property string flagEmoji: flagEmojiFromSource()
+    readonly property string flagEmoji: SportVisuals.flagEmojiFromUrl(root.sourceUrl)
 
     Image {
         id: badgeImage
@@ -42,34 +47,34 @@ Item {
         sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) * 2)
     }
 
+    // True when no badge image is being shown (none given, or it failed to load).
+    readonly property bool imageMissing: root.sourceUrl.length === 0 || root.systemL10nFlag || badgeImage.status === Image.Error
+
+    // Country flag emoji - shown for national teams whose flag image is missing.
     Text {
         anchors.centerIn: parent
-        visible: root.flagEmoji.length > 0 && (root.systemL10nFlag || badgeImage.status === Image.Error)
+        visible: root.flagEmoji.length > 0 && root.imageMissing
         text: root.flagEmoji
         font.pixelSize: Math.max(10, Math.floor(parent.height * 0.9))
     }
 
+    // Sport emoji (or any caller-supplied emoji) - the placeholder when there is no
+    // image and no flag emoji, used instead of a generic KDE icon.
+    Text {
+        anchors.centerIn: parent
+        visible: root.fallbackEmoji.length > 0 && root.flagEmoji.length === 0 && root.imageMissing
+        text: root.fallbackEmoji
+        opacity: root.fallbackOpacity
+        font.pixelSize: Math.max(10, Math.floor(parent.height * 0.7))
+    }
+
+    // Last-resort KDE icon, only when no emoji fallback applies.
     Kirigami.Icon {
         anchors.fill: parent
-        visible: root.fallbackIcon.length > 0
-            && (root.sourceUrl.length === 0 || (badgeImage.status === Image.Error && root.flagEmoji.length === 0))
+        visible: root.fallbackIcon.length > 0 && root.fallbackEmoji.length === 0
+            && root.flagEmoji.length === 0 && root.imageMissing
         source: root.fallbackIcon
         color: Kirigami.Theme.disabledTextColor
         opacity: root.fallbackOpacity
-    }
-
-    function flagEmojiFromSource() {
-        const match = String(root.sourceUrl || "").match(/\/([a-z]{2})\/flag\.(png|svg)$/i);
-        if (!match || !match[1])
-            return "";
-
-        const code = String(match[1]).toUpperCase();
-        const base = 0x1F1E6;
-        const first = code.charCodeAt(0) - 65;
-        const second = code.charCodeAt(1) - 65;
-        if (first < 0 || first > 25 || second < 0 || second > 25)
-            return "";
-
-        return String.fromCodePoint(base + first) + String.fromCodePoint(base + second);
     }
 }

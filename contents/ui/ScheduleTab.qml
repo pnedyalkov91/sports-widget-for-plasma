@@ -119,7 +119,7 @@ Item {
                 && !root.isGroupCollapsed(scheduleRow.model.leagueGroup)
             visible: shown
             // Fixed match-row height (ScoreDelegate's own implicitHeight) so the row
-            // height never drifts as the Loader's item settles — keeps the ListView
+            // height never drifts as the Loader's item settles - keeps the ListView
             // contentHeight stable and the scroll from jumping.
             readonly property real matchRowHeight: Kirigami.Units.gridUnit * 4.2
             height: visible ? (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2 : matchRowHeight) : 0

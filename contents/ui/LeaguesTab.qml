@@ -21,28 +21,52 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
 
+// Compact, GNOME-Colosseum-style overview: every league with a live match is a
+// row; click it to reveal its live matches with scores. Upcoming fixtures live
+// on the Schedules tab only (they used to be mixed in here, duplicating it).
+// Leagues are ordered by the user's configured priority (done upstream when the
+// model is built). Each match row carries the one-click bell / star / pin
+// actions.
 Item {
     id: root
 
-    property var liveModel
+    property var leaguesModel
     property string favoriteTeam: ""
     property bool loading: false
-    property int selectedIndex: 0
+    // Groups start collapsed here; the host keeps the expand/collapse state so it
+    // survives model rebuilds and tab switches.
     property var collapsedGroups: ({})
+    property bool defaultCollapsed: true
+    property bool showMatchActions: false
+    property int matchActionsTick: 0
+    property var matchNotifyState: function(match) { return false; }
+    property var matchPinnedState: function(match) { return false; }
+    property var matchFavoriteState: function(match) { return false; }
+    property var teamFavoriteState: function(teamName) { return false; }
+    // Maps a leagueGroup -> { total, live } so the header can show counts. The
+    // host supplies this so the tab doesn't have to scan the whole model itself.
+    property var groupSummaries: ({})
 
-    signal matchSelected(int index)
+    signal groupToggled(string group)
+    signal matchNotifyToggled(var match)
+    signal matchFavoriteToggled(string teamName)
+    signal matchPanelPinToggled(var match)
 
     function isGroupCollapsed(group) {
-        return Boolean(root.collapsedGroups[String(group || "")]);
+        const key = String(group || "");
+        // An explicit user choice always wins.
+        if (root.collapsedGroups[key] !== undefined)
+            return Boolean(root.collapsedGroups[key]);
+        // Otherwise leagues with a live match start expanded (so live scores are
+        // visible at a glance); leagues with only upcoming fixtures start collapsed.
+        if (root.groupSummary(key).live > 0)
+            return false;
+        return root.defaultCollapsed;
     }
 
-    function toggleGroup(group) {
-        const key = String(group || "");
-        const next = {};
-        for (let existingKey in root.collapsedGroups)
-            next[existingKey] = root.collapsedGroups[existingKey];
-        next[key] = !root.isGroupCollapsed(key);
-        root.collapsedGroups = next;
+    function groupSummary(group) {
+        const summary = root.groupSummaries[String(group || "")];
+        return summary || { "total": 0, "live": 0 };
     }
 
     function isFavoriteTeam(teamName) {
@@ -53,26 +77,34 @@ Item {
         return String(teamName || "").toLowerCase().indexOf(favorite) >= 0;
     }
 
-    PlasmaComponents.BusyIndicator {
-        id: refreshingIndicator
+    function modelMatch(model) {
+        return {
+            "league": model.league || "",
+            "homeTeam": model.homeTeam || "",
+            "awayTeam": model.awayTeam || "",
+            "startTime": model.startTime || "",
+            "timestamp": Number(model.timestamp || 0)
+        };
+    }
 
+    PlasmaComponents.BusyIndicator {
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: Kirigami.Units.smallSpacing
         z: 1
         width: Kirigami.Units.iconSizes.small
         height: width
-        visible: root.loading && liveList.count > 0
+        visible: root.loading && leaguesList.count > 0
         running: visible
     }
 
     ListView {
-        id: liveList
+        id: leaguesList
 
         anchors.fill: parent
         clip: true
         spacing: 0
-        model: root.liveModel
+        model: root.leaguesModel
         boundsBehavior: Flickable.StopAtBounds
         readonly property int contentColumnWidth: Math.max(0, width - Kirigami.Units.gridUnit)
 
@@ -83,21 +115,26 @@ Item {
         section.property: "leagueGroup"
         section.criteria: ViewSection.FullString
         section.delegate: RoundSectionHeader {
-            width: liveList.contentColumnWidth
+            width: leaguesList.contentColumnWidth
             text: section
             collapsible: true
             collapsed: root.isGroupCollapsed(section)
-            onToggled: root.toggleGroup(section)
+            liveCount: root.groupSummary(section).live
+            badgeText: {
+                const total = root.groupSummary(section).total;
+                return total > 0 ? i18ncp("@label number of matches", "%1 match", "%1 matches", total) : "";
+            }
+            onToggled: root.groupToggled(section)
         }
 
         EmptyState {
             anchors.fill: parent
-            visible: liveList.count === 0 && !root.loading
+            visible: leaguesList.count === 0 && !root.loading
             text: i18nc("@info:placeholder", "No live matches")
         }
 
         delegate: LiveMatchDelegate {
-            width: liveList.contentColumnWidth
+            width: leaguesList.contentColumnWidth
             visible: !root.isGroupCollapsed(model.leagueGroup)
             height: visible ? implicitHeight : 0
             enabled: visible
@@ -121,29 +158,37 @@ Item {
             poster: model.poster || ""
             popular: Boolean(model.popular)
             showScore: model.showScore !== false
-            favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam)
-            selected: index === root.selectedIndex
-            expanded: visible && index === liveList.expandedIndex
+            favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam) || (root.matchActionsTick, root.matchFavoriteState(root.modelMatch(model)))
+            expanded: visible && index === leaguesList.expandedIndex
             matchPath: model.matchPath || ""
             liveUrl: model.liveUrl || ""
             detailsProvider: model.detailsProvider || ""
             espnEventId: model.espnEventId || ""
             espnSport: model.espnSport || ""
             espnLeague: model.espnLeague || ""
-            onClicked: {
-                root.matchSelected(index);
-                liveList.expandedIndex = liveList.expandedIndex === index ? -1 : index;
-            }
-            onRequestExpand: liveList.expandedIndex = index
+            showMatchActions: root.showMatchActions
+            matchNotifyOn: (root.matchActionsTick, root.matchNotifyState(root.modelMatch(model)))
+            matchPinnedToPanel: (root.matchActionsTick, root.matchPinnedState(root.modelMatch(model)))
+            homeIsFavorite: (root.matchActionsTick, root.teamFavoriteState(model.homeTeam || ""))
+            awayIsFavorite: (root.matchActionsTick, root.teamFavoriteState(model.awayTeam || ""))
+            activeDetailsTab: leaguesList.expandedDetailsTab
+            onActiveDetailsTabChanged: leaguesList.expandedDetailsTab = activeDetailsTab
+            onClicked: leaguesList.expandedIndex = leaguesList.expandedIndex === index ? -1 : index
+            onRequestExpand: leaguesList.expandedIndex = index
+            onNotifyToggled: root.matchNotifyToggled(root.modelMatch(model))
+            onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName)
+            onPanelPinToggled: root.matchPanelPinToggled(root.modelMatch(model))
         }
 
         property int expandedIndex: -1
+        property int expandedDetailsTab: 0
+        onExpandedIndexChanged: expandedDetailsTab = 0
     }
 
     ColumnLayout {
         anchors.centerIn: parent
         width: Math.max(0, parent.width - Kirigami.Units.gridUnit * 2)
-        visible: root.loading && liveList.count === 0
+        visible: root.loading && leaguesList.count === 0
         spacing: Kirigami.Units.smallSpacing
 
         PlasmaComponents.BusyIndicator {
@@ -155,7 +200,7 @@ Item {
 
         PlasmaComponents.Label {
             Layout.fillWidth: true
-            text: i18nc("@info:status", "Loading live matches")
+            text: i18nc("@info:status", "Loading matches")
             color: Kirigami.Theme.disabledTextColor
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
@@ -174,7 +219,7 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Kirigami.Units.iconSizes.large
                 Layout.preferredHeight: Layout.preferredWidth
-                source: "media-playback-start"
+                source: "view-calendar-list"
                 color: Kirigami.Theme.disabledTextColor
             }
 

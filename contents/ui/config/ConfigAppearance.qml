@@ -27,6 +27,9 @@ import "tabs" as AppearanceTabs
 KCM.SimpleKCM {
     id: root
 
+    property string cfg_panelMode: Plasmoid.configuration.panelMode
+    property string cfg_panelCountsFormat: Plasmoid.configuration.panelCountsFormat
+    property string cfg_panelSimpleScheduleWindow: Plasmoid.configuration.panelSimpleScheduleWindow
     property string cfg_panelLayoutMode: Plasmoid.configuration.panelLayoutMode
     property string cfg_panelAreaMode: Plasmoid.configuration.panelAreaMode
     property int cfg_panelAreaSize: Plasmoid.configuration.panelAreaSize
@@ -37,16 +40,29 @@ KCM.SimpleKCM {
     property int cfg_panelEmblemSize: Plasmoid.configuration.panelEmblemSize
     property bool cfg_panelMatchRotationEnabled: Plasmoid.configuration.panelMatchRotationEnabled
     property int cfg_panelMatchRotationInterval: Plasmoid.configuration.panelMatchRotationInterval
+    property string cfg_panelMultiMatchMode: Plasmoid.configuration.panelMultiMatchMode
+    property int cfg_panelStackMaxMatches: Plasmoid.configuration.panelStackMaxMatches
     property bool cfg_widgetMatchRotationEnabled: Plasmoid.configuration.widgetMatchRotationEnabled
     property int cfg_widgetMatchRotationInterval: Plasmoid.configuration.widgetMatchRotationInterval
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat
     property string cfg_matchTimeFormat: Plasmoid.configuration.matchTimeFormat
     property string cfg_widgetTabs: Plasmoid.configuration.widgetTabs
+    property bool cfg_showTabLive: Plasmoid.configuration.showTabLive
+    property bool cfg_showTabSchedules: Plasmoid.configuration.showTabSchedules
+    property bool cfg_showTabRecent: Plasmoid.configuration.showTabRecent
+    property bool cfg_showTabTables: Plasmoid.configuration.showTabTables
+    property bool cfg_showMatchRowActions: Plasmoid.configuration.showMatchRowActions
     property int cfg_widgetRecentMatchesPerGroup: Plasmoid.configuration.widgetRecentMatchesPerGroup
     property string cfg_widgetRecentFilter: Plasmoid.configuration.widgetRecentFilter
     property int cfg_widgetScheduleDaysAhead: Plasmoid.configuration.widgetScheduleDaysAhead
     property int cfg_widgetScheduleMatchesPerGroup: Plasmoid.configuration.widgetScheduleMatchesPerGroup
+    property int cfg_tooltipLiveMatchesLimit: Plasmoid.configuration.tooltipLiveMatchesLimit
+    property int cfg_tooltipScheduleDaysAhead: Plasmoid.configuration.tooltipScheduleDaysAhead
+    property int cfg_tooltipRecentDaysBack: Plasmoid.configuration.tooltipRecentDaysBack
     property string cfg_widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
+    property string cfg_widgetSimpleScheduleWindow: Plasmoid.configuration.widgetSimpleScheduleWindow
+    property bool cfg_widgetHeroEnabled: Plasmoid.configuration.widgetHeroEnabled
+    property string cfg_widgetTabsPosition: Plasmoid.configuration.widgetTabsPosition
     property string cfg_nationalTeamVisualStyle: Plasmoid.configuration.nationalTeamVisualStyle
     property string cfg_provider: Plasmoid.configuration.provider
     property bool cfg_notificationsEnabled: Plasmoid.configuration.notificationsEnabled
@@ -62,8 +78,8 @@ KCM.SimpleKCM {
     property bool cfg_calendarIcsExportEnabled: Plasmoid.configuration.calendarIcsExportEnabled
     property bool cfg_calendarAkonadiEnabled: Plasmoid.configuration.calendarAkonadiEnabled
     property int cfg_calendarReminderMinutes: Plasmoid.configuration.calendarReminderMinutes
-    property string cfg_notifyEntryExclusions: Plasmoid.configuration.notifyEntryExclusions
-    property string cfg_calendarEntryExclusions: Plasmoid.configuration.calendarEntryExclusions
+    property string cfg_notifyEntryInclusions: Plasmoid.configuration.notifyEntryInclusions
+    property string cfg_calendarEntryInclusions: Plasmoid.configuration.calendarEntryInclusions
     readonly property bool isVerticalPanel: Plasmoid.formFactor === PlasmaCore.Types.Vertical
 
     header: PlasmaComponents.TabBar {
@@ -107,6 +123,7 @@ KCM.SimpleKCM {
         }
 
         AppearanceTabs.AppearanceTooltipTab {
+            configRoot: root
             Layout.fillWidth: true
             Layout.fillHeight: true
         }
