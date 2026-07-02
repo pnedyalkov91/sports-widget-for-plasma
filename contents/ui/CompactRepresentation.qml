@@ -63,7 +63,20 @@ Control {
     // "rotate" (default) cycles one match at a time; "stack" shows several at once.
     property string multiMatchMode: "rotate"
     property int stackMaxMatches: 3
+    // What separates the side-by-side matches in stack mode:
+    // "line" (thin vertical line), "dash", "dot", "bar" or "none".
+    property string stackSeparator: "line"
     property var stackMatches: []
+
+    function stackSeparatorText() {
+        if (compact.stackSeparator === "dash")
+            return "-";
+        if (compact.stackSeparator === "dot")
+            return "·";
+        if (compact.stackSeparator === "bar")
+            return "|";
+        return "";
+    }
     readonly property bool stackModeActive: compact.multiMatchMode === "stack" && !compact.favoritePanelMode && Array.isArray(compact.stackMatches) && compact.stackMatches.length > 0
     readonly property color liveColor: Kirigami.Theme.negativeTextColor
     readonly property int effectiveManualFontPointSize: Math.max(6, compact.panelFontSize > 0 ? compact.panelFontSize : Kirigami.Theme.defaultFont.pointSize > 0 ? Kirigami.Theme.defaultFont.pointSize : 11)
@@ -429,7 +442,14 @@ Control {
                         height: Math.round(parent.height * 0.55)
                         color: Kirigami.Theme.separatorColor
                         opacity: 0.5
-                        visible: index > 0
+                        visible: index > 0 && compact.stackSeparator === "line"
+                    }
+
+                    PanelLabel {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: compact.stackSeparatorText()
+                        opacity: 0.6
+                        visible: index > 0 && text.length > 0
                     }
 
                     StackCell {

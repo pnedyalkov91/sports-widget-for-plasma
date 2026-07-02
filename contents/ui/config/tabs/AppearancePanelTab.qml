@@ -231,6 +231,25 @@ Kirigami.FormLayout {
         }
     }
 
+    ComboBox {
+        id: panelStackSeparator
+
+        Kirigami.FormData.label: i18nc("@label:listbox", "Separator between matches:")
+        Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+        visible: !panelTab.simpleMode && panelMultiMatchMode.currentValue === "stack"
+        textRole: "label"
+        valueRole: "value"
+        model: [
+            { "value": "line", "label": i18nc("@item:inlistbox stack separator", "Thin line") },
+            { "value": "dash", "label": i18nc("@item:inlistbox stack separator", "Dash ( - )") },
+            { "value": "dot", "label": i18nc("@item:inlistbox stack separator", "Dot ( · )") },
+            { "value": "bar", "label": i18nc("@item:inlistbox stack separator", "Bar ( | )") },
+            { "value": "none", "label": i18nc("@item:inlistbox stack separator", "None") }
+        ]
+        Component.onCompleted: currentIndex = panelTab.indexFor(model, panelTab.configRoot.cfg_panelStackSeparator || "line")
+        onActivated: panelTab.configRoot.cfg_panelStackSeparator = currentValue
+    }
+
     RowLayout {
         Kirigami.FormData.label: i18nc("@label:listbox", "Widget panel area:")
         Layout.fillWidth: true

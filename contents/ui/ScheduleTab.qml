@@ -35,12 +35,35 @@ Item {
     // Groups whose data is currently being fetched (lazy expand), so the section
     // header can show a spinner.
     property var loadingGroups: ({})
+    // Per-match one-click bell / star / pin actions, same wiring as the Live tab.
+    property bool showMatchActions: false
+    property int matchActionsTick: 0
+    property var matchNotifyState: function(match) { return false; }
+    property var matchPinnedState: function(match) { return false; }
+    property var matchFavoriteState: function(match) { return false; }
+    property var teamFavoriteState: function(teamName) { return false; }
 
     signal matchSelected(int index)
     // Emitted when a group header is toggled. The host owns the collapsed map
     // (collapsedGroups is bound from it) and lazily fetches a group on expand.
     signal groupExpanded(string group)
     signal groupCollapsed(string group)
+    signal matchNotifyToggled(var match)
+    signal matchFavoriteToggled(string teamName, var match)
+    signal matchPanelPinToggled(var match)
+
+    function modelMatch(model) {
+        return {
+            "sport": model.sport || "",
+            "league": model.league || "",
+            "homeTeam": model.homeTeam || "",
+            "awayTeam": model.awayTeam || "",
+            "homeBadge": model.homeBadge || "",
+            "awayBadge": model.awayBadge || "",
+            "startTime": model.startTime || "",
+            "timestamp": Number(model.timestamp || 0)
+        };
+    }
 
     function isGroupCollapsed(group) {
         return Boolean(root.collapsedGroups[String(group || "")]);
@@ -163,8 +186,16 @@ Item {
                     showScore: scheduleRow.model.showScore !== false
                     splitLeagueAndTimeLines: true
                     splitDateAndTimeLines: false
-                    favorite: root.isFavoriteTeam(scheduleRow.model.homeTeam) || root.isFavoriteTeam(scheduleRow.model.awayTeam)
+                    favorite: root.isFavoriteTeam(scheduleRow.model.homeTeam) || root.isFavoriteTeam(scheduleRow.model.awayTeam) || (root.matchActionsTick, root.matchFavoriteState(root.modelMatch(scheduleRow.model)))
                     selected: scheduleRow.index === root.selectedIndex
+                    showMatchActions: root.showMatchActions
+                    matchNotifyOn: (root.matchActionsTick, root.matchNotifyState(root.modelMatch(scheduleRow.model)))
+                    matchPinnedToPanel: (root.matchActionsTick, root.matchPinnedState(root.modelMatch(scheduleRow.model)))
+                    homeIsFavorite: (root.matchActionsTick, root.teamFavoriteState(scheduleRow.model.homeTeam || ""))
+                    awayIsFavorite: (root.matchActionsTick, root.teamFavoriteState(scheduleRow.model.awayTeam || ""))
+                    onNotifyToggled: root.matchNotifyToggled(root.modelMatch(scheduleRow.model))
+                    onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName, root.modelMatch(scheduleRow.model))
+                    onPanelPinToggled: root.matchPanelPinToggled(root.modelMatch(scheduleRow.model))
                     onClicked: root.matchSelected(scheduleRow.index)
                 }
             }

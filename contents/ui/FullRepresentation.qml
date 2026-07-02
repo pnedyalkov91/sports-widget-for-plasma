@@ -129,8 +129,12 @@ Item {
     property var matchPinnedState: function(match) { return false; }
     property var matchFavoriteState: function(match) { return false; }
     property var teamFavoriteState: function(teamName) { return false; }
+    // Transient notice shown after a pin click auto-unpinned other matches
+    // (only one match can be pinned at a time). Cleared by the host.
+    property string pinNoticeText: ""
+    signal pinNoticeDismissed()
     signal matchNotifyToggled(var match)
-    signal matchFavoriteToggled(string teamName)
+    signal matchFavoriteToggled(string teamName, var match)
     signal matchPanelPinToggled(var match)
 
     // Live tab data (compact collapsed-league layout).
@@ -187,9 +191,12 @@ Item {
     // Minimal match identity for the per-match action callbacks in simple mode.
     function simpleMatchOf(modelData) {
         return {
+            "sport": (modelData && modelData.sport) || "",
             "league": (modelData && modelData.league) || "",
             "homeTeam": (modelData && modelData.homeTeam) || "",
             "awayTeam": (modelData && modelData.awayTeam) || "",
+            "homeBadge": (modelData && modelData.homeBadge) || "",
+            "awayBadge": (modelData && modelData.awayBadge) || "",
             "startTime": (modelData && modelData.startTime) || "",
             "timestamp": Number((modelData && modelData.timestamp) || 0)
         };
@@ -547,6 +554,7 @@ Item {
 
     onWidgetTabsChanged: activateTab(activeTab)
     onFollowTeamModeChanged: activateTab(activeTab)
+    onPinNoticeTextChanged: pinNoticeMessage.visible = root.pinNoticeText.length > 0
 
     // In Simple mode the popup follows its content: header + the combined
     // match list + footer, clamped between a small floor and a sensible cap
@@ -763,6 +771,22 @@ Item {
         }
 
         Kirigami.InlineMessage {
+            id: pinNoticeMessage
+
+            Layout.fillWidth: true
+            visible: false
+            showCloseButton: true
+            type: Kirigami.MessageType.Information
+            text: root.pinNoticeText
+            // Visibility is assigned (not bound) because the close button breaks
+            // a visible binding; the host clears pinNoticeText on dismiss/timeout.
+            onVisibleChanged: {
+                if (!visible && root.pinNoticeText.length > 0)
+                    root.pinNoticeDismissed();
+            }
+        }
+
+        Kirigami.InlineMessage {
             Layout.fillWidth: true
             visible: !root.simpleMode && root.activeTab === 1 && root.errorMessage.length > 0 && !root.loading && !root.schedulesLoading
             type: Kirigami.MessageType.Information
@@ -792,7 +816,7 @@ Item {
                 teamFavoriteState: root.teamFavoriteState
                 onGroupToggled: (group) => root.leaguesGroupToggled(group)
                 onMatchNotifyToggled: (match) => root.matchNotifyToggled(match)
-                onMatchFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName)
+                onMatchFavoriteToggled: (teamName, match) => root.matchFavoriteToggled(teamName, match)
                 onMatchPanelPinToggled: (match) => root.matchPanelPinToggled(match)
             }
 
@@ -804,11 +828,20 @@ Item {
                 selectedIndex: root.selectedScoreIndex
                 collapsedGroups: root.collapsedScheduleGroups
                 loadingGroups: root.loadingScheduleGroups
+                showMatchActions: root.showMatchActions
+                matchActionsTick: root.matchActionsTick
+                matchNotifyState: root.matchNotifyState
+                matchPinnedState: root.matchPinnedState
+                matchFavoriteState: root.matchFavoriteState
+                teamFavoriteState: root.teamFavoriteState
                 onMatchSelected: (index) => {
                     root.selectedScoreIndex = index;
                 }
                 onGroupExpanded: (group) => root.scheduleGroupExpanded(group)
                 onGroupCollapsed: (group) => root.scheduleGroupCollapsed(group)
+                onMatchNotifyToggled: (match) => root.matchNotifyToggled(match)
+                onMatchFavoriteToggled: (teamName, match) => root.matchFavoriteToggled(teamName, match)
+                onMatchPanelPinToggled: (match) => root.matchPanelPinToggled(match)
             }
 
             RecentResultsTab {
@@ -926,7 +959,7 @@ Item {
                             homeIsFavorite: (root.matchActionsTick, root.teamFavoriteState(modelData.homeTeam || ""))
                             awayIsFavorite: (root.matchActionsTick, root.teamFavoriteState(modelData.awayTeam || ""))
                             onNotifyToggled: root.matchNotifyToggled(root.simpleMatchOf(modelData))
-                            onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName)
+                            onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName, root.simpleMatchOf(modelData))
                             onPanelPinToggled: root.matchPanelPinToggled(root.simpleMatchOf(modelData))
                         }
                     }

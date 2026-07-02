@@ -49,7 +49,7 @@ Item {
 
     signal groupToggled(string group)
     signal matchNotifyToggled(var match)
-    signal matchFavoriteToggled(string teamName)
+    signal matchFavoriteToggled(string teamName, var match)
     signal matchPanelPinToggled(var match)
 
     function isGroupCollapsed(group) {
@@ -79,9 +79,12 @@ Item {
 
     function modelMatch(model) {
         return {
+            "sport": model.sport || "",
             "league": model.league || "",
             "homeTeam": model.homeTeam || "",
             "awayTeam": model.awayTeam || "",
+            "homeBadge": model.homeBadge || "",
+            "awayBadge": model.awayBadge || "",
             "startTime": model.startTime || "",
             "timestamp": Number(model.timestamp || 0)
         };
@@ -120,10 +123,6 @@ Item {
             collapsible: true
             collapsed: root.isGroupCollapsed(section)
             liveCount: root.groupSummary(section).live
-            badgeText: {
-                const total = root.groupSummary(section).total;
-                return total > 0 ? i18ncp("@label number of matches", "%1 match", "%1 matches", total) : "";
-            }
             onToggled: root.groupToggled(section)
         }
 
@@ -176,7 +175,7 @@ Item {
             onClicked: leaguesList.expandedIndex = leaguesList.expandedIndex === index ? -1 : index
             onRequestExpand: leaguesList.expandedIndex = index
             onNotifyToggled: root.matchNotifyToggled(root.modelMatch(model))
-            onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName)
+            onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName, root.modelMatch(model))
             onPanelPinToggled: root.matchPanelPinToggled(root.modelMatch(model))
         }
 

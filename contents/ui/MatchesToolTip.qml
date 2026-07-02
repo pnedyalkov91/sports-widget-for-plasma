@@ -28,6 +28,9 @@ Item {
     property var liveModel
     property var scheduleModel
     property var recentModel
+    // A refresh is in flight: the empty state shows "Updating" instead of a
+    // premature "no matches".
+    property bool loading: false
     property int liveMatchesLimit: 5
     property int scheduleDaysAhead: 1
     property int recentDaysBack: 5
@@ -208,7 +211,7 @@ Item {
         PlasmaComponents.Label {
             Layout.fillWidth: true
             visible: liveRepeater.count === 0 && upcomingRepeater.count === 0 && recentRepeater.count === 0
-            text: i18nc("@info:tooltip", "No live, upcoming or recent matches")
+            text: root.loading ? i18nc("@info:status", "Updating…") : i18nc("@info:tooltip", "No live, upcoming or recent matches")
             color: Kirigami.Theme.disabledTextColor
             horizontalAlignment: Text.AlignHCenter
         }

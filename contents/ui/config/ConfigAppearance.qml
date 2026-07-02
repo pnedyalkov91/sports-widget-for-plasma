@@ -42,6 +42,7 @@ KCM.SimpleKCM {
     property int cfg_panelMatchRotationInterval: Plasmoid.configuration.panelMatchRotationInterval
     property string cfg_panelMultiMatchMode: Plasmoid.configuration.panelMultiMatchMode
     property int cfg_panelStackMaxMatches: Plasmoid.configuration.panelStackMaxMatches
+    property string cfg_panelStackSeparator: Plasmoid.configuration.panelStackSeparator
     property bool cfg_widgetMatchRotationEnabled: Plasmoid.configuration.widgetMatchRotationEnabled
     property int cfg_widgetMatchRotationInterval: Plasmoid.configuration.widgetMatchRotationInterval
     property string cfg_matchDateFormat: Plasmoid.configuration.matchDateFormat

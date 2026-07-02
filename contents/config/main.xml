@@ -121,6 +121,11 @@
       <min>2</min>
       <max>8</max>
     </entry>
+    <!-- Separator drawn between side-by-side matches in "stack" mode:
+         "line" (thin vertical line), "dash", "dot", "bar" or "none". -->
+    <entry name="panelStackSeparator" type="String">
+      <default>line</default>
+    </entry>
     <entry name="widgetMatchRotationEnabled" type="Bool">
       <default>true</default>
     </entry>

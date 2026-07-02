@@ -130,12 +130,21 @@ PlasmoidItem {
     // Bumped after any per-match action toggle so bound icon states in the match
     // rows re-evaluate against the freshly written config maps.
     property int matchActionsTick: 0
+    // Transient message shown in the popup after pinning a match auto-unpinned
+    // the previously pinned one(s); cleared on dismiss or after a few seconds.
+    property string pinNotice: ""
+    // Set just before a quick-favourite star writes savedLeagues, so the
+    // onSavedLeaguesChanged handler can take a light path (lazily load only the
+    // new team's groups) instead of the full forced refresh, which cleared and
+    // refetched every model and froze the shell for seconds per click.
+    property bool quickFavoriteEditPending: false
+    property string quickFavoritePendingGroup: ""
     readonly property int panelRotationCount: panelMatchRotationCount()
-    property string primaryMatchText: panelLiveMatchesModel.count > 0 ? panelLiveMatchesModel.get(0).homeTeam + " vs " + panelLiveMatchesModel.get(0).awayTeam : panelScheduleMatchesModel.count > 0 ? panelScheduleMatchesModel.get(0).homeTeam + " vs " + panelScheduleMatchesModel.get(0).awayTeam : root.hasSportSelection() ? i18nc("@info:status", "No scheduled matches") : i18nc("@action:button", "Add a sport")
+    property string primaryMatchText: panelLiveMatchesModel.count > 0 ? panelLiveMatchesModel.get(0).homeTeam + " vs " + panelLiveMatchesModel.get(0).awayTeam : panelScheduleMatchesModel.count > 0 ? panelScheduleMatchesModel.get(0).homeTeam + " vs " + panelScheduleMatchesModel.get(0).awayTeam : panelEmptyStatusText()
     property string secondaryMatchText: panelLiveMatchesModel.count > 0 ? panelLiveMatchesModel.get(0).minute || panelLiveMatchesModel.get(0).status : panelScheduleMatchesModel.count > 0 ? panelScheduleMatchesModel.get(0).startTime || panelScheduleMatchesModel.get(0).status : root.hasSportSelection() ? sourceText : i18nc("@info:status", "Open settings to add a league")
     property var panelHeroMatch: (root.matchActionsTick, panelMatchForRotation())
     property bool panelHeroLive: matchField(panelHeroMatch, "status") === "Live"
-    property string panelHeroText: panelHeroLive ? panelTeamsScoreText(panelHeroMatch) : matchField(panelHeroMatch, "homeTeam").length > 0 ? panelScheduleText(panelHeroMatch) : root.hasSportSelection() ? i18nc("@info:status", "No scheduled matches") : i18nc("@action:button", "Add a sport")
+    property string panelHeroText: panelHeroLive ? panelTeamsScoreText(panelHeroMatch) : matchField(panelHeroMatch, "homeTeam").length > 0 ? panelScheduleText(panelHeroMatch) : panelEmptyStatusText()
     property string panelHeroLiveText: panelHeroLive ? panelLiveText(panelHeroMatch) : ""
     property bool panelHeroShowScore: matchBooleanField(panelHeroMatch, "showScore", panelHeroLive)
     property string panelHeroStatusText: matchStatusText(panelHeroMatch)
@@ -199,6 +208,17 @@ PlasmoidItem {
     readonly property int panelAreaSize: Math.max(20, Number(Plasmoid.configuration.panelAreaSize || 240))
     readonly property bool panelAreaFill: panelAreaMode === "fill"
     readonly property int compactPanelWidth: panelAreaMode === "manual" ? panelAreaSize : compactRepresentation ? Math.ceil(compactRepresentation.implicitWidth) : Kirigami.Units.gridUnit * 9
+
+    // Placeholder for the panel when no match is available yet: while a refresh
+    // is in flight show "Updating" instead of a premature "No scheduled matches"
+    // (visible for several seconds after plasmashell restarts).
+    function panelEmptyStatusText() {
+        if (!root.hasSportSelection())
+            return i18nc("@action:button", "Add a sport");
+        if (root.loading || root.schedulesLoading || root.liveLoading)
+            return i18nc("@info:status", "Updating…");
+        return i18nc("@info:status", "No scheduled matches");
+    }
 
     function normalizedPanelAreaMode() {
         const mode = String(Plasmoid.configuration.panelAreaMode || "auto").trim();
@@ -1328,7 +1348,9 @@ PlasmoidItem {
 
     function matchNotifyEnabled(match) {
         const key = root.stableMatchKey(match);
-        return key.length > 0 && root.perMatchNotifyMap()[key] === true;
+        // Legacy entries are plain `true`; newer ones are objects carrying the
+        // match details for the Notifications settings page. Both count.
+        return key.length > 0 && Boolean(root.perMatchNotifyMap()[key]);
     }
 
     function matchPinnedToPanel(match) {
@@ -1349,10 +1371,20 @@ PlasmoidItem {
             return;
 
         const map = root.perMatchNotifyMap();
-        if (map[key])
+        if (map[key]) {
             delete map[key];
-        else
-            map[key] = true;
+        } else {
+            // Store the display details alongside the flag so the Notifications
+            // settings page can list this match by name.
+            map[key] = {
+                "sport": String(match && match.sport || ""),
+                "league": String(match && match.league || ""),
+                "homeTeam": String(match && match.homeTeam || ""),
+                "awayTeam": String(match && match.awayTeam || ""),
+                "startTime": String(match && match.startTime || ""),
+                "timestamp": Number(match && match.timestamp || 0)
+            };
+        }
         Plasmoid.configuration.perMatchNotify = JSON.stringify(map);
     }
 
@@ -1362,11 +1394,29 @@ PlasmoidItem {
             return;
 
         const map = root.perMatchPinMap();
-        if (map[key])
+        if (map[key]) {
             delete map[key];
-        else
-            map[key] = true;
-        Plasmoid.configuration.perMatchPanelPins = JSON.stringify(map);
+            Plasmoid.configuration.perMatchPanelPins = JSON.stringify(map);
+            return;
+        }
+
+        // Only one match drives the panel at a time, so pinning a new match
+        // replaces any previous pin. When that actually unpinned something,
+        // surface it with a transient inline message in the popup.
+        const unpinnedCount = Object.keys(map).length;
+        const next = {};
+        next[key] = true;
+        Plasmoid.configuration.perMatchPanelPins = JSON.stringify(next);
+
+        if (unpinnedCount > 0) {
+            const home = String(match && match.homeTeam || "");
+            const away = String(match && match.awayTeam || "");
+            root.pinNotice = i18ncp("@info %2 and %3 are team names",
+                "Pinned %2 vs %3 to the panel - the previously pinned match was unpinned.",
+                "Pinned %2 vs %3 to the panel - %1 previously pinned matches were unpinned.",
+                unpinnedCount, home, away);
+            pinNoticeTimer.restart();
+        }
     }
 
     // Is this specific team name a quick favourite (one-click star)?
@@ -1377,18 +1427,84 @@ PlasmoidItem {
 
     // Toggle one specific team as a quick favourite. The star UI asks the user
     // which side of the match (home or away) before calling this, so there is no
-    // ambiguity about who gets favourited.
-    function toggleQuickFavoriteTeam(teamName) {
+    // ambiguity about who gets favourited. Favouriting also saves the team as a
+    // followed entry (the Sports settings page); unfavouriting removes only
+    // entries this shortcut created, never ones added manually in the wizard.
+    function toggleQuickFavoriteTeam(teamName, match) {
         const key = String(teamName || "").trim().toLowerCase();
         if (key.length === 0)
             return;
 
         const map = root.quickFavoriteMap();
-        if (map[key])
+        if (map[key]) {
             delete map[key];
-        else
+            root.removeAutoSavedFavoriteTeam(teamName);
+        } else {
             map[key] = true;
+            root.autoSaveFavoriteTeam(teamName, match);
+        }
         Plasmoid.configuration.quickFavoriteTeams = JSON.stringify(map);
+    }
+
+    function parseSavedLeagueEntries() {
+        try {
+            const parsed = JSON.parse(String(Plasmoid.configuration.savedLeagues || "[]"));
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    function savedTeamEntryName(entry) {
+        return String((entry && (entry.customFavoriteTeamLabel || entry.favoriteTeam)) || "").replace(/^[★*]\s*/, "").trim().toLowerCase();
+    }
+
+    // Adds the starred team to the saved sports entries so it shows up in the
+    // Sports settings page and its fixtures are followed, unless a team entry
+    // with the same name already exists.
+    function autoSaveFavoriteTeam(teamName, match) {
+        const name = String(teamName || "").trim();
+        if (name.length === 0)
+            return;
+
+        const entries = root.parseSavedLeagueEntries();
+        const wanted = name.toLowerCase();
+        const exists = entries.some(entry => String(entry && entry.type || "") === "team" && root.savedTeamEntryName(entry) === wanted);
+        if (exists)
+            return;
+
+        const isHome = String(match && match.homeTeam || "").trim().toLowerCase() === wanted;
+        entries.push({
+            "sport": String(match && match.sport || root.activeSport || "football"),
+            "country": "",
+            "league": "",
+            "favoriteTeam": name,
+            "teamBadge": String((isHome ? match && match.homeBadge : match && match.awayBadge) || ""),
+            "followMode": "team",
+            "type": "team",
+            "autoAdded": true
+        });
+        root.quickFavoriteEditPending = true;
+        root.quickFavoritePendingGroup = name;
+        Plasmoid.configuration.savedLeagues = JSON.stringify(entries);
+    }
+
+    function removeAutoSavedFavoriteTeam(teamName) {
+        const wanted = String(teamName || "").trim().toLowerCase();
+        if (wanted.length === 0)
+            return;
+
+        const entries = root.parseSavedLeagueEntries();
+        const kept = entries.filter(entry => !(entry && entry.autoAdded === true
+            && String(entry.type || "") === "team"
+            && root.savedTeamEntryName(entry) === wanted));
+        if (kept.length !== entries.length) {
+            // Light path: the removed team's cached rows stay visible until the
+            // next regular refresh instead of forcing a full refetch now.
+            root.quickFavoriteEditPending = true;
+            root.quickFavoritePendingGroup = "";
+            Plasmoid.configuration.savedLeagues = JSON.stringify(kept);
+        }
     }
 
     // Drop per-match notify/pin entries for fixtures no longer present in any
@@ -4069,6 +4185,7 @@ PlasmoidItem {
         liveModel: tooltipLiveMatchesModel
         scheduleModel: tooltipScheduleMatchesModel
         recentModel: tooltipRecentMatchesModel
+        loading: root.loading || root.schedulesLoading || root.liveLoading
         liveMatchesLimit: Math.max(1, Plasmoid.configuration.tooltipLiveMatchesLimit || 5)
         scheduleDaysAhead: Math.max(1, Plasmoid.configuration.tooltipScheduleDaysAhead || 1)
         recentDaysBack: Math.max(1, Plasmoid.configuration.tooltipRecentDaysBack || 5)
@@ -4571,6 +4688,25 @@ PlasmoidItem {
         }
 
         function onSavedLeaguesChanged() {
+            // A quick-favourite star only added/removed a single team entry. A
+            // full forced refresh here cleared every model and refetched every
+            // saved entry, freezing the shell for seconds - instead just fetch
+            // the new team's schedule/recent groups and merge them in.
+            if (root.quickFavoriteEditPending) {
+                root.quickFavoriteEditPending = false;
+                const group = root.quickFavoritePendingGroup;
+                root.quickFavoritePendingGroup = "";
+                root.ensureActiveSport();
+                Qt.callLater(root.refreshAuxiliaryMatchModels);
+                if (group.length > 0) {
+                    Qt.callLater(() => {
+                        root.requestScheduleGroupLoad(group);
+                        root.requestRecentGroupLoad(group);
+                    });
+                }
+                return;
+            }
+
             root.ensureActiveSport();
             Qt.callLater(root.refreshAuxiliaryMatchModels);
             root.scheduleConfigRefresh();
@@ -4591,6 +4727,13 @@ PlasmoidItem {
             // load its Recent/Schedule groups (no-op if already loaded).
             root.loadActiveEntryGroups();
         }
+    }
+
+    Timer {
+        id: pinNoticeTimer
+
+        interval: 6000
+        onTriggered: root.pinNotice = ""
     }
 
     compactRepresentation: CompactRepresentation {
@@ -4628,6 +4771,7 @@ PlasmoidItem {
         remainingCount: root.panelRemainingCount
         multiMatchMode: Plasmoid.configuration.panelMultiMatchMode
         stackMaxMatches: Plasmoid.configuration.panelStackMaxMatches
+        stackSeparator: Plasmoid.configuration.panelStackSeparator
         stackMatches: root.panelStackMatches
         onRotateMatchRequested: root.advancePanelRotation()
     }
@@ -4703,8 +4847,10 @@ PlasmoidItem {
         matchPinnedState: match => root.matchPinnedToPanel(match)
         matchFavoriteState: match => root.isQuickFavoriteMatch(match)
         teamFavoriteState: teamName => root.isQuickFavoriteTeam(teamName)
+        pinNoticeText: root.pinNotice
+        onPinNoticeDismissed: root.pinNotice = ""
         onMatchNotifyToggled: match => { root.toggleMatchNotify(match); root.matchActionsTick += 1; }
-        onMatchFavoriteToggled: teamName => { root.toggleQuickFavoriteTeam(teamName); root.matchActionsTick += 1; }
+        onMatchFavoriteToggled: (teamName, match) => { root.toggleQuickFavoriteTeam(teamName, match); root.matchActionsTick += 1; }
         onMatchPanelPinToggled: match => { root.toggleMatchPin(match); root.matchActionsTick += 1; }
 
         leaguesModel: leaguesMatchesModel
