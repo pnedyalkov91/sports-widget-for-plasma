@@ -1,17 +1,13 @@
 # Sports Widget for KDE Plasma 6
 
-> ⚠️ **Beta software:** This widget is still in beta. Features, settings and configuration options may still change before the stable release.
->  Unfortunately, the SportsScore API provider is proving to be too unstable for the widget at the moment. Quite often, requests either return no data or fail with HTTP 504 timeouts. As a result, the widget may load very slowly or fail to display data altogether. Because of this, I have decided to temporarily unpublish the widget from the KDE Store until I can find a reliable solution. 
-
-----------------------------
-
 Sports widget for KDE Plasma desktop environment. Provides live scores, results, schedules and tables for various sports.
 
 ### Why this widget?
-*   **Multi-Sport:** Follow Football, Basketball, Cricket and Tennis at the same time.
+*   **Multi-Sport:** Follow 16 sports at the same time - Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball and Water Polo.
 *   **Multi-Competition:** Track several leagues, cups, national teams and favorite clubs together.
 *   **Modern UX:** A clean, native-feeling interface with a guided setup wizard, live score panel and informative tooltip.
-*   **Network Friendly:** Smart refresh keeps schedules up to date every 30 minutes and live scores every 60 seconds, without hammering the SportsScore API.
+*   **Stay Notified:** Optional desktop notifications and Plasma calendar sync for the matches you care about.
+*   **Network Friendly:** Smart refresh keeps schedules up to date every 30 minutes and live scores every 60 seconds, without hammering the data providers' APIs.
 
 ## 📑 Table of Contents
 - [📦 Installation](#-installation)
@@ -97,7 +93,7 @@ To update an existing installation, replace `--install` with `--upgrade`.
   <img src="screenshots/cricket.png" width="260" alt="Cricket live match">
   <img src="screenshots/tennis.png" width="260" alt="Tennis live match">
   <br>
-  (Basketball, Cricket and Tennis are supported alongside Football.)
+  (Basketball, Cricket and Tennis are supported alongside Football, plus 12 more sports via ESPN.)
 </p>
 
 <p align="center">
@@ -110,7 +106,7 @@ To update an existing installation, replace `--install` with `--upgrade`.
 # ✨ Detailed Features
 
 ### 🏆 Sports & Competitions
-- **Supported sports:** Football, Basketball, Cricket and Tennis.
+- **Supported sports:** Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball and Water Polo.
 - **Guided setup wizard:** Add a sport, then pick a country/competition or an international tournament, and optionally a favorite club, national team or player.
 - **Multiple selections:** Add as many sports, competitions, national teams and favorite teams as you like - they're all combined into one view, with duplicate detection so you don't add the same thing twice.
 - **International tournaments:** Follow World Cups, continental championships and other international competitions without picking a specific country.
@@ -122,12 +118,26 @@ To update an existing installation, replace `--install` with `--upgrade`.
 - **Schedules tab:** Upcoming fixtures for your selected competitions and teams.
 - **Recent Results tab:** Latest finished matches and final scores.
 - **Tables tab:** League standings/tables for your selected competitions, with season selection where available.
+- **Quick actions:** Star, bell and pin icons on each match row let you favorite a team, get notified about that match, or pin it to the panel with one click.
+- **Widget layout:** Choose between a Detailed view (featured match, tabs, standings, recent results) or a Simple view (a single scrolling list of live and upcoming matches), and pick which tabs are visible.
+
+### 🔔 Notifications
+- **Desktop notifications:** Get notified on kickoff, goals/score changes, half-time, full-time, and detailed events (scorer, cards, substitutions - football only).
+- **"Starting soon" reminders:** A heads-up a configurable number of minutes before kickoff.
+- **Per competition/team control:** Notifications are off by default and can be turned on individually for each followed competition or team, or limited to favorite teams only.
+- **Per-match notifications:** Use the bell icon on any match to get notified just for that one game.
+
+### 📅 Calendar Integration
+- **Plasma calendar sync:** Upcoming fixtures from your followed competitions and teams appear directly in the Plasma calendar (the date/clock pop-up), via a native calendar plugin.
+- **.ics export:** Optionally also export a standard iCalendar file you can import into any calendar app (Google Calendar, Thunderbird, GNOME, mobile, etc.).
+- **Per competition/team control:** Like notifications, calendar sync is off by default and can be enabled per followed competition or team.
 
 ### 🔄 Smart Refresh
 - **Smart mode (default):** Automatically checks for upcoming matches every 30 minutes and refreshes live scores every 60 seconds while a match is in progress - keeping data fresh while minimizing network requests.
 - **Manual mode:** Turn off Smart refresh to set your own "Full refresh" (minutes) and "Live refresh" (seconds) intervals, or disable separate live updates entirely.
 
 ### 🖥 Panel Integration
+- **Panel modes:** Detailed (shows the live/upcoming match) or Simple (a compact live/remaining match count, similar to GNOME's Colosseum).
 - **Panel layouts:** Show emblems + teams + score, emblems + score only, or teams + score only.
 - **Panel sizing:** Auto-fit, fill the panel, or set a manual size for team emblems.
 - **Custom fonts:** Use the system font or pick your own family, size and weight for the panel text.
@@ -137,7 +147,6 @@ To update an existing installation, replace `--install` with `--upgrade`.
 - Hovering the panel icon shows a quick tooltip with your live and upcoming matches, so you don't need to open the full widget.
 
 ### 🎛 Customization
-- **Widget layout:** Choose which tabs are shown - All tabs, Live + Schedules + Recent Results, Live + Schedules + Tables, or Live + Schedules only.
 - **National teams visuals:** Display national teams using emblems/flags.
 - **Date & time formats:** Multiple built-in formats (e.g. `22.05`, `22.05.2026`, `2026-05-22`, `22 May`, region defaults, or 12/24-hour clock times) or fully custom Qt date/time patterns, with a live preview.
 
@@ -145,14 +154,15 @@ To update an existing installation, replace `--install` with `--upgrade`.
 
 ## 🌐 Translation
 
-Translations are welcome, but are currently on hold while the widget is in **beta**. Since many features and strings may still change before the stable release, translation work would have to be redone repeatedly. Once the project reaches a stable release, a translation template will be published here and contributions will be very welcome.
+The widget follows your system language automatically. It currently ships with English and Bulgarian translations, and more are welcome - see the [translation guide](translate/readme.md) for how to contribute a new one.
 
 ## 🐛 Bug Reports & Feedback
 If you encounter any issues or have suggestions, please open a [GitHub Issue](https://github.com/pnedyalkov91/sports-widget-for-plasma/issues). Please include your distribution, Plasma version, and the sport/competition you were viewing.
 
 ## External resources
 
-- Live scores, schedules, results and standings are sourced from [SportScore](https://sportscore.com/).
+- Football, Basketball, Cricket and Tennis data is sourced from [SportScore](https://sportscore.com/).
+- All other sports (American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball, Water Polo) are sourced from ESPN's public (unofficial, undocumented) endpoints, in the same way as the [Public-ESPN-API](https://github.com/pseudo-r/Public-ESPN-API) reference project.
 
 ## ❤️ Support the project
 
@@ -174,4 +184,4 @@ This project is licensed under the **GNU General Public License v2.0 or later**.
 
 ## ™️ Trademark Notice
 
-All product names, logos, trademarks and registered trademarks referenced in this project are the property of their respective owners and are used solely for identification purposes. Reasonable care has been taken to spell, capitalize and attribute these names accurately. Use of these names does not imply any affiliation with or endorsement by their respective owners. This project is not affiliated with, endorsed by, or sponsored by SportScore, or any of the sports leagues, federations, clubs or organizations referenced within it.
+All product names, logos, trademarks and registered trademarks referenced in this project are the property of their respective owners and are used solely for identification purposes. Reasonable care has been taken to spell, capitalize and attribute these names accurately. Use of these names does not imply any affiliation with or endorsement by their respective owners. This project is not affiliated with, endorsed by, or sponsored by SportScore, ESPN, or any of the sports leagues, federations, clubs or organizations referenced within it.
