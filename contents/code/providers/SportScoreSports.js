@@ -122,6 +122,46 @@ function standingsColumns(sport) {
             column("points", "Pts", "Points", 2.8, true)
         ];
     }
+    // Baseball has no draws and no league points: teams are ranked by win pct, with
+    // games-behind the leader. Runs scored/against stand in for goals for/against.
+    if (value === "baseball") {
+        return [
+            column("won", "W", "Won", 2),
+            column("lost", "L", "Lost", 2),
+            column("winPercent", "PCT", "Win percentage", 2.8, true),
+            column("gamesBehind", "GB", "Games behind", 2.4),
+            column("goalsFor", "RS", "Runs scored", 2.4),
+            column("goalsAgainst", "RA", "Runs against", 2.4),
+            column("goalDifference", "DIFF", "Run differential", 2.6)
+        ];
+    }
+    // Ice hockey standings have no draws: a game decided in overtime/shootout counts
+    // as an OT loss (OTL), worth a point. Ranked by points, then goals for/against.
+    if (value === "hockey") {
+        return [
+            column("played", "GP", "Games played", 2.4),
+            column("won", "W", "Won", 2),
+            column("lost", "L", "Lost", 2),
+            column("otLosses", "OTL", "Overtime/shootout losses", 2.6),
+            column("goalsFor", "GF", "Goals for", 2.2),
+            column("goalsAgainst", "GA", "Goals against", 2.4),
+            column("goalDifference", "DIFF", "Goal differential", 2.6),
+            column("points", "Pts", "Points", 2.8, true)
+        ];
+    }
+    // American football has no league points and is ranked by win pct. Ties are a
+    // real (if rare) outcome, so the "T" column stays. Points for/against, not goals.
+    if (value === "american-football") {
+        return [
+            column("won", "W", "Won", 2),
+            column("lost", "L", "Lost", 2),
+            column("draw", "T", "Tied", 2),
+            column("winPercent", "PCT", "Win percentage", 2.8, true),
+            column("goalsFor", "PF", "Points for", 2.4),
+            column("goalsAgainst", "PA", "Points against", 2.4),
+            column("goalDifference", "DIFF", "Point differential", 2.6)
+        ];
+    }
 
     return [
         column("played", "Pl", "Played", 2.4),

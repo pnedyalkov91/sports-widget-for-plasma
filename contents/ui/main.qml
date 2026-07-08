@@ -1273,6 +1273,13 @@ PlasmoidItem {
             "sports": String(entry && entry.sport || "football").trim(),
             "country": String(entry && entry.country || "").trim(),
             "league": type === "team" ? "" : String(entry && entry.league || "").trim(),
+            // The human league label the entry expects (e.g. "MLB"). ESPN's scoreboard
+            // otherwise stamps each match with the payload's full league NAME ("Major
+            // League Baseball"), whose slug ("major-league-baseball") doesn't match the
+            // entry's ESPN slug ("mlb"), so matchBelongsToEntry would drop every row -
+            // the empty Recent/Schedule tabs for ESPN-native leagues. Passing the label
+            // makes match.league resolve to a slug that matches the entry.
+            "leagueLabel": String(entry && (entry.customLeagueLabel || entry.leagueLabel) || root.displayLeagueLabel(entry) || "").trim(),
             // The competition a followed team came from, so ESPN can resolve the
             // team's league even when its country doesn't map to a single one.
             "teamLeague": type === "team" ? String(entry && (entry.teamLeague || entry.league) || "").trim() : "",
