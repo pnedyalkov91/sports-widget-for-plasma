@@ -6,11 +6,27 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 
+# Install from a CLEAN staging copy that holds only the applet's own files
+# (metadata.json + contents/, plus LICENSE/README for good manners). Installing the
+# repo root directly dragged the whole tree into the package - including plugin/,
+# which carries its OWN metadata.json for the calendar plugin (no KPackageStructure,
+# not a Plasma/Applet). kpackagetool6 walks the package for "metadata" and can
+# resolve that nested file instead of the root one, so `--remove`/`--upgrade` then
+# fail with: KPackageStructure ... does not match requested format "Plasma/Applet".
+# Staging keeps the packaged applet self-contained and that error away for good.
+stage="$(mktemp -d)"
+trap 'rm -rf "$stage"' EXIT INT TERM
+
+cp "$here/metadata.json" "$stage/"
+cp -r "$here/contents" "$stage/"
+[ -f "$here/LICENSE" ] && cp "$here/LICENSE" "$stage/" || true
+[ -f "$here/README.md" ] && cp "$here/README.md" "$stage/" || true
+
 # --upgrade if already installed, --install otherwise - so the first run also works.
 if kpackagetool6 --type Plasma/Applet --list 2>/dev/null | grep -q "org.kde.plasma.sports-widget-for-plasma"; then
-    kpackagetool6 --type Plasma/Applet --upgrade "$here"
+    kpackagetool6 --type Plasma/Applet --upgrade "$stage"
 else
-    kpackagetool6 --type Plasma/Applet --install "$here"
+    kpackagetool6 --type Plasma/Applet --install "$stage"
 fi
 
 # Drop the stale QML cache so the new code is actually picked up.

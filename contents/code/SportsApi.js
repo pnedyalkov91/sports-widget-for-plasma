@@ -30,9 +30,10 @@ const ESPN_STANDINGS_BASE = "https://site.api.espn.com/apis/v2/sports";
 const ESPN_CORE_BASE = "https://sports.core.api.espn.com/v2/sports";
 const ESPN_MATCH_LIMIT = 100;
 const ESPN_PLAYS_LIMIT = 300;
-// How many days around "today" to ask ESPN for when listing fixtures / recent.
+// How many days ahead of "today" to ask ESPN for when listing fixtures. (The
+// unified window's look-BACK is a fixed one-day boundary buffer - see
+// ESPN_UNIFIED_DAYS_BACK - since "recent" has its own year-to-date fetch.)
 const ESPN_FIXTURE_DAYS_AHEAD = 14;
-const ESPN_RECENT_DAYS_BACK = 14;
 // ESPN returns matches ascending and caps at the limit, so the wide year-to-date
 // recent window needs a high limit or the actual last matches (end of the window)
 // get dropped.
@@ -1223,7 +1224,7 @@ function espnDate(timestamp) {
     return "" + y + m + d;
 }
 
-// Honours the caller's requested window (scoreboardDaysBack/Forward) when present,
+// Honours the caller's requested look-ahead (scoreboardDaysForward) when present,
 // capped so a single scoreboard call can't pull a multi-MB payload that blocks the
 // UI thread during JSON.parse; falls back to the module default otherwise.
 function espnClampDays(value, fallback, max) {
@@ -1239,15 +1240,25 @@ function espnClampDays(value, fallback, max) {
 // user-configurable "Schedules days ahead" setting (max one year).
 const ESPN_FIXTURE_MAX_DAYS_AHEAD = 365;
 
-// One window spanning recent..fixtures. We fetch this once per league and derive
-// live/fixtures/recent from it by status (see fetchEspnScoreboard), rather than
-// making three overlapping calls for the same league.
+// The unified window only ever feeds live + fixtures - "recent" has its own
+// year-to-date fetch (see fetchEspnScoreboard) and never reads this window, so a
+// wide look-BACK here is dead weight. Worse, it is actively harmful for busy
+// leagues: ESPN returns scoreboard events ascending from the range start and caps
+// the payload at `limit`, so a fortnight of past MLB/NHL/NBA games (~15/day) fills
+// the whole cap before the response ever reaches today - today's and every future
+// fixture get truncated off the end, leaving the Schedule tab empty. Keeping only a
+// one-day boundary buffer behind "now" (enough to cover the UTC/local date-line gap
+// and a game that runs past midnight) spends the ascending cap on today + upcoming,
+// which is exactly what live/fixtures need.
+const ESPN_UNIFIED_DAYS_BACK = 1;
+
+// One window spanning "just before now"..fixtures, fetched once per league and
+// split into live/fixtures by status (see fetchEspnScoreboard).
 function espnUnifiedDates(options) {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
-    const back = espnClampDays(options && options.scoreboardDaysBack, ESPN_RECENT_DAYS_BACK);
     const ahead = espnClampDays(options && options.scoreboardDaysForward, ESPN_FIXTURE_DAYS_AHEAD, ESPN_FIXTURE_MAX_DAYS_AHEAD);
-    return espnDate(now - back * day) + "-" + espnDate(now + ahead * day);
+    return espnDate(now - ESPN_UNIFIED_DAYS_BACK * day) + "-" + espnDate(now + ahead * day);
 }
 
 function espnScoreboardUrl(espnSport, league, dates, limit) {
@@ -1704,6 +1715,78 @@ function espnYearStartDate() {
     return espnDate(new Date(now.getFullYear(), 0, 1).getTime());
 }
 
+// High-cadence sports play (almost) daily, so a year-to-date "recent" window pulls a
+// multi-MB scoreboard: each ESPN event row is ~15-25 KB (it carries the full box
+// score/odds blob), and MLB/NHL/NBA rack up ~1000+ events a season. At limit=300
+// that is 5-8 MB - which BOTH blows past the 14 s request timeout (so Recent came up
+// empty) AND stalls the UI thread on JSON.parse. These sports instead use a short
+// trailing window: the Recent tab only shows ~80 matches anyway, and ESPN returns
+// events ascending so a *narrow* window ending today is the only way to actually get
+// the most recent ones (a wide window + small limit returns the OLDEST in range).
+const ESPN_DAILY_CADENCE_SPORTS = ["baseball", "basketball", "hockey"];
+// Trailing span (days) for those sports' recent window. It MUST be short enough that
+// the whole window holds fewer games than ESPN_DAILY_RECENT_LIMIT: ESPN only returns
+// events ascending and truncates at the limit, so a window bigger than the limit
+// would hand back the OLDEST games in range and drop the most recent - the opposite
+// of "recent". At ~15 games/day, 8 days ≈ 120 games, comfortably under the 200 cap,
+// so the fetch returns the entire window (yesterday's games included) at ~2.4 MB -
+// parseable and inside the request timeout, unlike the old 5-8 MB year-to-date pull.
+// (A league that is between seasons legitimately has no games in this window and the
+// Recent tab shows its empty state - there genuinely are no recent results.)
+const ESPN_DAILY_RECENT_DAYS = 8;
+// Cap chosen to exceed the window's game count (so nothing truncates) while bounding
+// the payload if a stretch is unusually dense (doubleheaders, catch-up games).
+const ESPN_DAILY_RECENT_LIMIT = 200;
+
+// { dates, limit } for a league's "recent" scoreboard fetch. Daily-cadence sports get
+// a bounded trailing window; everyone else keeps the full year-to-date span (a
+// weekly-cadence league's whole season is small enough to fetch and parse at once).
+function espnRecentWindow(sportValue) {
+    const sport = normalizedSport(sportValue);
+    if (ESPN_DAILY_CADENCE_SPORTS.indexOf(sport) >= 0) {
+        const now = Date.now();
+        const day = 24 * 60 * 60 * 1000;
+        return {
+            dates: espnDate(now - ESPN_DAILY_RECENT_DAYS * day) + "-" + espnDate(now),
+            limit: ESPN_DAILY_RECENT_LIMIT
+        };
+    }
+    return { dates: espnYearStartDate() + "-" + espnDate(Date.now()), limit: ESPN_RECENT_FALLBACK_LIMIT };
+}
+
+// Wider trailing window used ONLY when a daily-cadence sport's short recent window
+// came back empty - i.e. the league is between seasons and its last games are weeks
+// back. Offseason there are few games in range, so this stays small (NHL ~45 days in
+// July is ~11 games / ~0.3 MB) and can't truncate the way the in-season window would.
+// Returns null for non-daily sports (they already fetch year-to-date, no fallback).
+const ESPN_DAILY_RECENT_FALLBACK_DAYS = 45;
+function espnRecentFallbackWindow(sportValue) {
+    if (ESPN_DAILY_CADENCE_SPORTS.indexOf(normalizedSport(sportValue)) < 0)
+        return null;
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    return {
+        dates: espnDate(now - ESPN_DAILY_RECENT_FALLBACK_DAYS * day) + "-" + espnDate(now),
+        limit: ESPN_DAILY_RECENT_LIMIT
+    };
+}
+
+// Wider look-AHEAD used ONLY when a daily-cadence sport's default fixtures window is
+// empty (between seasons) - reaches the next season's opener, which can be ~3 months
+// out (NHL: July → mid-September preseason). Offseason there are few scheduled games
+// in range, so the payload stays small. Returns null for non-daily sports.
+const ESPN_DAILY_FIXTURES_FALLBACK_DAYS = 100;
+function espnFixturesFallbackWindow(sportValue) {
+    if (ESPN_DAILY_CADENCE_SPORTS.indexOf(normalizedSport(sportValue)) < 0)
+        return null;
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    return {
+        dates: espnDate(now - 1 * day) + "-" + espnDate(now + ESPN_DAILY_FIXTURES_FALLBACK_DAYS * day),
+        limit: ESPN_DAILY_RECENT_LIMIT
+    };
+}
+
 // Date window for the "live" fetch: yesterday..tomorrow (ESPN YYYYMMDD range).
 // ESPN files each match under its UTC kickoff date, but espnDate() formats in the
 // user's LOCAL time, so a single "today" window misses a live match whenever local
@@ -1795,17 +1878,37 @@ function fetchEspnScoreboard(espnSport, league, mode, options, onSuccess, onErro
         }
         _espnRecentWaiters[key] = [{ onSuccess: onSuccess, onError: onError }];
 
-        const dates = espnYearStartDate() + "-" + espnDate(Date.now());
-        fetchEspnScoreboardWindow(espnSport, league, dates, "recent", options, rows => {
+        const settleRecent = rows => {
             _espnRecentCache[key] = { ts: Date.now(), rows: rows };
             const waiters = _espnRecentWaiters[key] || [];
             delete _espnRecentWaiters[key];
             waiters.forEach(waiter => finish(waiter.onSuccess, rows));
-        }, error => {
+        };
+        const failRecent = error => {
             const waiters = _espnRecentWaiters[key] || [];
             delete _espnRecentWaiters[key];
             waiters.forEach(waiter => finish(waiter.onError, error));
-        }, ESPN_RECENT_FALLBACK_LIMIT, ESPN_RECENT_MODE_MATCH_LIMIT);
+        };
+
+        // Sport-aware window+limit: daily-cadence sports (MLB/NHL/NBA) use a bounded
+        // trailing window so the payload stays parseable and inside the request
+        // timeout; weekly sports keep the full year-to-date span. See espnRecentWindow.
+        const sportValue = normalizedSport(options && (options.sports || options.sport)) || EspnSports.normalizedSport(espnSport);
+        const recentWindow = espnRecentWindow(sportValue);
+        fetchEspnScoreboardWindow(espnSport, league, recentWindow.dates, "recent", options, rows => {
+            // A daily-cadence league that is between seasons has no games in the short
+            // trailing window. Widen once to catch the tail of the season that just
+            // ended (e.g. NHL playoffs finishing in June, viewed in July) - offseason
+            // there are few games, so the wider pull is small and safe. See
+            // espnRecentFallbackWindow.
+            const fallback = espnRecentFallbackWindow(sportValue);
+            if (arrayValue(rows).length === 0 && fallback) {
+                fetchEspnScoreboardWindow(espnSport, league, fallback.dates, "recent", options,
+                    settleRecent, failRecent, fallback.limit, ESPN_RECENT_MODE_MATCH_LIMIT);
+                return;
+            }
+            settleRecent(rows);
+        }, failRecent, recentWindow.limit, ESPN_RECENT_MODE_MATCH_LIMIT);
         return;
     }
 
@@ -1850,7 +1953,22 @@ function fetchEspnScoreboard(espnSport, league, mode, options, onSuccess, onErro
         _espnScoreboardCache[key] = { ts: Date.now(), rows: rows };
         const waiters = _espnScoreboardWaiters[key] || [];
         delete _espnScoreboardWaiters[key];
-        waiters.forEach(waiter => deliverEspnMode(espnSport, league, waiter.mode, options, rows, waiter.onSuccess));
+        waiters.forEach(waiter => {
+            // A daily-cadence league between seasons has no fixtures in the default
+            // ~2-week look-ahead (e.g. NHL in July, first games in September). Widen
+            // once to surface the season opener - offseason the wider pull is small.
+            // Only for fixtures; live must stay on its narrow window.
+            if (waiter.mode === "fixtures"
+                && espnRowsForMode(filterEspnRowsForEntry(rows, options), "fixtures").length === 0) {
+                const fx = espnFixturesFallbackWindow(sportValue);
+                if (fx) {
+                    fetchEspnScoreboardWindow(espnSport, league, fx.dates, "fixtures", options,
+                        waiter.onSuccess, () => finish(waiter.onSuccess, []), fx.limit);
+                    return;
+                }
+            }
+            deliverEspnMode(espnSport, league, waiter.mode, options, rows, waiter.onSuccess);
+        });
     }, error => {
         const waiters = _espnScoreboardWaiters[key] || [];
         delete _espnScoreboardWaiters[key];
@@ -1860,18 +1978,40 @@ function fetchEspnScoreboard(espnSport, league, mode, options, onSuccess, onErro
 }
 
 // Standings → the same row shape as normalizeSportScoreWidgetStandings.
-function espnStatValue(stats, names) {
+//
+// `names` is a PRIORITY list: we look for the first name across all stats, then the
+// second, and so on - not "the first stat whose name is in the list". This matters
+// because ESPN ships several overlapping fields whose order in the array is not the
+// order we want: e.g. both "differential" (a per-game ratio like +0.3) and
+// "pointDifferential" (the real run/point differential +33) are present, and the
+// ratio appears first. Honouring caller priority lets us pick pointDifferential.
+function espnStatEntry(stats, names) {
     const list = arrayValue(stats);
-    for (let i = 0; i < list.length; i += 1) {
-        const name = stringValue(list[i] && (list[i].name || list[i].abbreviation || list[i].type)).toLowerCase();
-        if (names.indexOf(name) >= 0) {
-            const value = list[i].value;
-            if (value !== undefined && value !== null)
-                return numberValue(value);
-            return numberValue(list[i].displayValue);
+    for (let n = 0; n < names.length; n += 1) {
+        for (let i = 0; i < list.length; i += 1) {
+            const name = stringValue(list[i] && (list[i].name || list[i].abbreviation || list[i].type)).toLowerCase();
+            if (name === names[n])
+                return list[i];
         }
     }
-    return 0;
+    return null;
+}
+
+function espnStatValue(stats, names) {
+    const entry = espnStatEntry(stats, names);
+    if (!entry)
+        return 0;
+    if (entry.value !== undefined && entry.value !== null)
+        return numberValue(entry.value);
+    return numberValue(entry.displayValue);
+}
+
+// ESPN's own formatted string for a stat (".596", "+170", "8.5", "-"), or "" when
+// absent. Used for values that read better verbatim than re-formatted from a number:
+// win percentage (leading-dot, 3-decimal) and games-behind (blank/"-" for a leader).
+function espnStatDisplay(stats, names) {
+    const entry = espnStatEntry(stats, names);
+    return entry ? stringValue(entry.displayValue) : "";
 }
 
 function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows) {
@@ -1886,11 +2026,19 @@ function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows)
             played: espnStatValue(stats, ["gamesplayed", "games played", "gp"]),
             won: espnStatValue(stats, ["wins", "w"]),
             draw: espnStatValue(stats, ["ties", "draws", "t", "d"]),
+            // NHL regulation/OT losses are separate from ties; ESPN exposes "otLosses".
+            otLosses: espnStatValue(stats, ["otlosses", "otl"]),
             lost: espnStatValue(stats, ["losses", "l"]),
             goalsFor: espnStatValue(stats, ["pointsfor", "goalsfor", "pf"]),
             goalsAgainst: espnStatValue(stats, ["pointsagainst", "goalsagainst", "pa"]),
-            goalDifference: espnStatValue(stats, ["pointdifferential", "goaldifferential", "differential"]),
+            // Prefer pointDifferential/goalDifferential (the real +33/+47/+170); the
+            // bare "differential" is a per-game ratio (+0.3) and must not win.
+            goalDifference: espnStatValue(stats, ["pointdifferential", "goaldifferential"]),
             points: espnStatValue(stats, ["points", "pts"]),
+            // Win percentage / games-behind keep ESPN's own formatting (".596", "8.5",
+            // "-"); a number would lose the leading dot and the leader's blank marker.
+            winPercent: espnStatDisplay(stats, ["winpercent", "leaguewinpercent", "percentage", "pct"]),
+            gamesBehind: espnStatDisplay(stats, ["gamesbehind", "gb"]),
             form: "",
             crest: espnLogoFromTeam(team),
             teamPath: "",
@@ -1900,22 +2048,45 @@ function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows)
     });
 }
 
+// Collect the LEAF standings groups of an ESPN standings tree in document order.
+// ESPN nests groups arbitrarily deep: a flat league (soccer) is one node with
+// entries; conferences (NBA/NHL) are one level; divisions requested with level=3
+// (MLB "AL East", NHL "Pacific", NFL "AFC North") are two - conference → division,
+// where only the division carries entries. We want the innermost groups that
+// actually hold teams, so a division-organized league shows each division as its
+// own section rather than a single flat table.
+function espnStandingsLeafGroups(node, out) {
+    if (!node)
+        return;
+    const children = arrayValue(node.children);
+    const entries = arrayValue(node.standings && node.standings.entries);
+    // A node with child groups delegates to them (its own entries, if any, are the
+    // roll-up we don't want); only a node with entries and no children is a leaf.
+    if (children.length > 0) {
+        children.forEach(child => espnStandingsLeafGroups(child, out));
+        return;
+    }
+    if (entries.length > 0)
+        out.push({ name: stringValue(node.name || node.abbreviation), entries: entries });
+}
+
 function normalizeEspnStandings(payload, leagueLabel) {
     const rows = [];
     const league = leagueLabel || "";
-    // Top-level standings.entries, or grouped children[].standings.entries.
-    const children = arrayValue(payload && payload.children);
-    if (children.length > 0) {
-        children.forEach((child, index) => {
-            const group = stringValue(child && (child.name || child.abbreviation));
-            const entries = (child && child.standings && child.standings.entries) || [];
-            normalizeEspnStandingsEntries(entries, children.length > 1 ? group : "", index, league, rows);
-        });
-    } else {
+    const groups = [];
+    espnStandingsLeafGroups(payload, groups);
+    if (groups.length === 0) {
+        // Flat payload with entries hung directly off the root (no children node).
         const entries = (payload && payload.standings && payload.standings.entries)
             || (payload && payload.entries) || [];
-        normalizeEspnStandingsEntries(entries, "", 0, league, rows);
+        groups.push({ name: "", entries: entries });
     }
+    // Only label groups when there is more than one - a single-table league (e.g. a
+    // soccer division) must stay header-less, not gain a stray section title.
+    const labelled = groups.length > 1;
+    groups.forEach((group, index) => {
+        normalizeEspnStandingsEntries(group.entries, labelled ? group.name : "", index, league, rows);
+    });
 
     return rows.filter(row => stringValue(row.team).length > 0)
         .sort((left, right) => numberValue(left.groupIndex) - numberValue(right.groupIndex)
@@ -1985,9 +2156,13 @@ function fetchEspnLeagueFormMap(espnSport, league, options, onDone, season) {
 // Extract a 4-digit ESPN season year from the selected season option. ESPN
 // identifies a season by its starting year (the "2022" World Cup, the "2024"
 // Premier League season etc.), so a "2024-2025" key resolves to 2024.
+//
+// The default season is pinned too (not left blank): our default is the CURRENT
+// season (see normalizeEspnSeasons), and the season-less standings endpoint has
+// already rolled forward to the not-yet-started NEXT season - so omitting ?season=
+// would show next season's mirrored placeholder instead of the live table. Only a
+// genuinely season-less entry (no key/id/label at all) omits the parameter.
 function espnSeasonYear(options) {
-    if (options && options.seasonIsDefault === true)
-        return "";
     const candidates = [options && options.seasonId, options && options.seasonKey, options && options.seasonLabel];
     for (let i = 0; i < candidates.length; i += 1) {
         const match = /(\d{4})/.exec(stringValue(candidates[i]));
@@ -2003,9 +2178,13 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
         return;
     }
     const season = espnSeasonYear(options);
-    let url = ESPN_STANDINGS_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/standings";
+    // level=3 asks ESPN for the deepest grouping it has - divisions for the US
+    // leagues (MLB AL/NL East/Central/West, NHL/NFL divisions) instead of a single
+    // flat conference table. Leagues with no divisions (soccer) simply return their
+    // one group unchanged; normalizeEspnStandings flattens to the leaf groups.
+    let url = ESPN_STANDINGS_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/standings?level=3";
     if (season.length > 0)
-        url += "?season=" + encodeURIComponent(season);
+        url += "&season=" + encodeURIComponent(season);
     requestText(cacheBustedUrl(url), text => {
         let rows = [];
         try {
@@ -2017,8 +2196,12 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
             finish(onSuccess, rows);
             return;
         }
-        // Form badges reflect the standings' own season: the current season pulls
-        // from recent scoreboards, a historical season from that season's matches.
+        // Form badges reflect the standings' own season: the CURRENT (default)
+        // season pulls from recent scoreboards (warm cache, last ~10 weeks), a
+        // historical season from that season's own matches. The standings URL now
+        // pins ?season= even for the default, so decide the form window by whether
+        // this is the default pick rather than by whether `season` is set.
+        const formSeason = (options && options.seasonIsDefault === true) ? "" : season;
         fetchEspnLeagueFormMap(espnSport, league, options, formMap => {
             rows.forEach(row => {
                 const form = formMap[normalizedTeamName(row.team)];
@@ -2026,31 +2209,63 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
                     row.form = stringValue(form).slice(-5);
             });
             finish(onSuccess, rows);
-        }, season);
+        }, formSeason);
     }, error => finish(onError, error || "Unable to load ESPN standings"), { ignoreCooldown: true });
 }
 
 // ESPN seasons for a league, as season-dropdown options. Reads the core API's
 // seasons collection (each item is a $ref ending in the season's starting year),
-// newest first, marking the most recent as the default selection.
+// newest first.
+//
+// ESPN's seasons collection lists the UPCOMING season as soon as it is scheduled -
+// e.g. in mid-2026 the MLB list already carries 2027, whose standings ESPN serves
+// as a copy of the last finished season until the new one starts. Marking the
+// newest listed year as the dropdown default (and letting the season-less standings
+// request inherit ESPN's own rolled-forward default) is what surfaced a blank/next
+// season with last season's rows mirrored into it. The league ROOT document
+// (.../leagues/{league}) exposes ESPN's authoritative CURRENT season year, so fetch
+// that first and default the dropdown to it.
 function fetchEspnSeasons(espnSport, league, options, onSuccess, onError) {
     if (stringValue(espnSport).length === 0 || stringValue(league).length === 0) {
         finish(onSuccess, []);
         return;
     }
-    const url = ESPN_CORE_BASE + "/" + encodeURIComponent(espnSport) + "/leagues/" + encodeURIComponent(league) + "/seasons?limit=100";
-    requestText(cacheBustedUrl(url), text => {
-        let rows = [];
-        try {
-            rows = normalizeEspnSeasons(JSON.parse(text));
-        } catch (error) {
-            rows = [];
-        }
-        finish(onSuccess, rows);
-    }, error => finish(onError, error || "Unable to load ESPN seasons"), { ignoreCooldown: true });
+    const seasonsUrl = ESPN_CORE_BASE + "/" + encodeURIComponent(espnSport) + "/leagues/" + encodeURIComponent(league) + "/seasons?limit=100";
+    fetchEspnCurrentSeasonYear(espnSport, league, currentYear => {
+        requestText(cacheBustedUrl(seasonsUrl), text => {
+            let rows = [];
+            try {
+                rows = normalizeEspnSeasons(JSON.parse(text), currentYear);
+            } catch (error) {
+                rows = [];
+            }
+            finish(onSuccess, rows);
+        }, error => finish(onError, error || "Unable to load ESPN seasons"), { ignoreCooldown: true });
+    });
 }
 
-function normalizeEspnSeasons(payload) {
+// ESPN's authoritative current-season year for a league (the league root's
+// season.year), or "" when it can't be read. Callers must tolerate "" and fall
+// back to their own heuristic.
+function fetchEspnCurrentSeasonYear(espnSport, league, onDone) {
+    const url = ESPN_CORE_BASE + "/" + encodeURIComponent(espnSport) + "/leagues/" + encodeURIComponent(league);
+    requestText(cacheBustedUrl(url), text => {
+        let year = "";
+        try {
+            const payload = JSON.parse(text);
+            year = stringValue(payload && payload.season && payload.season.year);
+        } catch (error) {
+            year = "";
+        }
+        finish(onDone, /^\d{4}$/.test(year) ? year : "");
+    }, () => finish(onDone, ""), { ignoreCooldown: true });
+}
+
+// `currentYear` is ESPN's authoritative current-season year (or "" if unknown). The
+// default season is that year when it appears in the list; otherwise the newest year
+// that is not in the future; otherwise the newest listed year. This keeps the
+// dropdown off a not-yet-started season whose data is only a mirror of the last one.
+function normalizeEspnSeasons(payload, currentYear) {
     const items = arrayValue(payload && payload.items);
     const years = [];
     const seen = {};
@@ -2069,14 +2284,25 @@ function normalizeEspnSeasons(payload) {
     });
 
     years.sort((left, right) => numberValue(right.year) - numberValue(left.year));
-    return years.map((entry, index) => ({
+
+    const wantedCurrent = /^\d{4}$/.test(stringValue(currentYear)) ? stringValue(currentYear) : "";
+    const thisCalendarYear = new Date().getFullYear();
+    let defaultYear = "";
+    if (wantedCurrent.length > 0 && years.some(entry => entry.year === wantedCurrent))
+        defaultYear = wantedCurrent;
+    else {
+        const notFuture = years.find(entry => numberValue(entry.year) <= thisCalendarYear);
+        defaultYear = notFuture ? notFuture.year : (years.length > 0 ? years[0].year : "");
+    }
+
+    return years.map(entry => ({
         key: entry.year,
         id: entry.year,
         path: entry.year,
         label: entry.name.length > 0 ? entry.name : entry.year,
         provider: "espn",
         yearScore: numberValue(entry.year) * 10000 + numberValue(entry.year),
-        isDefault: index === 0
+        isDefault: entry.year === defaultYear
     }));
 }
 
