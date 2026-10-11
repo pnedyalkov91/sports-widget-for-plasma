@@ -3649,6 +3649,198 @@ function normalizeSportScoreTeamWidgetMatch(match, options) {
 // full live/recent/upcoming list. JSON keeps the common case light; the HTML page
 // restores coverage for the many leagues the global feed doesn't include.
 function fetchSportScoreCompetitionMatches(options, mode, onSuccess, onError) {
+    // The competition's own matches, assembled from the JSON widgets (standings →
+    // every team's team-widget feed, filtered to this competition). This is the
+    // authoritative source: the global feed below is a ~10-50 match cross-competition
+    // slice that frequently contains none (or only a handful) of a league's matches,
+    // and the HTML-page scrape depends on SportScore's page markup. Both stay as
+    // fallbacks for competitions the standings widget can't serve.
+    fetchSportScoreCompetitionMatchesFromRoster(options, mode, onSuccess, () =>
+        fetchSportScoreCompetitionMatchesFromGlobalFeed(options, mode, onSuccess, onError));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Competition roster: every match of a competition, built from JSON only.
+//
+// SportScore's JSON widget API has NO per-competition match endpoint
+// (/api/widget/matches/ is a global, cross-competition slice with no competition or
+// date filter). It does, however, expose
+//   • /api/widget/standings/?slug=<competition>  → the competition's name + every team slug
+//   • /api/widget/team/?slug=<team>&limit=30     → that team's matches, each tagged with
+//                                                  its competition NAME
+// so a competition's full schedule is the union of its teams' feeds, keeping only the
+// matches whose competition name equals the standings' competition name. One roster
+// fetch (1 + N small edge-cached requests) is cached and shared by the live, fixtures
+// and recent requests, which all run in the same refresh.
+// ─────────────────────────────────────────────────────────────────────────────
+const SPORTSCORE_ROSTER_TTL_MS = 10 * 60 * 1000;
+const SPORTSCORE_ROSTER_TEAM_LIMIT = 30;
+const SPORTSCORE_ROSTER_MAX_TEAMS = 40;
+// A match can be in progress from kickoff until well after the nominal 90 minutes.
+const SPORTSCORE_ROSTER_LIVE_WINDOW_BEHIND_MS = 4 * 60 * 60 * 1000;
+const SPORTSCORE_ROSTER_LIVE_WINDOW_AHEAD_MS = 5 * 60 * 1000;
+const _sportScoreRosterCache = {};
+const _sportScoreRosterWaiters = {};
+
+function sportScoreRosterTeamOptions(options, team) {
+    return Object.assign({}, options, {
+        teamSlug: team.teamSlug,
+        teamPath: "",
+        teamUrl: "",
+        favoriteTeam: "",
+        limit: SPORTSCORE_ROSTER_TEAM_LIMIT,
+        fixtureLimit: SPORTSCORE_ROSTER_TEAM_LIMIT
+    });
+}
+
+// Calls onSuccess(roster) with { ts, competition, rows, slugByTeam } or onSuccess(null)
+// when the JSON path can't serve this competition (no standings, no team feeds, a
+// non-football sport, a non-default season) so the caller falls back.
+function fetchSportScoreCompetitionRoster(options, onSuccess) {
+    const key = sportScoreCompetitionRowsKey(options);
+    if (key.length === 0 || !canUseSportScoreWidgetStandings(options)) {
+        finish(onSuccess, null);
+        return;
+    }
+
+    const cached = _sportScoreRosterCache[key];
+    if (cached && (Date.now() - cached.ts) < SPORTSCORE_ROSTER_TTL_MS) {
+        finish(onSuccess, cached);
+        return;
+    }
+
+    if (_sportScoreRosterWaiters[key]) {
+        _sportScoreRosterWaiters[key].push(onSuccess);
+        return;
+    }
+    _sportScoreRosterWaiters[key] = [onSuccess];
+
+    const settle = roster => {
+        if (roster)
+            _sportScoreRosterCache[key] = roster;
+        const waiters = _sportScoreRosterWaiters[key] || [];
+        delete _sportScoreRosterWaiters[key];
+        waiters.forEach(waiter => finish(waiter, roster));
+    };
+
+    fetchSportScoreWidgetStandings(options, standings => {
+        const competition = stringValue(standings && standings[0] && standings[0].league);
+        const wanted = normalizedTeamName(competition);
+        let teams = [];
+        let seen = {};
+        arrayValue(standings).forEach(row => {
+            const slug = stringValue(row && row.teamSlug);
+            if (slug.length === 0 || seen[slug])
+                return;
+            seen[slug] = true;
+            teams.push({ teamSlug: slug, name: stringValue(row.team) });
+        });
+        teams = teams.slice(0, SPORTSCORE_ROSTER_MAX_TEAMS);
+        if (wanted.length === 0 || teams.length === 0) {
+            settle(null);
+            return;
+        }
+
+        let pending = teams.length;
+        let failures = 0;
+        let rows = [];
+        const slugByTeam = {};
+        teams.forEach(team => slugByTeam[normalizedTeamName(team.name)] = team.teamSlug);
+
+        const done = () => {
+            pending -= 1;
+            if (pending > 0)
+                return;
+            // Every team feed failing, or no team having a single match in this
+            // competition, means the widgets can't serve it: let the caller fall back.
+            if (failures >= teams.length || rows.length === 0) {
+                settle(null);
+                return;
+            }
+            settle({ ts: Date.now(), competition: competition, rows: dedupeMatches(rows), slugByTeam: slugByTeam });
+        };
+
+        teams.forEach(team => {
+            fetchSportScoreTeamWidgetMatches(sportScoreRosterTeamOptions(options, team), list => {
+                rows = rows.concat(arrayValue(list).filter(match => normalizedTeamName(match && match.league) === wanted));
+                done();
+            }, () => {
+                failures += 1;
+                done();
+            });
+        });
+    }, () => settle(null));
+}
+
+function fetchSportScoreCompetitionMatchesFromRoster(options, mode, onSuccess, onFallback) {
+    fetchSportScoreCompetitionRoster(options, roster => {
+        if (!roster) {
+            onFallback();
+            return;
+        }
+
+        const deliver = rows => {
+            const scoped = filterSportScoreMatchesForMode(rows, mode);
+            finish(onSuccess, mode === "recent" ? sortRecentMatches(dedupeMatches(scoped)) : sortMatches(dedupeMatches(scoped)));
+        };
+
+        if (mode !== "live") {
+            deliver(roster.rows);
+            return;
+        }
+
+        // The roster is up to SPORTSCORE_ROSTER_TTL_MS old, far too stale for a 60 s
+        // live poll. Re-pull only the home team's feed of each match that could be in
+        // progress right now (kicked off within the window, not yet finished): zero
+        // requests when nothing is on, one small edge-cached request per live match
+        // otherwise. The fresh rows replace their cached copies.
+        const now = Date.now();
+        const candidates = roster.rows.filter(match => {
+            const timestamp = numberValue(match && match.timestamp);
+            return !isFinishedMatch(match)
+                && timestamp > 0
+                && timestamp <= now + SPORTSCORE_ROSTER_LIVE_WINDOW_AHEAD_MS
+                && timestamp >= now - SPORTSCORE_ROSTER_LIVE_WINDOW_BEHIND_MS;
+        });
+        if (candidates.length === 0) {
+            deliver(roster.rows);
+            return;
+        }
+
+        const slugs = [];
+        candidates.forEach(match => {
+            const slug = roster.slugByTeam[normalizedTeamName(match.homeTeam)] || roster.slugByTeam[normalizedTeamName(match.awayTeam)];
+            if (slug && slugs.indexOf(slug) < 0)
+                slugs.push(slug);
+        });
+        if (slugs.length === 0) {
+            deliver(roster.rows);
+            return;
+        }
+
+        const wanted = normalizedTeamName(roster.competition);
+        let fresh = [];
+        let pending = slugs.length;
+        const done = () => {
+            pending -= 1;
+            if (pending > 0)
+                return;
+            const freshByPath = {};
+            fresh.forEach(match => freshByPath[stringValue(match.matchPath || match.id)] = match);
+            const merged = roster.rows.map(match => freshByPath[stringValue(match.matchPath || match.id)] || match);
+            roster.rows = merged;
+            deliver(merged);
+        };
+        slugs.forEach(slug => {
+            fetchSportScoreTeamWidgetMatches(sportScoreRosterTeamOptions(options, { teamSlug: slug }), list => {
+                fresh = fresh.concat(arrayValue(list).filter(match => normalizedTeamName(match && match.league) === wanted));
+                done();
+            }, done);
+        });
+    });
+}
+
+function fetchSportScoreCompetitionMatchesFromGlobalFeed(options, mode, onSuccess, onError) {
     fetchSportScoreGlobalMatches(options, rows => {
         const scoped = filterSportScoreMatchesForMode(rows.filter(match => matchBelongsToCompetition(match, options)), mode);
         if (scoped.length > 0) {
