@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sports Widget for Plasma\n"
 "Report-Msgid-Bugs-To: https://github.com/pnedyalkov91/sports-widget-for-plasma/issues\n"
-"POT-Creation-Date: 2026-08-21 11:54+0300\n"
+"POT-Creation-Date: 2026-10-11 15:56+0300\n"
 "PO-Revision-Date: 2026-10-03 05:13+0200\n"
 "Last-Translator: Aldo Latino <aldolat@gmail.com>\n"
 "Language-Team: Italian <kde-i18n-it@kde.org>\n"
@@ -66,7 +66,7 @@ msgctxt "@info:font preview; %1 is point size, %2 is family"
 msgid "%1 pt %2"
 msgstr "%1 pt %2"
 
-#: contents/ui/main.qml:937
+#: contents/ui/main.qml:935
 msgctxt "@label"
 msgid "%1 saved team"
 msgid_plural "%1 saved teams"
@@ -170,7 +170,7 @@ msgctxt "@action:button"
 msgid "Add a Sport"
 msgstr "Aggiungi uno sport"
 
-#: contents/ui/main.qml:218
+#: contents/ui/main.qml:216
 msgctxt "@action:button"
 msgid "Add a sport"
 msgstr "Aggiungi uno sport"
@@ -180,7 +180,7 @@ msgctxt "@info"
 msgid "Add a sport and league to show schedules, tables and fixtures."
 msgstr "Aggiungi uno sport e un campionato per mostrare i calendari, le classifiche e i risultati."
 
-#: contents/ui/main.qml:1731
+#: contents/ui/main.qml:1735
 msgctxt "@info:status"
 msgid "Add a sport in the widget settings."
 msgstr "Aggiungi uno sport nelle impostazioni del widget."
@@ -208,8 +208,8 @@ msgstr "Akonadi (instabile, non consigliato)"
 #: contents/ui/config/ConfigSport.qml:379
 #: contents/ui/config/ConfigSport.qml:399
 #: contents/ui/config/ConfigSport.qml:430
-#: contents/ui/config/SportWizardPage.qml:414 contents/ui/main.qml:114
-#: contents/ui/main.qml:606 contents/ui/main.qml:955 contents/ui/main.qml:2195
+#: contents/ui/config/SportWizardPage.qml:414 contents/ui/main.qml:112
+#: contents/ui/main.qml:604 contents/ui/main.qml:953 contents/ui/main.qml:2199
 msgctxt "@label"
 msgid "All competitions"
 msgstr "Tutte le competizioni"
@@ -335,7 +335,7 @@ msgctxt "@title:window"
 msgid "Choose Panel Font"
 msgstr "Scegli il carattere del pannello"
 
-#: contents/ui/main.qml:2634
+#: contents/ui/main.qml:2638
 msgctxt "@info:status"
 msgid "Choose a competition to show a table."
 msgstr "Scegli una competizione per mostrare la classifica."
@@ -371,7 +371,7 @@ msgctxt "@action:button"
 msgid "Close"
 msgstr "Chiudi"
 
-#: contents/ui/main.qml:955
+#: contents/ui/main.qml:953
 msgctxt "@label"
 msgid "Combined scope"
 msgstr "Ambito combinato"
@@ -600,12 +600,12 @@ msgctxt "@option:check"
 msgid "Enabled"
 msgstr "Abilitato"
 
-#: contents/ui/main.qml:3250
+#: contents/ui/main.qml:3264
 msgctxt "@title:notification"
 msgid "Extra time"
 msgstr "Tempi supplementari"
 
-#: contents/ui/main.qml:3253
+#: contents/ui/main.qml:3267
 msgctxt "@title:notification"
 msgid "Extra time: second half"
 msgstr "Tempi supplementari: secondo tempo"
@@ -670,7 +670,7 @@ msgctxt "@label:spinbox"
 msgid "Full refresh:"
 msgstr "Aggiornamento completo:"
 
-#: contents/ui/main.qml:3247
+#: contents/ui/main.qml:3261
 msgctxt "@title:notification"
 msgid "Full-time"
 msgstr "Fine partita"
@@ -705,7 +705,7 @@ msgctxt "Abbreviation for 'goals for' in a hockey standings table, keep very sho
 msgid "GF"
 msgstr "GF"
 
-#: contents/ui/main.qml:3238 contents/ui/main.qml:3270
+#: contents/ui/main.qml:3252 contents/ui/main.qml:3284
 msgctxt "@title:notification"
 msgid "GOAL"
 msgstr "GOL"
@@ -792,7 +792,7 @@ msgctxt "@info:tooltip"
 msgid "Goals for"
 msgstr "Gol fatti"
 
-#: contents/ui/main.qml:3241
+#: contents/ui/main.qml:3255
 msgctxt "@title:notification"
 msgid "Half-time"
 msgstr "Fine primo tempo"
@@ -852,7 +852,7 @@ msgctxt "@tab:match details"
 msgid "Information"
 msgstr "Informazioni"
 
-#: contents/ui/main.qml:3235
+#: contents/ui/main.qml:3249
 msgctxt "@title:notification"
 msgid "Kick-off"
 msgstr "Calcio d'inizio"
@@ -912,9 +912,9 @@ msgid "Live"
 msgstr "In diretta"
 
 #: contents/ui/CompactRepresentation.qml:115
-#: contents/ui/CompactRepresentation.qml:666
-#: contents/ui/FullRepresentation.qml:1147 contents/ui/main.qml:1139
-#: contents/ui/main.qml:1143 contents/ui/main.qml:1160
+#: contents/ui/CompactRepresentation.qml:675
+#: contents/ui/FullRepresentation.qml:1147 contents/ui/main.qml:1137
+#: contents/ui/main.qml:1141 contents/ui/main.qml:1158
 #: contents/ui/MatchesToolTip.qml:121 contents/ui/MatchesToolTip.qml:126
 #: contents/ui/MatchesToolTip.qml:130 contents/ui/ScoreDelegate.qml:187
 msgctxt "@info:live match status"
@@ -931,7 +931,7 @@ msgctxt "@title:tab"
 msgid "Live"
 msgstr "In diretta"
 
-#: contents/ui/main.qml:1143 contents/ui/MatchesToolTip.qml:121
+#: contents/ui/main.qml:1141 contents/ui/MatchesToolTip.qml:121
 #: contents/ui/MatchesToolTip.qml:130
 msgctxt "@info:live match status"
 msgid "Live %1"
@@ -1142,7 +1142,7 @@ msgctxt "@item:inlistbox scheduled matches window"
 msgid "Next 24 hours"
 msgstr "Prossime 24 ore"
 
-#: contents/ui/main.qml:129
+#: contents/ui/main.qml:127
 msgctxt "@info:status"
 msgid "No API key required"
 msgstr "Nessuna chiave API richiesta"
@@ -1273,7 +1273,7 @@ msgctxt "@info:tooltip"
 msgid "No result"
 msgstr "Nessun risultato"
 
-#: contents/ui/main.qml:1903 contents/ui/main.qml:1920
+#: contents/ui/main.qml:1907 contents/ui/main.qml:1924
 msgctxt "@info:status"
 msgid "No saved items are enabled for Schedules."
 msgstr "Nessun elemento salvato è abilitato per i calendari."
@@ -1283,7 +1283,7 @@ msgctxt "@info:placeholder"
 msgid "No scheduled matches"
 msgstr "Nessuna partita in programma"
 
-#: contents/ui/main.qml:221
+#: contents/ui/main.qml:219
 msgctxt "@info:status"
 msgid "No scheduled matches"
 msgstr "Nessuna partita in programma"
@@ -1293,12 +1293,12 @@ msgctxt "@info:placeholder"
 msgid "No scheduled matches for %1"
 msgstr "Nessuna partita in programma per %1"
 
-#: contents/ui/main.qml:1220
+#: contents/ui/main.qml:1218
 msgctxt "@info:status"
 msgid "No scheduled matches for %1."
 msgstr "Nessuna partita in programma per %1."
 
-#: contents/ui/main.qml:1222
+#: contents/ui/main.qml:1220
 msgctxt "@info:status"
 msgid "No scheduled matches for your saved sports."
 msgstr "Nessuna partita in programma per i tuoi sport salvati."
@@ -1328,13 +1328,13 @@ msgctxt "@info:placeholder"
 msgid "No table data"
 msgstr "Nessun dato di classifica"
 
-#: contents/ui/main.qml:1844 contents/ui/main.qml:2649
-#: contents/ui/main.qml:2680
+#: contents/ui/main.qml:1848 contents/ui/main.qml:2653
+#: contents/ui/main.qml:2684
 msgctxt "@info:status"
 msgid "No table rows returned for %1."
 msgstr "Nessuna riga di classifica restituita per %1."
 
-#: contents/ui/main.qml:1817
+#: contents/ui/main.qml:1821
 msgctxt "@info:status"
 msgid "No table scope enabled."
 msgstr "Nessun ambito di classifica abilitato."
@@ -1458,12 +1458,12 @@ msgctxt "@info"
 msgid "Open a region to follow its tennis competitions and players."
 msgstr "Apri una regione per seguirne le competizioni di tennis e i tennisti."
 
-#: contents/ui/main.qml:3111
+#: contents/ui/main.qml:3113
 msgctxt "@action:button"
 msgid "Open match"
 msgstr "Apri partita"
 
-#: contents/ui/main.qml:145
+#: contents/ui/main.qml:143
 msgctxt "@info:status"
 msgid "Open settings to add a league"
 msgstr "Apri le impostazioni per aggiungere un campionato"
@@ -1538,7 +1538,7 @@ msgctxt "Abbreviation for 'win percentage' in a basketball standings table, keep
 msgid "Pct"
 msgstr "%V"
 
-#: contents/ui/main.qml:3256
+#: contents/ui/main.qml:3270
 msgctxt "@title:notification"
 msgid "Penalty shootout"
 msgstr "Calci di rigore"
@@ -1553,7 +1553,7 @@ msgctxt "@info"
 msgid "Pick a sport to start. Next you can follow the most popular competitions worldwide, or browse every country and league."
 msgstr "Scegli uno sport per iniziare. Successivamente potrai seguire le competizioni più popolari in tutto il mondo oppure sfogliare tutti i paesi e campionati."
 
-#: contents/ui/main.qml:1423
+#: contents/ui/main.qml:1420
 msgctxt "@info %2 and %3 are team names"
 msgid "Pinned %2 vs %3 to the panel - the previously pinned match was unpinned."
 msgid_plural "Pinned %2 vs %3 to the panel - %1 previously pinned matches were unpinned."
@@ -1701,12 +1701,12 @@ msgctxt "@label:spinbox"
 msgid "Recent results days back:"
 msgstr "Giorni di storico per i risultati recenti:"
 
-#: contents/ui/main.qml:3277
+#: contents/ui/main.qml:3291
 msgctxt "@title:notification"
 msgid "Red card"
 msgstr "Cartellino rosso"
 
-#: contents/ui/main.qml:4344
+#: contents/ui/main.qml:4412
 msgctxt "@action"
 msgid "Refresh"
 msgstr "Aggiorna"
@@ -1802,7 +1802,7 @@ msgctxt "@action:button"
 msgid "Save"
 msgstr "Salva"
 
-#: contents/ui/main.qml:949
+#: contents/ui/main.qml:947
 msgctxt "@label"
 msgid "Saved Teams"
 msgstr "Squadre salvate"
@@ -1867,7 +1867,7 @@ msgctxt "@label"
 msgid "Season:"
 msgstr "Stagione:"
 
-#: contents/ui/main.qml:3244
+#: contents/ui/main.qml:3258
 msgctxt "@title:notification"
 msgid "Second half"
 msgstr "Secondo tempo"
@@ -1982,11 +1982,11 @@ msgctxt "@info"
 msgid "SportScore is not responding right now, so this country's competitions could not be loaded. Please try again later."
 msgstr "SportScore non risponde al momento, pertanto non è stato possibile caricare le competizioni di questo paese. Riprova più tardi."
 
-#: contents/ui/main.qml:4192
+#: contents/ui/main.qml:4210
 msgid "Sports Widget for Plasma"
 msgstr "Sports Widget per Plasma"
 
-#: contents/ui/main.qml:3469
+#: contents/ui/main.qml:3483
 msgctxt "@title calendar name"
 msgid "Sports Widget for Plasma upcoming matches"
 msgstr "Partite in arrivo di Sports Widget per Plasma"
@@ -1996,7 +1996,7 @@ msgctxt "@label:football lineups"
 msgid "Starting lineups"
 msgstr "Formazioni titolari"
 
-#: contents/ui/main.qml:3259
+#: contents/ui/main.qml:3273
 msgctxt "@title:notification"
 msgid "Starts in %1 minute"
 msgid_plural "Starts in %1 minutes"
@@ -2018,7 +2018,7 @@ msgctxt "@label:football lineups"
 msgid "Substitutes"
 msgstr "Sostituti"
 
-#: contents/ui/main.qml:3280
+#: contents/ui/main.qml:3294
 msgctxt "@title:notification"
 msgid "Substitution"
 msgstr "Sostituzione"
@@ -2043,8 +2043,8 @@ msgctxt "Abbreviation for 'tied' in an American football standings table, keep v
 msgid "T"
 msgstr "N"
 
-#: contents/ui/main.qml:4629 contents/ui/main.qml:4630
-#: contents/ui/main.qml:4657 contents/ui/main.qml:4688
+#: contents/ui/main.qml:4697 contents/ui/main.qml:4698
+#: contents/ui/main.qml:4725 contents/ui/main.qml:4756
 msgctxt "@info:status"
 msgid "Table request timed out."
 msgstr "Richiesta della classifica scaduta."
@@ -2236,12 +2236,12 @@ msgctxt "@option:check"
 msgid "Update separately"
 msgstr "Aggiorna separatamente"
 
-#: contents/ui/main.qml:1125
+#: contents/ui/main.qml:1123
 msgctxt "@info:status"
 msgid "Updated"
 msgstr "Aggiornato"
 
-#: contents/ui/main.qml:1125
+#: contents/ui/main.qml:1123
 msgctxt "@info:status"
 msgid "Updated %1"
 msgstr "Aggiornato %1"
@@ -2256,7 +2256,7 @@ msgctxt "@info:status"
 msgid "Updating table"
 msgstr "Aggiornamento della classifica in corso"
 
-#: contents/ui/main.qml:220 contents/ui/MatchesToolTip.qml:214
+#: contents/ui/main.qml:218 contents/ui/MatchesToolTip.qml:214
 msgctxt "@info:status"
 msgid "Updating…"
 msgstr "Aggiornamento in corso…"
@@ -2328,7 +2328,7 @@ msgctxt "@label"
 msgid "Won"
 msgstr "Vinte"
 
-#: contents/ui/main.qml:3274
+#: contents/ui/main.qml:3288
 msgctxt "@title:notification"
 msgid "Yellow card"
 msgstr "Cartellino giallo"
