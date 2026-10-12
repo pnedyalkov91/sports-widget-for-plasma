@@ -44,6 +44,9 @@ Item {
     property bool seasonLoading: false
     readonly property int rowCount: tableRows ? tableRows.length : 0
     readonly property var displayRows: groupedRows()
+    // Tennis rankings are one list per tour (ATP men / WTA women): shown as sub-tabs
+    // under the Tables tab instead of the generic "Table:" dropdown.
+    readonly property bool showTourTabs: root.sport === "tennis" && Array.isArray(root.tableOptions) && root.tableOptions.length > 1
     readonly property var tableColumns: SportScoreSports.standingsColumns(root.sport, i18nc)
     readonly property bool tableHasForm: SportScoreSports.standingsHasForm(root.sport)
     readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
@@ -85,7 +88,18 @@ Item {
 
     function leagueTitle() {
         const label = root.leagueLabel.length > 0 ? root.leagueLabel : ProviderCatalog.leagueLabel(root.league);
+        if (root.sport === "tennis")
+            return label.length > 0 ? i18nc("@label", "%1 Rankings", label) : i18nc("@label", "Rankings");
         return label.length > 0 ? i18nc("@label", "%1 Table", label) : i18nc("@label", "League Table");
+    }
+
+    function tourTabLabel(option) {
+        const slug = ProviderCatalog.slugForValue(option && option.slug);
+        if (slug === "atp")
+            return i18nc("@title:tab tennis tour: men's ranking", "ATP · Men");
+        if (slug === "wta")
+            return i18nc("@title:tab tennis tour: women's ranking", "WTA · Women");
+        return String(option && option.label || "");
     }
 
     function selectedTableLabel() {
@@ -97,7 +111,7 @@ Item {
                 return String(option.label || "").trim();
         }
 
-        return root.leagueLabel.length > 0 ? root.leagueLabel : root.leagueTitle().replace(/\s+Table$/, "");
+        return root.leagueLabel.length > 0 ? root.leagueLabel : root.leagueTitle().replace(/\s+(Table|Rankings)$/, "");
     }
 
     onSelectedTableSlugChanged: {
@@ -127,7 +141,31 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
-            visible: Array.isArray(root.tableOptions) && root.tableOptions.length > 0
+            visible: root.showTourTabs
+
+            Repeater {
+                model: root.showTourTabs ? root.tableOptions : []
+
+                TourTab {
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    text: root.tourTabLabel(modelData)
+                    active: ProviderCatalog.slugForValue(modelData.slug) === ProviderCatalog.slugForValue(root.selectedTableSlug)
+                    onClicked: {
+                        const slug = String(modelData.slug || "").trim();
+                        if (slug.length > 0 && !active)
+                            root.tableSelected(slug);
+                    }
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: !root.showTourTabs && Array.isArray(root.tableOptions) && root.tableOptions.length > 0
 
             PlasmaComponents.Label {
                 text: i18nc("@label", "Table:")
@@ -282,6 +320,41 @@ Item {
         }
     }
 
+    // Pill-shaped sub-tab (ATP / WTA), styled like the main tab strip.
+    component TourTab: Rectangle {
+        id: tourTab
+
+        property string text: ""
+        property bool active: false
+
+        signal clicked()
+
+        implicitHeight: Kirigami.Units.gridUnit * 1.8
+        radius: height / 2
+        color: active ? Kirigami.Theme.highlightColor : (tourMouse.containsMouse ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1) : "transparent")
+        border.width: active ? 0 : 1
+        border.color: root.tableRowDividerColor
+
+        PlasmaComponents.Label {
+            anchors.centerIn: parent
+            width: parent.width - Kirigami.Units.smallSpacing * 2
+            text: tourTab.text
+            color: tourTab.active ? Kirigami.Theme.highlightedTextColor : root.tablePrimaryTextColor
+            font.bold: tourTab.active
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+        }
+
+        MouseArea {
+            id: tourMouse
+
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: tourTab.clicked()
+        }
+    }
+
     component EmptyState: Item {
         property string text: ""
 
@@ -331,7 +404,7 @@ Item {
                 }
 
                 HeaderLabel {
-                    text: i18nc("@label", "Team")
+                    text: root.sport === "tennis" ? i18nc("@label", "Player") : i18nc("@label", "Team")
                     Layout.fillWidth: true
                 }
 

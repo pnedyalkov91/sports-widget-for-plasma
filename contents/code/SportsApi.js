@@ -360,6 +360,11 @@ function fetchLeagueSeasons(options, onSuccess, onError) {
     // Cup 2022). Selecting one drives fetchEspnStandings's ?season= parameter.
     const plan = espnPlan(options);
     if (plan) {
+        // Tennis rankings are a single live list, not a per-season table.
+        if (espnIsTennis(plan.espnSport)) {
+            finish(onSuccess, []);
+            return;
+        }
         fetchEspnSeasons(plan.espnSport, plan.league, options, onSuccess, () => finish(onSuccess, []));
         return;
     }
@@ -2590,9 +2595,82 @@ function espnSeasonYear(options) {
     return "";
 }
 
+// Tennis has no league table; its "table" is the ATP / WTA world ranking. ESPN's
+// site API serves it in ONE request with the athletes embedded (the core API
+// .../leagues/{league}/rankings returns only $ref links - one extra request per
+// player). Payload: { rankings: [ { name, type, ranks: [ { current, previous,
+// points, trend, athlete: { id, displayName, shortname, flag, headshot, ... } } ] } ] }.
+// Rows use the standings row shape, so the Tables tab renders them unchanged; the
+// ranking-specific values are the `points` and `trend` columns.
+function normalizeEspnTennisRankings(payload, leagueLabel) {
+    const lists = arrayValue(payload && payload.rankings);
+    // Several ranking lists can be present (e.g. the official ranking and a race);
+    // the first one that actually carries ranks is the main ranking.
+    let ranks = [];
+    for (let i = 0; i < lists.length && ranks.length === 0; i += 1)
+        ranks = arrayValue(lists[i] && lists[i].ranks);
+    if (ranks.length === 0)
+        ranks = arrayValue(payload && payload.ranks);
+
+    const league = leagueLabel || "";
+    return ranks.map(entry => {
+        const athlete = (entry && (entry.athlete || entry.team)) || {};
+        const position = numberValue(entry && entry.current);
+        const previous = numberValue(entry && entry.previous);
+        let trend = stringValue(entry && entry.trend);
+        if (trend.length === 0 || trend === "-")
+            trend = previous > 0 && position > 0 && previous !== position
+                ? (previous > position ? "+" : "-") + Math.abs(previous - position)
+                : "-";
+        const headshot = athlete.headshot;
+        return {
+            position: position,
+            team: stringValue(athlete.displayName || athlete.shortname || athlete.shortName || athlete.fullName),
+            group: "",
+            groupIndex: 0,
+            played: 0,
+            won: 0,
+            draw: 0,
+            otLosses: 0,
+            lost: 0,
+            goalsFor: 0,
+            goalsAgainst: 0,
+            goalDifference: 0,
+            points: numberValue(entry && entry.points),
+            previous: previous,
+            trend: trend,
+            winPercent: "",
+            gamesBehind: "",
+            form: "",
+            crest: stringValue(typeof headshot === "string" ? headshot : (headshot && headshot.href)) || stringValue(athlete.flag),
+            teamPath: "",
+            teamSlug: ProviderCatalog.slugForValue(athlete.id || athlete.displayName),
+            league: league
+        };
+    }).filter(row => row.team.length > 0 && row.position > 0)
+        .sort((left, right) => left.position - right.position);
+}
+
+function fetchEspnTennisRankings(league, options, onSuccess, onError) {
+    const url = ESPN_SITE_BASE + "/tennis/" + encodeURIComponent(league) + "/rankings";
+    requestEspnText(url, text => {
+        let rows = [];
+        try {
+            rows = normalizeEspnTennisRankings(JSON.parse(text), stringValue(options && options.leagueLabel));
+        } catch (error) {
+            rows = [];
+        }
+        finish(onSuccess, rows);
+    }, error => finish(onError, error || "Unable to load ESPN rankings"));
+}
+
 function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
     if (stringValue(espnSport).length === 0 || stringValue(league).length === 0) {
         finish(onSuccess, []);
+        return;
+    }
+    if (espnIsTennis(espnSport)) {
+        fetchEspnTennisRankings(league, options, onSuccess, onError);
         return;
     }
     const season = espnSeasonYear(options);

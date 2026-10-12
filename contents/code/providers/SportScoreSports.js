@@ -119,6 +119,14 @@ function standingsColumns(sport, i18nc) {
             column("percentage", i18nc("Abbreviation for 'win percentage' in a basketball standings table, keep very short", "Pct"), i18nc("@info:tooltip", "Win percentage"), 3, true)
         ];
     }
+    // Tennis "table" = the ATP / WTA world ranking: points and the places gained or
+    // lost since the previous ranking update.
+    if (value === "tennis") {
+        return [
+            column("points", i18nc("Abbreviation for 'ranking points' in a tennis rankings table, keep very short", "Pts"), i18nc("@info:tooltip", "Ranking points"), 3.4, true),
+            column("trend", i18nc("Abbreviation for 'change since the previous ranking' in a tennis rankings table, keep very short", "+/-"), i18nc("@info:tooltip", "Places gained or lost since the previous ranking"), 2.6)
+        ];
+    }
     if (value === "cricket") {
         return [
             column("played", i18nc("Abbreviation for 'matches played' in a cricket standings table, keep very short", "M"), i18nc("@info:tooltip", "Matches played"), 2.4),

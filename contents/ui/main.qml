@@ -2374,6 +2374,18 @@ PlasmoidItem {
 
         // Keep older untagged discoveries reachable, but only after the ordered saved scopes.
         root.addTeamTableOptionsFromCompetitions(options, seen, root.discoveredTeamCompetitions);
+        // Tennis "tables" are the world rankings, one list per tour. Offer both (ATP =
+        // men, WTA = women) as sub-tabs even when only one tour is saved, so the other
+        // is one click away; listing them here also keeps the selection from being
+        // reset to the first option on every refresh.
+        if (SportVisuals.normalizedSport(root.selectedSport) === "tennis") {
+            [{ "slug": "atp", "label": "ATP" }, { "slug": "wta", "label": "WTA" }].forEach(tour => {
+                if (seen[tour.slug])
+                    return;
+                seen[tour.slug] = true;
+                options.push({ "slug": tour.slug, "label": tour.label, "country": "" });
+            });
+        }
         return options;
     }
 

@@ -162,11 +162,12 @@ Item {
         return String(teamName || "").toLowerCase().indexOf(favorite) >= 0;
     }
 
-    // Whether this sport has a league table. Only team-league sports do; "event"
-    // sports (tennis, golf, racing, MMA) are individual/tournament based and have no
-    // standings, so the Tables tab is hidden for them. Defaults to true when the
-    // sport is unknown so a new ESPN sport isn't silently stripped of its tab.
-    readonly property bool sportHasTables: root.sport.length === 0 || EspnSports.usesStandings(root.sport)
+    // Whether this sport has a league table. Team-league sports do; "event" sports
+    // (golf, racing, MMA) are tournament based and have no standings, so the Tables
+    // tab is hidden for them. Tennis is the exception: its Tables tab shows the ATP /
+    // WTA world rankings. Defaults to true when the sport is unknown so a new ESPN
+    // sport isn't silently stripped of its tab.
+    readonly property bool sportHasTables: root.sport.length === 0 || EspnSports.usesStandings(root.sport) || String(root.sport).toLowerCase() === "tennis"
 
     function tabVisible(tab) {
         // Tables (tab 3) needs standings, which only team-league sports have.
