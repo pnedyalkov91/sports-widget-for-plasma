@@ -446,8 +446,15 @@ PlasmoidItem {
         // already past, wake almost immediately. Cap the wait at the idle interval
         // so we re-check periodically regardless.
         let delay = next - root.kickoffImminentLeadMs - now;
-        if (delay < 1000)
-            delay = 1000;
+        if (delay < 1000) {
+            // Already inside the imminent window: the fast live poll is active, so
+            // the only thing left to catch is the kickoff itself. Re-arming at 1 s
+            // here made the handler (applyLiveMatches + rebuildScheduleModel +
+            // refreshLiveMatches) fire every second whenever any match was within
+            // the lead - starving the UI thread. Wake just after kickoff instead,
+            // never more often than every 15 s.
+            delay = Math.max(next - now + 5000, 15000);
+        }
         kickoffWakeTimer.interval = Math.min(delay, root.smartIdleLiveIntervalMs);
         kickoffWakeTimer.start();
     }
@@ -1604,6 +1611,15 @@ PlasmoidItem {
         const leagueSlug = ProviderCatalog.slugForValue(entry && entry.league || "");
         const leagueLabelKey = normalizedKey(root.displayLeagueLabel(entry));
         if (leagueSlug.length === 0)
+            return true;
+
+        // ESPN stamps every row with the ESPN league slug it was fetched from. When that
+        // is this entry's league the row belongs to it, whatever label the row carries.
+        // Essential for the event sports (tennis, MMA, golf, racing), whose rows are
+        // labelled with the TOURNAMENT / event name ("Rolex Shanghai Masters") rather
+        // than the tour ("ATP") - the label comparison below can never match those.
+        const rowEspnLeagueSlug = ProviderCatalog.slugForValue(match && match.espnLeague || "");
+        if (rowEspnLeagueSlug.length > 0 && rowEspnLeagueSlug === leagueSlug)
             return true;
 
         const matchLeagueLabel = String(match && match.league || "").trim();
@@ -2936,8 +2952,20 @@ PlasmoidItem {
     // (Re)build the Schedule model from in-memory matches honouring collapse state.
     // Like rebuildRecentModel, a collapsed group contributes only its header row so
     // the ListView never holds height-0 match rows (the cause of scroll jumps).
+    // Append all rows to a ListModel in ONE call. ListModel.append() with an array
+    // inserts the whole batch and emits a single count/rows change. Appending row by
+    // row emitted countChanged per row, and every binding that reads the model (panel
+    // text, rotation indexes, tooltip/compact Repeaters - several of which walk the
+    // whole model with get(i)) re-ran each time: O(n^2) work on the UI thread, which
+    // froze plasmashell for ~19 s whenever a few hundred tennis rows were applied.
+    function appendRows(model, rows) {
+        if (Array.isArray(rows) && rows.length > 0)
+            model.append(rows);
+    }
+
     function rebuildScheduleModel() {
         scoresModel.clear();
+        const pendingRows = [];
         let matches = scheduledMatches(root.latestScheduleMatches);
         matches = prioritizeFavorite(matches);
         if (Plasmoid.configuration.prioritizePopular) {
@@ -2970,7 +2998,7 @@ PlasmoidItem {
             if (key.length === 0 || emitted[key])
                 return;
             emitted[key] = true;
-            scoresModel.append({
+            pendingRows.push({
                 "leagueGroup": key,
                 "rowType": "header",
                 "isPlaceholder": true
@@ -2978,14 +3006,14 @@ PlasmoidItem {
             if (Boolean(root.collapsedScheduleGroups[key]))
                 return;
             const rows = (byGroup[key] || []).slice(0, perGroup);
-            rows.forEach(row => scoresModel.append(Object.assign({
+            rows.forEach(row => pendingRows.push(Object.assign({
                     "rowType": "match"
                 }, row)));
             // Expanded group that finished loading with no upcoming fixtures: show a
             // clear "nothing scheduled" line instead of a blank gap (common in the
             // off-season). Only once the group was actually attempted/loaded.
             if (rows.length === 0 && !root.pendingScheduleGroups[key] && root.attemptedScheduleGroups[key])
-                scoresModel.append({
+                pendingRows.push({
                     "leagueGroup": key,
                     "rowType": "notice",
                     "isEmptyNotice": true
@@ -2994,6 +3022,7 @@ PlasmoidItem {
 
         root.scheduleScopeEntries().forEach(entry => emitGroup(root.entryGroupLabel(entry)));
         order.forEach(group => emitGroup(group));
+        root.appendRows(scoresModel, pendingRows);
         // The Live tab renders the combined leagues model (live + today's
         // upcoming), so it must be rebuilt whenever the schedule model changes -
         // otherwise upcoming matches never appear there until a live refresh.
@@ -3007,11 +3036,11 @@ PlasmoidItem {
 
         let liveMatches = root.filterMatchesByEntries(root.latestLiveMatches, entries);
         liveMatches = root.sortLiveMatches(root.prioritizeFavorite(liveMatches));
-        liveMatches.forEach(match => liveTarget.append(root.matchForModel(root.liveMatchForModel(match))));
+        root.appendRows(liveTarget, liveMatches.map(match => root.matchForModel(root.liveMatchForModel(match))));
 
         let scheduleMatches = root.filterMatchesByEntries(root.latestScheduleMatches, entries);
         scheduleMatches = root.prioritizeFavorite(root.scheduledMatches(scheduleMatches));
-        scheduleMatches.forEach(match => scheduleTarget.append(root.matchForModel(match)));
+        root.appendRows(scheduleTarget, scheduleMatches.map(match => root.matchForModel(match)));
 
         if (!recentTarget)
             return;
@@ -3019,7 +3048,7 @@ PlasmoidItem {
         recentTarget.clear();
         let recentMatches = root.filterMatchesByEntries(root.latestRecentMatches, entries);
         recentMatches = root.sortRecentResultsByDate(recentMatches);
-        recentMatches.forEach(match => recentTarget.append(root.matchForModel(match)));
+        root.appendRows(recentTarget, recentMatches.map(match => root.matchForModel(match)));
     }
 
     // The panel + tooltip models are rebuilt from scratch (re-running matchForModel
@@ -3724,11 +3753,11 @@ PlasmoidItem {
         syncTeamTableOptions();
         matches = prioritizeFavorite(sourceMatches);
         matches = sortLiveMatches(matches);
-        matches.forEach(match => {
+        root.appendRows(liveMatchesModel, matches.map(match => {
             const row = matchForModel(liveMatchForModel(match));
             row.leagueGroup = root.liveLeagueGroupLabel(row);
-            return liveMatchesModel.append(row);
-        });
+            return row;
+        }));
         root.requestAuxiliaryMatchModelsRefresh();
         root.pushMatchNotifications();
         root.prunePerMatchStateFromModels();
@@ -3829,7 +3858,7 @@ PlasmoidItem {
         root.leaguesGroupSummaries = summaries;
 
         leaguesMatchesModel.clear();
-        rows.forEach(r => leaguesMatchesModel.append(r));
+        root.appendRows(leaguesMatchesModel, rows);
     }
 
     property var leaguesGroupSummaries: ({})
@@ -3859,6 +3888,7 @@ PlasmoidItem {
     // the model free of them makes every realized row a real, measurable height.
     function rebuildRecentModel() {
         recentResultsListModel.clear();
+        const pendingRows = [];
         const matches = sortRecentResultsByDate(root.latestRecentMatches);
         const byGroup = ({});
         matches.forEach(match => {
@@ -3893,7 +3923,7 @@ PlasmoidItem {
             emitted[key] = true;
             const collapsed = Boolean(root.collapsedRecentGroups[key]);
             // Header marker row (always present so the section header renders).
-            recentResultsListModel.append({
+            pendingRows.push({
                 "leagueGroup": key,
                 "rowType": "header",
                 "isPlaceholder": true
@@ -3901,13 +3931,13 @@ PlasmoidItem {
             if (collapsed)
                 return;
             const groupRows = (byGroup[key] || []).slice(0, perGroup);
-            groupRows.forEach(row => recentResultsListModel.append(Object.assign({
+            groupRows.forEach(row => pendingRows.push(Object.assign({
                     "rowType": "match"
                 }, row)));
             // Expanded but loaded-empty group (a club with no recent matches) gets a
             // clear notice instead of a blank gap.
             if (groupRows.length === 0 && !root.pendingRecentGroups[key] && root.recentGroupAttempted(key))
-                recentResultsListModel.append({
+                pendingRows.push({
                     "leagueGroup": key,
                     "rowType": "notice",
                     "isEmptyNotice": true
@@ -3923,6 +3953,7 @@ PlasmoidItem {
         if (filter === "both")
             for (let group in byGroup)
                 emitGroup(group);
+        root.appendRows(recentResultsListModel, pendingRows);
     }
 
     // Append a lazily-loaded group's recent matches to whatever is already shown,
@@ -4095,9 +4126,7 @@ PlasmoidItem {
 
         root.tableRows = rows.slice();
         tableModel.clear();
-        rows.forEach(row => {
-            return tableModel.append(row);
-        });
+        root.appendRows(tableModel, rows);
     }
 
     function normalizeGroupLabel(value) {

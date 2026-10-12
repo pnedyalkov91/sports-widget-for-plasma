@@ -1420,10 +1420,18 @@ const ESPN_DATE_RANGE_RE = /^(\d{4})(\d{2})(\d{2})-(\d{4})(\d{2})(\d{2})$/;
 const ESPN_SPLIT_MAX_DAYS_PER_MONTH = 16;
 // ESPN returns a complete list up to limit=500 and silently truncates above it.
 const ESPN_SPLIT_MONTH_LIMIT = 500;
+// Tennis tournaments (ATP/WTA 250 up to a Slam) run 6-14 days; sampling the scoreboard at
+// this spacing is enough to see every one of them (see espnScoreboardChunks). The last day
+// of a stretch is sampled too unless the previous sample is within a day of it.
+const ESPN_TENNIS_SAMPLE_DAYS = 4;
+
+function espnIsTennis(espnSport) {
+    return stringValue(espnSport).toLowerCase() === "tennis";
+}
 
 // Plan the requests for a YYYYMMDD-YYYYMMDD range. Returns null when `dates` is not a
 // range (empty, a single day, a month...), meaning "send it as it is".
-function espnScoreboardChunks(dates, limit) {
+function espnScoreboardChunks(dates, limit, espnSport) {
     const match = ESPN_DATE_RANGE_RE.exec(stringValue(dates));
     if (!match)
         return null;
@@ -1443,9 +1451,21 @@ function espnScoreboardChunks(dates, limit) {
         if (days > ESPN_SPLIT_MAX_DAYS_PER_MONTH) {
             chunks.push({ dates: "" + year + ("0" + (month + 1)).slice(-2), limit: ESPN_SPLIT_MONTH_LIMIT, windowed: true });
         } else {
+            // A tennis scoreboard day returns the WHOLE tournament(s) running that day (every
+            // round, with full per-match statistics - 0.4-1.3 MB), not just that day's
+            // matches. Asking for each day therefore downloads and JSON-parses the same
+            // tournament once per day. Sample one day per ESPN_TENNIS_SAMPLE_DAYS instead
+            // (always including the segment's last day): a tournament lasts at least that
+            // long, so every one still shows up in at least one sample.
+            const step = espnIsTennis(espnSport) ? ESPN_TENNIS_SAMPLE_DAYS : 1;
+            let lastDay = null;
             for (let day = new Date(cursor.getTime()); day.getTime() <= segmentEnd.getTime();
-                    day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 12, 0, 0))
+                    day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + step, 12, 0, 0)) {
                 chunks.push({ dates: espnDate(day.getTime()), limit: dayLimit, windowed: false });
+                lastDay = day;
+            }
+            if (step > 1 && lastDay && segmentEnd.getTime() - lastDay.getTime() >= 2 * dayMs)
+                chunks.push({ dates: espnDate(segmentEnd.getTime()), limit: dayLimit, windowed: false });
         }
         cursor = new Date(year, month + 1, 1, 12, 0, 0);
     }
@@ -1458,12 +1478,62 @@ function espnScoreboardChunks(dates, limit) {
     };
 }
 
+// Does an event overlap [windowStartMs, windowEndMs]? Single-day events (matches) are
+// judged by their start time. A multi-day event - a tennis tournament, whose `date` is
+// its FIRST day and `endDate` its last - is kept while any part of it is in the window,
+// so a tournament that began before the window but is still running is not trimmed away.
+function espnEventInWindow(event, windowStartMs, windowEndMs) {
+    const start = Date.parse(stringValue(event && event.date));
+    if (!isFinite(start))
+        return true;
+    const parsedEnd = Date.parse(stringValue(event && event.endDate));
+    const end = isFinite(parsedEnd) && parsedEnd > start ? parsedEnd : start;
+    return end >= windowStartMs && start <= windowEndMs;
+}
+
+function espnGroupingKey(group) {
+    const info = (group && group.grouping) || {};
+    return stringValue(info.id || info.slug || info.displayName || (group && group.id));
+}
+
+// Fold the tennis matches of `extra` into `kept` (two copies of the same tournament event
+// from different date chunks): groupings are matched by id/slug and their competitions
+// are unioned by competition id. No-op for events without groupings (every other sport).
+function espnMergeDuplicateEvent(kept, extra) {
+    const extraGroupings = arrayValue(extra && extra.groupings);
+    if (!kept || extraGroupings.length === 0)
+        return;
+    if (!Array.isArray(kept.groupings))
+        kept.groupings = [];
+    extraGroupings.forEach(group => {
+        const key = espnGroupingKey(group);
+        const target = kept.groupings.find(candidate => espnGroupingKey(candidate) === key);
+        if (!target) {
+            kept.groupings.push(group);
+            return;
+        }
+        if (!Array.isArray(target.competitions))
+            target.competitions = [];
+        const known = {};
+        target.competitions.forEach(competition => {
+            known[stringValue(competition && competition.id)] = true;
+        });
+        arrayValue(group && group.competitions).forEach(competition => {
+            const id = stringValue(competition && competition.id);
+            if (id.length > 0 && known[id])
+                return;
+            known[id] = true;
+            target.competitions.push(competition);
+        });
+    });
+}
+
 // Fetch a scoreboard for `dates` (a range, single day, month or year) and deliver ONE
 // parsed payload ({ leagues, events, ... }). Ranges are split as described above; if
 // only some of the pieces fail the rest are delivered (a partial answer beats an empty
 // Live tab), and only when every piece fails is onError called.
 function requestEspnScoreboardPayload(espnSport, league, dates, limit, onSuccess, onError) {
-    const plan = espnScoreboardChunks(dates, limit);
+    const plan = espnScoreboardChunks(dates, limit, espnSport);
     if (!plan) {
         requestEspnText(espnScoreboardUrl(espnSport, league, dates, limit), text => {
             let payload = null;
@@ -1505,16 +1575,19 @@ function requestEspnScoreboardPayload(espnSport, league, dates, limit, onSuccess
         const events = [];
         okResults.forEach(entry => {
             arrayValue(entry.payload.events).forEach(event => {
+                if (entry.windowed && !espnEventInWindow(event, plan.windowStartMs, plan.windowEndMs))
+                    return;
                 const id = stringValue(event && event.id);
                 if (id.length > 0) {
-                    if (seen[id])
+                    if (seen[id]) {
+                        // Same id from another day/month chunk. Team-sport events are
+                        // identical copies, but a tennis event is a whole TOURNAMENT whose
+                        // matches (groupings[].competitions[]) differ per chunk - merge
+                        // them instead of throwing the later chunks' matches away.
+                        espnMergeDuplicateEvent(seen[id], event);
                         return;
-                    seen[id] = true;
-                }
-                if (entry.windowed) {
-                    const time = Date.parse(stringValue(event && event.date));
-                    if (isFinite(time) && (time < plan.windowStartMs || time > plan.windowEndMs))
-                        return;
+                    }
+                    seen[id] = event;
                 }
                 events.push(event);
             });
@@ -1528,10 +1601,19 @@ function requestEspnScoreboardPayload(espnSport, league, dates, limit, onSuccess
         finish(onSuccess, Object.assign({}, okResults[0].payload, { events: events }));
     };
 
+    // Neighbouring samples of the same tournament come back byte-identical; JSON.parse each
+    // distinct body once and reuse the parsed object (the multi-MB parse runs on the UI thread).
+    const parsedByBody = {};
     chunks.forEach((chunk, index) => {
         requestEspnText(espnScoreboardUrl(espnSport, league, chunk.dates, chunk.limit), text => {
             try {
-                results[index] = { payload: JSON.parse(text), windowed: chunk.windowed };
+                let payload = text.length > 4096 ? parsedByBody[text] : undefined;
+                if (payload === undefined) {
+                    payload = JSON.parse(text);
+                    if (text.length > 4096)
+                        parsedByBody[text] = payload;
+                }
+                results[index] = { payload: payload, windowed: chunk.windowed };
             } catch (error) {
                 failures += 1;
                 if (firstError.length === 0)
@@ -2013,6 +2095,12 @@ const ESPN_DAILY_CADENCE_SPORTS = ["baseball", "basketball", "hockey"];
 // (A league that is between seasons legitimately has no games in this window and the
 // Recent tab shows its empty state - there genuinely are no recent results.)
 const ESPN_DAILY_RECENT_DAYS = 8;
+// Tennis "recent": a year-to-date pull is ~45 MB per tour (every tournament of the year with
+// full match statistics - tens of MB parsed on the UI thread, the plasmashell freeze). The tab
+// only lists the latest ~300 matches, which the last few tournaments already cover. The wider
+// window is used once, only when the short one is empty (off-season).
+const ESPN_TENNIS_RECENT_DAYS = 21;
+const ESPN_TENNIS_RECENT_FALLBACK_DAYS = 75;
 // Cap chosen to exceed the window's game count (so nothing truncates) while bounding
 // the payload if a stretch is unusually dense (doubleheaders, catch-up games).
 const ESPN_DAILY_RECENT_LIMIT = 200;
@@ -2022,6 +2110,13 @@ const ESPN_DAILY_RECENT_LIMIT = 200;
 // weekly-cadence league's whole season is small enough to fetch and parse at once).
 function espnRecentWindow(sportValue) {
     const sport = normalizedSport(sportValue);
+    if (sport === "tennis") {
+        const now = Date.now();
+        return {
+            dates: espnDate(now - ESPN_TENNIS_RECENT_DAYS * 24 * 60 * 60 * 1000) + "-" + espnDate(now),
+            limit: ESPN_MATCH_LIMIT
+        };
+    }
     if (ESPN_DAILY_CADENCE_SPORTS.indexOf(sport) >= 0) {
         const now = Date.now();
         const day = 24 * 60 * 60 * 1000;
@@ -2040,6 +2135,13 @@ function espnRecentWindow(sportValue) {
 // Returns null for non-daily sports (they already fetch year-to-date, no fallback).
 const ESPN_DAILY_RECENT_FALLBACK_DAYS = 45;
 function espnRecentFallbackWindow(sportValue) {
+    if (normalizedSport(sportValue) === "tennis") {
+        const now = Date.now();
+        return {
+            dates: espnDate(now - ESPN_TENNIS_RECENT_FALLBACK_DAYS * 24 * 60 * 60 * 1000) + "-" + espnDate(now),
+            limit: ESPN_MATCH_LIMIT
+        };
+    }
     if (ESPN_DAILY_CADENCE_SPORTS.indexOf(normalizedSport(sportValue)) < 0)
         return null;
     const now = Date.now();
