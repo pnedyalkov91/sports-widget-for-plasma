@@ -1196,7 +1196,7 @@ PlasmoidItem {
     // clear (see clearMatchModelCache). A fresh shallow copy is returned so callers
     // that tweak the row (e.g. leagueGroup) can't poison the shared entry.
     function matchModelCacheKey(match) {
-        return root.matchKey(match) + "|" + String(match && match.minute || "");
+        return root.matchKey(match) + "|" + String(match && match.minute || "") + "|" + String(match && match.homeGames || "") + "|" + String(match && match.awayGames || "");
     }
 
     function clearMatchModelCache() {

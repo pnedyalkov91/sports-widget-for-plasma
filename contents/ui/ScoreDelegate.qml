@@ -31,6 +31,10 @@ Rectangle {
     property string awayTeam: ""
     property string homeScore: ""
     property string awayScore: ""
+    // Games in the set being played (live tennis only), shown in parentheses
+    // after the sets won, e.g. "1 (4) - 0 (2)".
+    property string homeGames: ""
+    property string awayGames: ""
     property string homePenaltyScore: ""
     property string awayPenaltyScore: ""
     property string status: ""
@@ -60,24 +64,11 @@ Rectangle {
 
     signal clicked()
     signal doubleClicked()
-    signal scoreInfoClicked()
     // Emitted by the row action icons; the parent persists the new state.
     signal notifyToggled()
     // The star asks which side to favourite, then emits that team's name.
     signal favoriteToggled(string teamName)
     signal panelPinToggled()
-
-    readonly property bool showScoreInfo: {
-        if (!root.showScore || root.status === "Upcoming")
-            return false;
-
-        const s = String(root.sport || "").toLowerCase();
-        if (s === "tennis")
-            return true;
-        if (s === "cricket" || s === "basketball")
-            return root.homeScore.length > 0;
-        return false;
-    }
 
     function scoreText() {
         if (!root.showScore)
@@ -91,6 +82,9 @@ Rectangle {
             return "-";
         }
         let value = root.homeScore + " - " + root.awayScore;
+        if (String(root.sport || "").toLowerCase() === "tennis" && root.status === "Live"
+                && root.homeGames.length > 0 && root.awayGames.length > 0)
+            value = root.homeScore + " (" + root.homeGames + ") - " + root.awayScore + " (" + root.awayGames + ")";
         if (root.homePenaltyScore.length > 0 && root.awayPenaltyScore.length > 0)
             value += " (" + i18nc("@label:penalty shoot-out short", "Pens") + " " + root.homePenaltyScore + "-" + root.awayPenaltyScore + ")";
         return value;
@@ -247,11 +241,14 @@ Rectangle {
 
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: scoreLabel.visible ? Math.max(scoreLabel.implicitHeight, infoIconContainer.height) : 0
+                Layout.preferredHeight: scoreLabel.visible ? scoreLabel.implicitHeight : 0
 
                 PlasmaComponents.Label {
                     id: scoreLabel
                     anchors.centerIn: parent
+                    width: Math.min(implicitWidth, parent.width)
+                    fontSizeMode: Text.HorizontalFit
+                    minimumPixelSize: Math.round(Kirigami.Units.gridUnit * 0.6)
                     text: scoreText()
                     color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     horizontalAlignment: Text.AlignHCenter
@@ -259,43 +256,6 @@ Rectangle {
                     font.pixelSize: Kirigami.Units.gridUnit
                     // An upcoming match has no score yet - hide the bare "-" placeholder.
                     visible: root.status !== "Upcoming" && text !== "-"
-                }
-
-                Item {
-                    id: infoIconContainer
-                    visible: root.showScoreInfo
-                    anchors.left: scoreLabel.right
-                    anchors.leftMargin: Kirigami.Units.smallSpacing / 2
-                    anchors.verticalCenter: scoreLabel.verticalCenter
-                    width: infoIcon.width
-                    height: infoIcon.height
-
-                    Kirigami.Icon {
-                        id: infoIcon
-                        width: Kirigami.Units.iconSizes.small
-                        height: width
-                        source: "dialog-information"
-                        isMask: true
-                        color: infoMouseArea.containsMouse
-                            ? (root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor)
-                            : (root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.disabledTextColor)
-                    }
-
-                    MouseArea {
-                        id: infoMouseArea
-                        anchors.fill: parent
-                        anchors.margins: -Kirigami.Units.smallSpacing
-                        cursorShape: Qt.PointingHandCursor
-                        hoverEnabled: true
-                        onClicked: function(mouse) {
-                            mouse.accepted = true;
-                            root.scoreInfoClicked();
-                        }
-
-                        PlasmaComponents.ToolTip.text: i18nc("@info:tooltip", "Score may be inaccurate. Click to view match details.")
-                        PlasmaComponents.ToolTip.visible: containsMouse
-                        PlasmaComponents.ToolTip.delay: 600
-                    }
                 }
             }
 

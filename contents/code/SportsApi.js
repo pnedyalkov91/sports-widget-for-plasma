@@ -1738,6 +1738,23 @@ function espnTennisSetsWon(competitor) {
     return numberValue(competitor && competitor.score);
 }
 
+// Games in the set currently being played, for a live match: the last linescore
+// index where neither player's set is marked as won. ESPN's scoreboard has no
+// game-point (15/30/40) field, so this is the finest live score it offers.
+function espnTennisCurrentGames(home, away) {
+    const homeLines = arrayValue(home && home.linescores);
+    const awayLines = arrayValue(away && away.linescores);
+    const count = Math.max(homeLines.length, awayLines.length);
+    for (let i = count - 1; i >= 0; i -= 1) {
+        const h = homeLines[i];
+        const a = awayLines[i];
+        if ((h && h.winner === true) || (a && a.winner === true))
+            continue;
+        return { home: stringValue(h && h.value), away: stringValue(a && a.value) };
+    }
+    return { home: "", away: "" };
+}
+
 // Per-set "games (tiebreak)" string for one competitor's set, e.g. "6" or "7(3)".
 function espnTennisSetCell(line) {
     const games = stringValue(line && line.value);
@@ -1788,6 +1805,7 @@ function normalizeEspnTennisMatch(competition, tournamentName, sportValue, optio
     const statusText = stringValue(statusType.shortDetail || statusType.detail || statusType.description);
     const timestamp = Date.parse(stringValue(competition.date));
     const round = stringValue(competition.round && (competition.round.displayName || competition.round.name));
+    const currentGames = status === "Live" ? espnTennisCurrentGames(home, away) : { home: "", away: "" };
 
     return {
         id: "espn-" + stringValue(competition.id),
@@ -1797,6 +1815,8 @@ function normalizeEspnTennisMatch(competition, tournamentName, sportValue, optio
         awayTeam: awayName,
         homeScore: status === "Upcoming" ? "" : stringValue(espnTennisSetsWon(home)),
         awayScore: status === "Upcoming" ? "" : stringValue(espnTennisSetsWon(away)),
+        homeGames: currentGames.home,
+        awayGames: currentGames.away,
         status,
         statusText,
         minute: status === "Live" ? statusText : "",

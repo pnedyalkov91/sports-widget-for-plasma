@@ -143,6 +143,8 @@ Item {
             awayTeam: model.awayTeam || ""
             homeScore: model.homeScore || ""
             awayScore: model.awayScore || ""
+            homeGames: model.homeGames || ""
+            awayGames: model.awayGames || ""
             homePenaltyScore: model.homePenaltyScore || ""
             awayPenaltyScore: model.awayPenaltyScore || ""
             status: model.status || ""

@@ -27,6 +27,8 @@ Item {
     property string awayTeam: ""
     property string homeScore: ""
     property string awayScore: ""
+    property string homeGames: ""
+    property string awayGames: ""
     property string homePenaltyScore: ""
     property string awayPenaltyScore: ""
     property string status: ""
@@ -231,6 +233,8 @@ Item {
             awayTeam: root.awayTeam
             homeScore: root.homeScore
             awayScore: root.awayScore
+            homeGames: root.homeGames
+            awayGames: root.awayGames
             homePenaltyScore: root.homePenaltyScore
             awayPenaltyScore: root.awayPenaltyScore
             status: root.status
@@ -253,7 +257,6 @@ Item {
             awayIsFavorite: root.awayIsFavorite
             onClicked: root.clicked()
             onDoubleClicked: root.doubleClicked()
-            onScoreInfoClicked: root._openDetailsTab()
             onNotifyToggled: root.notifyToggled()
             onFavoriteToggled: (teamName) => root.favoriteToggled(teamName)
             onPanelPinToggled: root.panelPinToggled()
