@@ -498,7 +498,9 @@ function fetchCountryCompetitions(options, onSuccess, onError) {
         const wantCountry = ProviderCatalog.slugForValue(options && options.country);
         const espnLeagues = EspnSports.leaguesFor(sharedSport)
             .filter(league => wantCountry.length === 0
-                || ProviderCatalog.slugForValue(league.country) === wantCountry)
+                || (sharedSport === "basketball"
+                    ? EspnSports.countryMatches(league.country, options && options.country)
+                    : ProviderCatalog.slugForValue(league.country) === wantCountry))
             // ESPN entries resolve to ESPN directly (see espnLeagueForEntry); drop
             // the SportScore-style path so no bogus SportScore lookup is stored.
             .map(league => Object.assign({}, league, { provider: "espn", path: "" }));

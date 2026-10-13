@@ -159,8 +159,15 @@ function popularCompetitions(sport) {
     switch (value) {
     case "football":
         return toCompetitionOptions(value, FOOTBALL_COMPETITIONS);
-    case "basketball":
-        return toCompetitionOptions(value, BASKETBALL_COMPETITIONS);
+    case "basketball": {
+        // NBA first, then SportScore-only competitions (EuroLeague), then the rest
+        // of ESPN's basketball catalog (WNBA, NCAA, G League, NBL, FIBA, Olympics,
+        // Summer Leagues). NBA comes from the ESPN list so it is not duplicated.
+        const espnRows = EspnSports.leaguesFor("basketball");
+        const sportScoreRows = toCompetitionOptions(value, BASKETBALL_COMPETITIONS)
+            .filter(row => row.slug !== "nba");
+        return espnRows.slice(0, 1).concat(sportScoreRows, espnRows.slice(1));
+    }
     case "cricket":
         return toCompetitionOptions(value, CRICKET_COMPETITIONS);
     case "tennis":

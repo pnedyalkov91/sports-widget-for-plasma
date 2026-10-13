@@ -65,7 +65,15 @@ const SPORTS = [
             { label: "NCAA Men's", league: "mens-college-basketball", country: "usa" },
             { label: "NCAA Women's", league: "womens-college-basketball", country: "usa" },
             { label: "NBL", league: "nbl", country: "australia" },
-            { label: "FIBA World Cup", league: "fiba", country: "world" }
+            { label: "FIBA World Cup", league: "fiba", country: "world" },
+            { label: "Olympics Men's Basketball", league: "mens-olympics-basketball", country: "world" },
+            { label: "Olympics Women's Basketball", league: "womens-olympics-basketball", country: "world" },
+            { label: "NBA California Classic Summer League", league: "nba-summer-california", country: "usa" },
+            { label: "Golden State Summer League", league: "nba-summer-golden-state", country: "usa" },
+            { label: "Las Vegas Summer League", league: "nba-summer-las-vegas", country: "usa" },
+            { label: "Orlando Summer League", league: "nba-summer-orlando", country: "usa" },
+            { label: "Sacramento Summer League", league: "nba-summer-sacramento", country: "usa" },
+            { label: "Salt Lake City Summer League", league: "nba-summer-utah", country: "usa" }
         ]
     },
     {
@@ -247,8 +255,10 @@ const FALLBACK_LEAGUE_BY_SLUG = {
     "fifa-club-world-cup": { espnSport: "soccer", league: "fifa.cwc" },
     "fifa-world-cup": { espnSport: "soccer", league: "fifa.world" },
     // basketball
-    "nba": { espnSport: "basketball", league: "nba" },
-    "euroleague": { espnSport: "basketball", league: "nba" }
+    "nba": { espnSport: "basketball", league: "nba" }
+    // EuroLeague / EuroCup / EuroBasket etc. are intentionally NOT mapped: ESPN has no
+    // feed for them, so they must resolve to null and be served by SportScore.
+    // (A previous "euroleague" -> nba entry made EuroLeague show NBA games and teams.)
 };
 
 // SportScore country slug -> default ESPN soccer league, so a country's matches can
@@ -453,6 +463,30 @@ function leaguesFor(sport) {
     }));
 }
 
+// Display name for a country slug ("usa" -> "USA", "united-states" -> "United States").
+function countryLabelFor(country) {
+    const slug = stringValue(country).toLowerCase();
+    if (slug === "usa")
+        return "USA";
+    if (slug === "uae")
+        return "UAE";
+    return slug.split("-").filter(part => part.length > 0)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+// This catalog says "usa"; SportScore-based country lists say "united-states".
+function canonicalCountry(value) {
+    const slug = stringValue(value).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    if (slug === "usa" || slug === "us" || slug === "united-states-of-america")
+        return "united-states";
+    return slug;
+}
+
+function countryMatches(left, right) {
+    const a = canonicalCountry(left);
+    return a.length > 0 && a === canonicalCountry(right);
+}
+
 // All distinct countries used by a sport's leagues, as country options.
 function countriesFor(sport) {
     const entry = sportEntry(sport);
@@ -464,7 +498,7 @@ function countriesFor(sport) {
         const country = stringValue(league.country) || "world";
         if (!seen[country]) {
             seen[country] = true;
-            out.push({ label: country.charAt(0).toUpperCase() + country.slice(1).replace(/-/g, " "), value: country, icon: "" });
+            out.push({ label: countryLabelFor(country), value: country, icon: "" });
         }
     });
     return out;
@@ -581,7 +615,7 @@ function espnLeagueForEntry(options) {
     // Bulgarian league) that ESPN doesn't cover must return null so it routes to
     // SportScore - otherwise it would wrongly resolve to NBA teams/matches.
     if (sport === "basketball" && league.length === 0
-        && (country.length === 0 || country === "usa" || country === "united-states" || country === "world")) {
+        && (country.length === 0 || country === "usa" || country === "united-states")) {
         return { espnSport: "basketball", league: "nba" };
     }
 
