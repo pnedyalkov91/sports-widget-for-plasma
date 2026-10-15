@@ -81,7 +81,7 @@ ColumnLayout {
         if (root.sport.length === 0)
             return;
 
-        // Cricket moved from SportScore to ESPN: its own key keeps a cached SportScore
+        // Cricket is ESPN-only: its own key keeps any older cached non-ESPN
         // competition list (up to 24 h old) from being offered as ESPN series.
         const cacheKey = (root.sport === "cricket" ? "emblems-espn|" : "emblems|") + root.sport;
         const cached = emblemCache.read(cacheKey);

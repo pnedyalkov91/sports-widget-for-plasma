@@ -40,20 +40,168 @@ const SPORTS = [
     {
         label: "Football", value: "football", espnSport: "soccer", kind: "team-league",
         leagues: [
-            { label: "Premier League", league: "eng.1", country: "england" },
-            { label: "La Liga", league: "esp.1", country: "spain" },
-            { label: "Serie A", league: "ita.1", country: "italy" },
-            { label: "Bundesliga", league: "ger.1", country: "germany" },
-            { label: "Ligue 1", league: "fra.1", country: "france" },
-            { label: "Eredivisie", league: "ned.1", country: "netherlands" },
-            { label: "Primeira Liga", league: "por.1", country: "portugal" },
-            { label: "Major League Soccer", league: "usa.1", country: "usa" },
-            { label: "Liga MX", league: "mex.1", country: "mexico" },
-            { label: "NWSL", league: "usa.nwsl", country: "usa" },
-            { label: "EFL Championship", league: "eng.2", country: "england" },
+            { label: "FIFA World Cup", league: "fifa.world", country: "world" },
+            { label: "FIFA Women's World Cup", league: "fifa.wwc", country: "world" },
+            { label: "FIFA Under-20 World Cup", league: "fifa.world.u20", country: "world" },
+            { label: "FIFA Under-17 World Cup", league: "fifa.world.u17", country: "world" },
+            { label: "FIFA Under-17 Women's World Cup", league: "fifa.wworld.u17", country: "world" },
+            { label: "FIFA Club World Cup", league: "fifa.cwc", country: "world" },
+            { label: "FIFA Intercontinental Cup", league: "fifa.intercontinental_cup", country: "world" },
+            { label: "FIFA Women's Champions Cup", league: "fifa.w.champions_cup", country: "world" },
+            { label: "Olympics Men's Football", league: "fifa.olympics", country: "world" },
+            { label: "Olympics Women's Football", league: "fifa.w.olympics", country: "world" },
+            { label: "International Friendly", league: "fifa.friendly", country: "world" },
+            { label: "Women's International Friendly", league: "fifa.friendly.w", country: "world" },
+            { label: "U21 International Friendly", league: "fifa.friendly_u21", country: "world" },
+            { label: "U20 International Friendly", league: "fifa.u20.friendly", country: "world" },
+            { label: "SheBelieves Cup", league: "fifa.shebelieves", country: "world" },
+            { label: "World Cup Qualifying", league: "fifa.worldq", country: "world" },
+            { label: "World Cup Qualifying - UEFA", league: "fifa.worldq.uefa", country: "world" },
+            { label: "World Cup Qualifying - CAF", league: "fifa.worldq.caf", country: "world" },
+            { label: "World Cup Qualifying - AFC", league: "fifa.worldq.afc", country: "world" },
+            { label: "World Cup Qualifying - Concacaf", league: "fifa.worldq.concacaf", country: "world" },
+            { label: "World Cup Qualifying - CONMEBOL", league: "fifa.worldq.conmebol", country: "world" },
+            { label: "World Cup Qualifying - OFC", league: "fifa.worldq.ofc", country: "world" },
+            { label: "Women's World Cup Qualifying - Playoff", league: "fifa.wwcq.ply", country: "world" },
+            { label: "Women's World Cup Qualifying - UEFA", league: "fifa.wworldq.uefa", country: "world" },
             { label: "UEFA Champions League", league: "uefa.champions", country: "world" },
+            { label: "UEFA Champions League Qualifying", league: "uefa.champions_qual", country: "world" },
             { label: "UEFA Europa League", league: "uefa.europa", country: "world" },
-            { label: "FIFA World Cup", league: "fifa.world", country: "world" }
+            { label: "UEFA Europa League Qualifying", league: "uefa.europa_qual", country: "world" },
+            { label: "UEFA Conference League", league: "uefa.europa.conf", country: "world" },
+            { label: "UEFA Conference League Qualifying", league: "uefa.europa.conf_qual", country: "world" },
+            { label: "UEFA Super Cup", league: "uefa.super_cup", country: "world" },
+            { label: "UEFA Women's Champions League", league: "uefa.wchampions", country: "world" },
+            { label: "UEFA European Championship", league: "uefa.euro", country: "world" },
+            { label: "UEFA European Championship Qualifying", league: "uefa.euroq", country: "world" },
+            { label: "UEFA Women's European Championship", league: "uefa.weuro", country: "world" },
+            { label: "UEFA European Under-21 Championship", league: "uefa.euro_u21", country: "world" },
+            { label: "UEFA European Under-21 Championship Qualifying", league: "uefa.euro_u21_qual", country: "world" },
+            { label: "UEFA European Under-19 Championship", league: "uefa.euro.u19", country: "world" },
+            { label: "UEFA Nations League", league: "uefa.nations", country: "world" },
+            { label: "UEFA Women's Nations League", league: "uefa.w.nations", country: "world" },
+            { label: "Concacaf Champions Cup", league: "concacaf.champions", country: "world" },
+            { label: "Leagues Cup", league: "concacaf.leagues.cup", country: "world" },
+            { label: "Concacaf Gold Cup", league: "concacaf.gold", country: "world" },
+            { label: "Concacaf Nations League", league: "concacaf.nations.league", country: "world" },
+            { label: "Concacaf W Gold Cup", league: "concacaf.w.gold", country: "world" },
+            { label: "Concacaf W Champions Cup", league: "concacaf.w.champions_cup", country: "world" },
+            { label: "CONMEBOL Libertadores", league: "conmebol.libertadores", country: "world" },
+            { label: "CONMEBOL Sudamericana", league: "conmebol.sudamericana", country: "world" },
+            { label: "CONMEBOL Recopa", league: "conmebol.recopa", country: "world" },
+            { label: "Copa America", league: "conmebol.america", country: "world" },
+            { label: "Copa America Qualifying", league: "conmebol.america_qual", country: "world" },
+            { label: "Copa America Femenina", league: "conmebol.america.femenina", country: "world" },
+            { label: "Africa Cup of Nations", league: "caf.nations", country: "world" },
+            { label: "Africa Cup of Nations Qualifying", league: "caf.nations_qual", country: "world" },
+            { label: "CAF Champions League", league: "caf.champions", country: "world" },
+            { label: "CAF Confederation Cup", league: "caf.confed", country: "world" },
+            { label: "AFC Champions League Elite", league: "afc.champions", country: "world" },
+            { label: "AFC Champions League Two", league: "afc.cup", country: "world" },
+            { label: "AFC Asian Cup", league: "afc.asian.cup", country: "world" },
+            { label: "Premier League", league: "eng.1", country: "england" },
+            { label: "EFL Championship", league: "eng.2", country: "england" },
+            { label: "EFL League One", league: "eng.3", country: "england" },
+            { label: "EFL League Two", league: "eng.4", country: "england" },
+            { label: "National League", league: "eng.5", country: "england" },
+            { label: "FA Cup", league: "eng.fa", country: "england" },
+            { label: "EFL Cup (Carabao Cup)", league: "eng.league_cup", country: "england" },
+            { label: "EFL Trophy", league: "eng.trophy", country: "england" },
+            { label: "FA Community Shield", league: "eng.charity", country: "england" },
+            { label: "Premier League Asia Trophy", league: "eng.asia_trophy", country: "england" },
+            { label: "Women's Super League", league: "eng.w.1", country: "england" },
+            { label: "Women's FA Cup", league: "eng.w.fa", country: "england" },
+            { label: "Women's FA Community Shield", league: "eng.w.charity", country: "england" },
+            { label: "La Liga", league: "esp.1", country: "spain" },
+            { label: "La Liga 2", league: "esp.2", country: "spain" },
+            { label: "Copa del Rey", league: "esp.copa_del_rey", country: "spain" },
+            { label: "Supercopa de Espana", league: "esp.super_cup", country: "spain" },
+            { label: "Trofeo Joan Gamper", league: "esp.joan_gamper", country: "spain" },
+            { label: "Liga F", league: "esp.w.1", country: "spain" },
+            { label: "Copa de la Reina", league: "esp.copa_de_la_reina", country: "spain" },
+            { label: "Bundesliga", league: "ger.1", country: "germany" },
+            { label: "2. Bundesliga", league: "ger.2", country: "germany" },
+            { label: "DFB-Pokal", league: "ger.dfb_pokal", country: "germany" },
+            { label: "DFL-Supercup", league: "ger.super_cup", country: "germany" },
+            { label: "Bundesliga Relegation Playoff", league: "ger.playoff.relegation", country: "germany" },
+            { label: "2. Bundesliga Relegation Playoff", league: "ger.2.promotion.relegation", country: "germany" },
+            { label: "Serie A", league: "ita.1", country: "italy" },
+            { label: "Serie B", league: "ita.2", country: "italy" },
+            { label: "Coppa Italia", league: "ita.coppa_italia", country: "italy" },
+            { label: "Supercoppa Italiana", league: "ita.super_cup", country: "italy" },
+            { label: "Ligue 1", league: "fra.1", country: "france" },
+            { label: "Ligue 2", league: "fra.2", country: "france" },
+            { label: "Coupe de France", league: "fra.coupe_de_france", country: "france" },
+            { label: "Trophee des Champions", league: "fra.super_cup", country: "france" },
+            { label: "Premiere Ligue (Women)", league: "fra.w.1", country: "france" },
+            { label: "Eredivisie", league: "ned.1", country: "netherlands" },
+            { label: "Eerste Divisie", league: "ned.2", country: "netherlands" },
+            { label: "Tweede Divisie", league: "ned.3", country: "netherlands" },
+            { label: "KNVB Beker", league: "ned.cup", country: "netherlands" },
+            { label: "Johan Cruyff Shield", league: "ned.supercup", country: "netherlands" },
+            { label: "Vrouwen Eredivisie", league: "ned.w.1", country: "netherlands" },
+            { label: "KNVB Beker Vrouwen", league: "ned.w.knvb_cup", country: "netherlands" },
+            { label: "Primeira Liga", league: "por.1", country: "portugal" },
+            { label: "Taca de Portugal", league: "por.taca.portugal", country: "portugal" },
+            { label: "Scottish Premiership", league: "sco.1", country: "scotland" },
+            { label: "Scottish Championship", league: "sco.2", country: "scotland" },
+            { label: "Scottish League One", league: "sco.3", country: "scotland" },
+            { label: "Scottish League Two", league: "sco.4", country: "scotland" },
+            { label: "Scottish Cup", league: "sco.tennents", country: "scotland" },
+            { label: "Scottish League Cup", league: "sco.cis", country: "scotland" },
+            { label: "Scottish Challenge Cup", league: "sco.challenge", country: "scotland" },
+            { label: "Belgian Pro League", league: "bel.1", country: "belgium" },
+            { label: "Austrian Bundesliga", league: "aut.1", country: "austria" },
+            { label: "Greek Super League", league: "gre.1", country: "greece" },
+            { label: "Turkish Super Lig", league: "tur.1", country: "turkey" },
+            { label: "Danish Superliga", league: "den.1", country: "denmark" },
+            { label: "Norwegian Eliteserien", league: "nor.1", country: "norway" },
+            { label: "Swedish Allsvenskan", league: "swe.1", country: "sweden" },
+            { label: "Cypriot First Division", league: "cyp.1", country: "cyprus" },
+            { label: "League of Ireland Premier Division", league: "irl.1", country: "ireland" },
+            { label: "Russian Premier League", league: "rus.1", country: "russia" },
+            { label: "Major League Soccer", league: "usa.1", country: "usa" },
+            { label: "U.S. Open Cup", league: "usa.open", country: "usa" },
+            { label: "NWSL", league: "usa.nwsl", country: "usa" },
+            { label: "NWSL Challenge Cup", league: "usa.nwsl.cup", country: "usa" },
+            { label: "NWSL x Liga MX Femenil Summer Cup", league: "usa.nwsl.summer.cup", country: "usa" },
+            { label: "USL Championship", league: "usa.usl.1", country: "usa" },
+            { label: "USL League One", league: "usa.usl.l1", country: "usa" },
+            { label: "USL Super League", league: "usa.w.usl.1", country: "usa" },
+            { label: "NCAA Men's Soccer", league: "usa.ncaa.m.1", country: "usa" },
+            { label: "NCAA Women's Soccer", league: "usa.ncaa.w.1", country: "usa" },
+            { label: "Northern Super League", league: "can.w.nsl", country: "canada" },
+            { label: "Liga MX", league: "mex.1", country: "mexico" },
+            { label: "Liga de Expansion MX", league: "mex.2", country: "mexico" },
+            { label: "Campeon de Campeones", league: "mex.campeon", country: "mexico" },
+            { label: "Supercopa MX", league: "mex.supercopa", country: "mexico" },
+            { label: "Liga Profesional Argentina", league: "arg.1", country: "argentina" },
+            { label: "Copa Argentina", league: "arg.copa", country: "argentina" },
+            { label: "Brasileirao Serie A", league: "bra.1", country: "brazil" },
+            { label: "Brasileirao Serie B", league: "bra.2", country: "brazil" },
+            { label: "Copa do Brasil", league: "bra.copa_do_brazil", country: "brazil" },
+            { label: "Primera Division Chile", league: "chi.1", country: "chile" },
+            { label: "Primera A Colombia", league: "col.1", country: "colombia" },
+            { label: "Primera Division Paraguay", league: "par.1", country: "paraguay" },
+            { label: "Liga 1 Peru", league: "per.1", country: "peru" },
+            { label: "Primera Division Uruguay", league: "uru.1", country: "uruguay" },
+            { label: "Liga Profesional Bolivia", league: "bol.1", country: "bolivia" },
+            { label: "LigaPro Ecuador", league: "ecu.1", country: "ecuador" },
+            { label: "Primera Division Venezuela", league: "ven.1", country: "venezuela" },
+            { label: "South African Premiership", league: "rsa.1", country: "south-africa" },
+            { label: "Nigerian Professional League", league: "nga.1", country: "nigeria" },
+            { label: "Ghanaian Premier League", league: "gha.1", country: "ghana" },
+            { label: "Saudi Pro League", league: "ksa.1", country: "saudi-arabia" },
+            { label: "Saudi King's Cup", league: "ksa.kings.cup", country: "saudi-arabia" },
+            { label: "J.League", league: "jpn.1", country: "japan" },
+            { label: "Chinese Super League", league: "chn.1", country: "china" },
+            { label: "Indian Super League", league: "ind.1", country: "india" },
+            { label: "Thai League 1", league: "tha.1", country: "thailand" },
+            { label: "Malaysian Super League", league: "mys.1", country: "malaysia" },
+            { label: "Indonesian Super League", league: "idn.1", country: "indonesia" },
+            { label: "Singapore Premier League", league: "sgp.1", country: "singapore" },
+            { label: "A-League Men", league: "aus.1", country: "australia" },
+            { label: "A-League Women", league: "aus.w.1", country: "australia" }
         ]
     },
     {
@@ -77,7 +225,7 @@ const SPORTS = [
         ]
     },
     {
-        // Cricket is ESPN-native (no SportScore). ESPN's cricket "league" is a numeric
+        // Cricket is ESPN-only. ESPN's cricket "league" is a numeric
         // series id, not a slug: the core API's league list is empty and the site API
         // 404s slug paths such as /cricket/icc.t20/, so the ids below are the only
         // addressable form. They work in:
@@ -139,7 +287,16 @@ const SPORTS = [
         leagues: [
             { label: "MLB", league: "mlb", country: "usa" },
             { label: "College Baseball", league: "college-baseball", country: "usa" },
-            { label: "World Baseball Classic", league: "world-baseball-classic", country: "world" }
+            { label: "World Baseball Classic", league: "world-baseball-classic", country: "world" },
+            { label: "Caribbean Series", league: "caribbean-series", country: "world" },
+            { label: "NCAA Softball", league: "college-softball", country: "usa" },
+            { label: "Dominican Winter League", league: "dominican-winter-league", country: "dominican-republic" },
+            { label: "Little League Baseball", league: "llb", country: "usa" },
+            { label: "Little League Softball", league: "lls", country: "usa" },
+            { label: "Mexican League", league: "mexican-winter-league", country: "mexico" },
+            { label: "Olympics Men's Baseball", league: "olympics-baseball", country: "world" },
+            { label: "Puerto Rican Winter League", league: "puerto-rican-winter-league", country: "puerto-rico" },
+            { label: "Venezuelan Winter League", league: "venezuelan-winter-league", country: "venezuela" }
         ]
     },
     {
@@ -147,7 +304,10 @@ const SPORTS = [
         leagues: [
             { label: "NHL", league: "nhl", country: "usa" },
             { label: "NCAA Men's Hockey", league: "mens-college-hockey", country: "usa" },
-            { label: "NCAA Women's Hockey", league: "womens-college-hockey", country: "usa" }
+            { label: "NCAA Women's Hockey", league: "womens-college-hockey", country: "usa" },
+            { label: "World Cup of Hockey", league: "hockey-world-cup", country: "world" },
+            { label: "Olympics Men's Ice Hockey", league: "olympics-mens-ice-hockey", country: "world" },
+            { label: "Olympics Women's Ice Hockey", league: "olympics-womens-ice-hockey", country: "world" }
         ]
     },
     {
@@ -158,7 +318,10 @@ const SPORTS = [
             { label: "DP World Tour", league: "eur", country: "world" },
             { label: "LIV Golf", league: "liv", country: "world" },
             { label: "PGA Tour Champions", league: "champions-tour", country: "world" },
-            { label: "Korn Ferry Tour", league: "ntw", country: "world" }
+            { label: "Korn Ferry Tour", league: "ntw", country: "world" },
+            { label: "TGL", league: "tgl", country: "world" },
+            { label: "Olympics Men's Golf", league: "mens-olympics-golf", country: "world" },
+            { label: "Olympics Women's Golf", league: "womens-olympics-golf", country: "world" }
         ]
     },
     {
@@ -166,7 +329,7 @@ const SPORTS = [
         leagues: [
             { label: "Formula 1", league: "f1", country: "world" },
             { label: "NASCAR Cup Series", league: "nascar-premier", country: "usa" },
-            { label: "NASCAR Xfinity Series", league: "nascar-secondary", country: "usa" },
+            { label: "NASCAR O'Reilly Auto Parts Series", league: "nascar-secondary", country: "usa" },
             { label: "NASCAR Truck Series", league: "nascar-truck", country: "usa" },
             { label: "IndyCar", league: "irl", country: "usa" }
         ]
@@ -175,7 +338,8 @@ const SPORTS = [
         label: "MMA", value: "mma", espnSport: "mma", kind: "event",
         leagues: [
             { label: "UFC", league: "ufc", country: "world" },
-            { label: "PFL", league: "pfl", country: "world" }
+            { label: "PFL", league: "pfl", country: "world" },
+            { label: "Bellator MMA", league: "bellator", country: "world" }
         ]
     },
     {
@@ -188,6 +352,9 @@ const SPORTS = [
             { label: "Premiership Rugby", league: "267979", country: "england" },
             { label: "United Rugby Championship", league: "270557", country: "world" },
             { label: "Six Nations", league: "180659", country: "world" },
+            { label: "Rugby World Cup", league: "164205", country: "world" },
+            { label: "Super Rugby Pacific", league: "242041", country: "world" },
+            { label: "Major League Rugby", league: "289262", country: "usa" },
             { label: "Rugby League", league: "3", country: "world", espnSport: "rugby-league" }
         ]
     },
@@ -209,7 +376,9 @@ const SPORTS = [
         label: "Lacrosse", value: "lacrosse", espnSport: "lacrosse", kind: "team-league",
         leagues: [
             { label: "PLL", league: "pll", country: "usa" },
-            { label: "NCAA Men's", league: "mens-college-lacrosse", country: "usa" }
+            { label: "NCAA Men's", league: "mens-college-lacrosse", country: "usa" },
+            { label: "NCAA Women's", league: "womens-college-lacrosse", country: "usa" },
+            { label: "NLL", league: "nll", country: "usa" }
         ]
     },
     {
@@ -239,30 +408,6 @@ const NO_COUNTRY_BROWSE_SPORTS = [
     "american-football", "baseball", "hockey", "golf", "racing", "mma", "rugby",
     "australian-football", "field-hockey", "volleyball", "water-polo", "cricket"
 ];
-
-// Cricket used to be a SportScore sport, so saved entries may still carry a SportScore
-// competition slug. ESPN only understands numeric series ids, so translate the slugs
-// the old cricket picker could have stored (plus the obvious slugified names).
-const LEGACY_CRICKET_LEAGUE_BY_SLUG = {
-    "icc-cricket-world-cup": "8039",
-    "cricket-world-cup": "8039",
-    "icc-t20-world-cup": "8604",
-    "icc-mens-t20-world-cup": "8604",
-    "t20-world-cup": "8604",
-    "indian-premier-league": "8048",
-    "ipl": "8048",
-    "big-bash-league": "8044",
-    "pakistan-super-league": "8679",
-    "caribbean-premier-league": "8623",
-    "sa20": "21275",
-    "international-league-t20": "20921",
-    "bangladesh-premier-league": "8653",
-    "the-hundred": "19601",
-    "major-league-cricket": "20978",
-    "womens-premier-league": "21282",
-    "county-championship": "8052",
-    "sheffield-shield": "8043"
-};
 
 // Maps a SportScore competition identity to an ESPN league, so SportScore's saved
 // entries can fall back to ESPN. Keyed by the SportScore league slug.
@@ -623,8 +768,6 @@ function espnLeagueForEntry(options) {
     // ESPN-native sport: the entry's league IS an ESPN league slug already.
     if (isNative(sport)) {
         const entry = sportEntry(sport);
-        if (sport === "cricket" && LEGACY_CRICKET_LEAGUE_BY_SLUG.hasOwnProperty(league))
-            return { espnSport: entry.espnSport, league: LEGACY_CRICKET_LEAGUE_BY_SLUG[league] };
         if (league.length > 0) {
             // Honor a per-league ESPN path override (e.g. rugby-league under "Rugby").
             for (let i = 0; i < entry.leagues.length; i += 1) {
