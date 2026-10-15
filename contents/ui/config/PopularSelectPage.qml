@@ -40,13 +40,18 @@ ColumnLayout {
     readonly property bool hideBrowse: root.browseDisabled || root.sport === "tennis"
     readonly property var curatedCompetitions: PopularCatalog.popularCompetitions(root.sport)
     // Competitions discovered live from the matches feed (valid slugs). Used for
-    // sports without a hand-validated curated list (basketball, cricket, tennis…).
+    // sports without a hand-validated curated list (basketball…); for cricket they are
+    // the ESPN series currently running.
     property var derivedCompetitions: []
     readonly property var popularCompetitions: {
         // Football and tennis have a reliable curated list (tennis = ESPN ATP/WTA),
         // so keep it instead of the flakier SportScore-derived competitions.
         if (root.sport === "football" || root.sport === "tennis")
             return root.curatedCompetitions;
+        // Cricket is ESPN-only: the curated ESPN catalog first, then the series ESPN
+        // is running right now (tours and one-off tournaments the catalog can't list).
+        if (root.sport === "cricket")
+            return PopularCatalog.mergeDiscoveredCompetitions(root.curatedCompetitions, root.derivedCompetitions);
         if (Array.isArray(root.derivedCompetitions) && root.derivedCompetitions.length > 0)
             return root.derivedCompetitions;
         return root.curatedCompetitions;
@@ -76,7 +81,9 @@ ColumnLayout {
         if (root.sport.length === 0)
             return;
 
-        const cacheKey = "emblems|" + root.sport;
+        // Cricket moved from SportScore to ESPN: its own key keeps a cached SportScore
+        // competition list (up to 24 h old) from being offered as ESPN series.
+        const cacheKey = (root.sport === "cricket" ? "emblems-espn|" : "emblems|") + root.sport;
         const cached = emblemCache.read(cacheKey);
         if (cached && cached.value && typeof cached.value === "object") {
             root.applyEmblemMap(cached.value);

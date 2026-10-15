@@ -41,8 +41,6 @@ function countryOptions(providerId, sport) {
         return withFlagEmoji(EspnSports.countriesFor(normalized));
     if (normalized === "basketball")
         return withFlagEmoji(ProviderCountries.basketballCountryOptions());
-    if (normalized === "cricket")
-        return withFlagEmoji(ProviderCountries.cricketCountryOptions());
     const defaults = SportScoreSports.defaultCountryOptions(sport);
     if (defaults.length > 0)
         return withFlagEmoji(defaults);

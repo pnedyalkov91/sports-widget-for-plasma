@@ -1265,38 +1265,6 @@ const BASKETBALL_COUNTRIES = [
     { "label": "Venezuela", "value": "venezuela", "infoText": "" }
 ];
 
-const CRICKET_COUNTRIES = [
-    { "label": "International Tournaments", "value": "world", "infoText": "ICC Cricket World Cup\nICC T20 World Cup\nICC Champions Trophy\nICC World Test Championship\nICC Women's Cricket World Cup" },
-    { "label": "Afghanistan", "value": "afghanistan", "infoText": "" },
-    { "label": "Australia", "value": "australia", "infoText": "" },
-    { "label": "Bangladesh", "value": "bangladesh", "infoText": "" },
-    { "label": "Chinese Taipei", "value": "chinese-taipei", "infoText": "" },
-    { "label": "Cyprus", "value": "cyprus", "infoText": "" },
-    { "label": "Czech Republic", "value": "czech-republic", "infoText": "" },
-    { "label": "England", "value": "england", "infoText": "" },
-    { "label": "Eswatini", "value": "eswatini", "infoText": "" },
-    { "label": "Finland", "value": "finland", "infoText": "" },
-    { "label": "Germany", "value": "germany", "infoText": "" },
-    { "label": "Hong Kong, China", "value": "hong-kong-china", "infoText": "" },
-    { "label": "Iceland", "value": "iceland", "infoText": "" },
-    { "label": "India", "value": "india", "infoText": "" },
-    { "label": "Ireland", "value": "ireland", "infoText": "" },
-    { "label": "Nepal", "value": "nepal", "infoText": "" },
-    { "label": "Netherlands", "value": "netherlands", "infoText": "" },
-    { "label": "New Zealand", "value": "new-zealand", "infoText": "" },
-    { "label": "Pakistan", "value": "pakistan", "infoText": "" },
-    { "label": "Qatar", "value": "qatar", "infoText": "" },
-    { "label": "South Africa", "value": "south-africa", "infoText": "" },
-    { "label": "Spain", "value": "spain", "infoText": "" },
-    { "label": "Sri Lanka", "value": "sri-lanka", "infoText": "" },
-    { "label": "St Vincent and the Grenadines", "value": "st-vincent-and-the-grenadines", "infoText": "" },
-    { "label": "Sweden", "value": "sweden", "infoText": "" },
-    { "label": "Switzerland", "value": "switzerland", "infoText": "" },
-    { "label": "Uganda", "value": "uganda", "infoText": "" },
-    { "label": "United Arab Emirates", "value": "united-arab-emirates", "infoText": "" },
-    { "label": "Vanuatu", "value": "vanuatu", "infoText": "" }
-];
-
 function footballCountryOptions(includeWorld) {
     return FOOTBALL_COUNTRIES.filter(country => includeWorld || country.value !== "world").map(country => ({
         label: country.label,
@@ -1308,15 +1276,6 @@ function footballCountryOptions(includeWorld) {
 
 function basketballCountryOptions() {
     return BASKETBALL_COUNTRIES.map(country => ({
-        label: country.label,
-        value: country.value,
-        icon: flagSource(country.value),
-        infoText: country.infoText || ""
-    }));
-}
-
-function cricketCountryOptions() {
-    return CRICKET_COUNTRIES.map(country => ({
         label: country.label,
         value: country.value,
         icon: flagSource(country.value),

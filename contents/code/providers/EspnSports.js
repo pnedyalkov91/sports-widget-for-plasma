@@ -17,9 +17,9 @@
 
 .pragma library
 
-// ESPN public API catalog. Used both as a fallback for the four SportScore sports
-// (football, basketball, cricket, tennis) when SportScore fails, and as the data
-// source for the ESPN-native sports (NFL, MLB, NHL, golf, racing, …).
+// ESPN public API catalog. Used both as a fallback for the SportScore sports
+// (football, basketball, tennis) when SportScore fails, and as the data
+// source for the ESPN-native sports (NFL, MLB, NHL, cricket, golf, racing, …).
 //
 // Each sport maps to an ESPN "sport" path segment plus a curated list of leagues
 // (ESPN league path segments). Endpoints:
@@ -77,10 +77,43 @@ const SPORTS = [
         ]
     },
     {
-        // ESPN cricket league codes are numeric/unstable; left minimal. Scoreboard
-        // by these may be empty - the UI degrades gracefully.
+        // Cricket is ESPN-native (no SportScore). ESPN's cricket "league" is a numeric
+        // series id, not a slug: the core API's league list is empty and the site API
+        // 404s slug paths such as /cricket/icc.t20/, so the ids below are the only
+        // addressable form. They work in:
+        //   site/v2/sports/cricket/{id}/scoreboard   (also carries a teams[] list)
+        //   apis/v2/sports/cricket/{id}/standings    (note: no "/site")
+        // Bilateral tours and one-off series get new ids all the time, so this list
+        // only holds the evergreen competitions; everything currently running is added
+        // live by SportsApi.fetchEspnCricketSeries (ESPN's scoreboard header feed).
         label: "Cricket", value: "cricket", espnSport: "cricket", kind: "team-league",
-        leagues: []
+        leagues: [
+            // International tournaments
+            { label: "ICC Cricket World Cup", league: "8039", country: "world" },
+            { label: "ICC Men's T20 World Cup", league: "8604", country: "world" },
+            // Franchise T20 leagues
+            { label: "Indian Premier League", league: "8048", country: "india" },
+            { label: "Women's Premier League", league: "21282", country: "india" },
+            { label: "Big Bash League", league: "8044", country: "australia" },
+            { label: "Women's Big Bash League", league: "21284", country: "australia" },
+            { label: "Pakistan Super League", league: "8679", country: "pakistan" },
+            { label: "SA20", league: "21275", country: "south-africa" },
+            { label: "International League T20", league: "20921", country: "uae" },
+            { label: "Caribbean Premier League", league: "8623", country: "west-indies" },
+            { label: "Women's Caribbean Premier League", league: "20898", country: "west-indies" },
+            { label: "Bangladesh Premier League", league: "8653", country: "bangladesh" },
+            { label: "The Hundred Men's Competition", league: "19601", country: "england" },
+            { label: "Major League Cricket", league: "20978", country: "usa" },
+            { label: "European T20 Premier League", league: "24698", country: "world" },
+            // Domestic competitions
+            { label: "County Championship Division One", league: "8052", country: "england" },
+            { label: "Marsh Sheffield Shield", league: "8043", country: "australia" },
+            { label: "Syed Mushtaq Ali Trophy", league: "8661", country: "india" },
+            { label: "CSA 4-Day Series Division 1", league: "21185", country: "south-africa" },
+            { label: "SLC T20 League", league: "18851", country: "sri-lanka" },
+            { label: "ECB Women's One-Day Cup", league: "23080", country: "england" },
+            { label: "Africa Continental Cup", league: "21470", country: "world" }
+        ]
     },
     {
         label: "Tennis", value: "tennis", espnSport: "tennis", kind: "event",
@@ -195,17 +228,41 @@ const SPORTS = [
     }
 ];
 
-// Sports SportScore already provides; for these ESPN is only a fallback, not a
-// new sport in the picker.
-const SHARED_SPORTS = ["football", "basketball", "cricket", "tennis"];
+// Sports SportScore also provides; for these ESPN is only a fallback, not a
+// new sport in the picker. (Cricket is deliberately NOT here: it is ESPN-only.)
+const SHARED_SPORTS = ["football", "basketball", "tennis"];
 
 // ESPN-native sports whose whole league set is the curated "Top" list - there is
 // no meaningful per-country catalog to browse, so the wizard skips the country
 // step and ends on the Top page for them.
 const NO_COUNTRY_BROWSE_SPORTS = [
     "american-football", "baseball", "hockey", "golf", "racing", "mma", "rugby",
-    "australian-football", "field-hockey", "volleyball", "water-polo"
+    "australian-football", "field-hockey", "volleyball", "water-polo", "cricket"
 ];
+
+// Cricket used to be a SportScore sport, so saved entries may still carry a SportScore
+// competition slug. ESPN only understands numeric series ids, so translate the slugs
+// the old cricket picker could have stored (plus the obvious slugified names).
+const LEGACY_CRICKET_LEAGUE_BY_SLUG = {
+    "icc-cricket-world-cup": "8039",
+    "cricket-world-cup": "8039",
+    "icc-t20-world-cup": "8604",
+    "icc-mens-t20-world-cup": "8604",
+    "t20-world-cup": "8604",
+    "indian-premier-league": "8048",
+    "ipl": "8048",
+    "big-bash-league": "8044",
+    "pakistan-super-league": "8679",
+    "caribbean-premier-league": "8623",
+    "sa20": "21275",
+    "international-league-t20": "20921",
+    "bangladesh-premier-league": "8653",
+    "the-hundred": "19601",
+    "major-league-cricket": "20978",
+    "womens-premier-league": "21282",
+    "county-championship": "8052",
+    "sheffield-shield": "8043"
+};
 
 // Maps a SportScore competition identity to an ESPN league, so SportScore's saved
 // entries can fall back to ESPN. Keyed by the SportScore league slug.
@@ -566,6 +623,8 @@ function espnLeagueForEntry(options) {
     // ESPN-native sport: the entry's league IS an ESPN league slug already.
     if (isNative(sport)) {
         const entry = sportEntry(sport);
+        if (sport === "cricket" && LEGACY_CRICKET_LEAGUE_BY_SLUG.hasOwnProperty(league))
+            return { espnSport: entry.espnSport, league: LEGACY_CRICKET_LEAGUE_BY_SLUG[league] };
         if (league.length > 0) {
             // Honor a per-league ESPN path override (e.g. rugby-league under "Rugby").
             for (let i = 0; i < entry.leagues.length; i += 1) {

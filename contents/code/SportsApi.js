@@ -365,6 +365,13 @@ function fetchLeagueSeasons(options, onSuccess, onError) {
             finish(onSuccess, []);
             return;
         }
+        // The core API has no season list for cricket series (its league/events
+        // endpoints answer 400/empty), so there is no dropdown - the standings request
+        // simply omits ?season= and ESPN serves the series' current season.
+        if (espnIsCricket(plan.espnSport)) {
+            finish(onSuccess, []);
+            return;
+        }
         fetchEspnSeasons(plan.espnSport, plan.league, options, onSuccess, () => finish(onSuccess, []));
         return;
     }
@@ -489,10 +496,10 @@ function fetchCountryCompetitions(options, onSuccess, onError) {
         return;
     }
 
-    // Shared sports (football/basketball/cricket/tennis): prefer ESPN's own
-    // league catalog for the chosen country, and only fall back to SportScore's
-    // slower, flakier competition listing when ESPN covers no league there.
-    // Cricket has no ESPN leagues, so it always uses SportScore.
+    // Shared sports (football/basketball/tennis): prefer ESPN's own league catalog
+    // for the chosen country, and only fall back to SportScore's slower, flakier
+    // competition listing when ESPN covers no league there. (Cricket is ESPN-native
+    // and was already handled above.)
     const sharedSport = normalizedSport(options && (options.sports || options.sport));
     if (EspnSports.supports(sharedSport) && !EspnSports.isNative(sharedSport)) {
         const wantCountry = ProviderCatalog.slugForValue(options && options.country);
@@ -990,7 +997,7 @@ function sportScoreTrackerUrl(match) {
     // SportScore's API reports an expired "profile" for the basketball pro
     // tracker, so /api/widget/tracker/ shows "Your subscription has expired!".
     // Their own match pages embed the basketball tracker directly with the
-    // same profile used for the cricket tracker, which is still active.
+    // same profile SportScore's own match pages use.
     if (tracker.sport === "basketball")
         return "https://widgets-v2.thesports01.com/en/pro/basketball?profile=" + SPORTSCORE_BASKETBALL_TRACKER_PROFILE + "&uuid=" + encodeURIComponent(tracker.id);
 
@@ -1436,6 +1443,10 @@ function espnIsTennis(espnSport) {
     return stringValue(espnSport).toLowerCase() === "tennis";
 }
 
+function espnIsCricket(espnSport) {
+    return stringValue(espnSport).toLowerCase() === "cricket";
+}
+
 // Plan the requests for a YYYYMMDD-YYYYMMDD range. Returns null when `dates` is not a
 // range (empty, a single day, a month...), meaning "send it as it is".
 function espnScoreboardChunks(dates, limit, espnSport) {
@@ -1540,6 +1551,12 @@ function espnMergeDuplicateEvent(kept, extra) {
 // only some of the pieces fail the rest are delivered (a partial answer beats an empty
 // Live tab), and only when every piece fails is onError called.
 function requestEspnScoreboardPayload(espnSport, league, dates, limit, onSuccess, onError) {
+    // The cricket scoreboard (keyed by numeric series id) ignores `dates`: every date,
+    // month, year and range variant answers with the same payload as the plain URL -
+    // the series' live/most recent/next matches. Splitting a window into day requests
+    // would only download that identical body once per day, so ask for it once.
+    if (espnIsCricket(espnSport))
+        dates = "";
     const plan = espnScoreboardChunks(dates, limit, espnSport);
     if (!plan) {
         requestEspnText(espnScoreboardUrl(espnSport, league, dates, limit), text => {
@@ -1672,6 +1689,23 @@ function espnLiveMinute(sportValue, statusObject, statusText) {
     return statusText;
 }
 
+// ESPN cricket scores are one string per side: "161/6", "162/3 (18/20 ov, target 162)",
+// or for multi-innings matches "453 & 130/2 (24.2 ov, target 130)". The per-innings
+// `linescores` are unreliable (an innings can report 0 runs next to a 122/6 score), so
+// the string is the source of truth. The row shows only the runs/wickets part; the
+// overs/target detail lives in the match status summary ("Need 45 runs from 20 balls").
+function espnCricketScore(score) {
+    return stringValue(score).replace(/\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+}
+
+// Status line for a cricket match: ESPN's own summary ("Dockers won by 7 wickets",
+// "Day 3: Stumps", "Need 45 runs from 20 balls") reads better than the generic type text.
+function espnCricketStatusText(statusObject) {
+    const type = (statusObject && statusObject.type) || {};
+    return stringValue(statusObject && statusObject.summary).trim()
+        || stringValue(type.shortDetail || type.detail || type.description);
+}
+
 function normalizeEspnEvent(event, sportValue, options) {
     const competition = arrayValue(event && event.competitions)[0] || {};
     const competitors = arrayValue(competition.competitors);
@@ -1693,10 +1727,20 @@ function normalizeEspnEvent(event, sportValue, options) {
     const statusObject = competition.status || (event && event.status) || {};
     const statusType = statusObject.type || {};
     const status = espnStatusFromState(statusType.state, statusType.completed);
-    const statusText = stringValue(statusType.shortDetail || statusType.detail || statusType.description);
+    const isCricket = normalizedSport(sportValue) === "cricket";
+    const statusText = isCricket
+        ? espnCricketStatusText(statusObject)
+        : stringValue(statusType.shortDetail || statusType.detail || statusType.description);
     const timestamp = Date.parse(stringValue(event && event.date));
     const homeTeam = home.team || {};
     const awayTeam = away.team || {};
+    const scoreOf = side => isCricket ? espnCricketScore(side.score) : stringValue(side.score);
+    // Football/basketball show the result only through the score; a finished cricket
+    // match is decided by "won by 7 wickets / on DLS / super over", which the score
+    // line cannot express, so the result text is kept for finished games too.
+    let minute = status === "Live" ? espnLiveMinute(sportValue, statusObject, statusText) : "";
+    if (isCricket && status !== "Upcoming")
+        minute = statusText;
 
     return {
         id: "espn-" + stringValue(event && event.id),
@@ -1704,11 +1748,11 @@ function normalizeEspnEvent(event, sportValue, options) {
         league: stringValue(options && options.leagueLabel),
         homeTeam: stringValue(homeTeam.displayName || homeTeam.name || homeTeam.shortDisplayName),
         awayTeam: stringValue(awayTeam.displayName || awayTeam.name || awayTeam.shortDisplayName),
-        homeScore: status === "Upcoming" ? "" : stringValue(home.score),
-        awayScore: status === "Upcoming" ? "" : stringValue(away.score),
+        homeScore: status === "Upcoming" ? "" : scoreOf(home),
+        awayScore: status === "Upcoming" ? "" : scoreOf(away),
         status,
         statusText,
-        minute: status === "Live" ? espnLiveMinute(sportValue, statusObject, statusText) : "",
+        minute,
         startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
         timestamp: Number.isFinite(timestamp) ? timestamp : 0,
         matchday: "",
@@ -2438,18 +2482,23 @@ function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows)
             team: stringValue(team.displayName || team.name || team.shortDisplayName),
             group: group,
             groupIndex: groupIndex,
-            played: espnStatValue(stats, ["gamesplayed", "games played", "gp"]),
-            won: espnStatValue(stats, ["wins", "w"]),
-            draw: espnStatValue(stats, ["ties", "draws", "t", "d"]),
+            // Cricket stat names: matchesPlayed/matchesWon/matchesLost/matchesTied/
+            // matchesDrawn/noResult/matchPoints/netRR (abbreviations M/W/L/N/R/PT/NRR).
+            played: espnStatValue(stats, ["gamesplayed", "games played", "gp", "matchesplayed"]),
+            won: espnStatValue(stats, ["wins", "w", "matcheswon"]),
+            draw: espnStatValue(stats, ["ties", "draws", "t", "d", "matchestied", "matchesdrawn"]),
             // NHL regulation/OT losses are separate from ties; ESPN exposes "otLosses".
             otLosses: espnStatValue(stats, ["otlosses", "otl"]),
-            lost: espnStatValue(stats, ["losses", "l"]),
+            lost: espnStatValue(stats, ["losses", "l", "matcheslost"]),
+            noResult: espnStatValue(stats, ["noresult", "nr"]),
+            // Net run rate keeps ESPN's own formatting ("+0.452", "-1.103").
+            netRunRate: espnStatDisplay(stats, ["netrr", "nrr"]),
             goalsFor: espnStatValue(stats, ["pointsfor", "goalsfor", "pf"]),
             goalsAgainst: espnStatValue(stats, ["pointsagainst", "goalsagainst", "pa"]),
             // Prefer pointDifferential/goalDifferential (the real +33/+47/+170); the
             // bare "differential" is a per-game ratio (+0.3) and must not win.
             goalDifference: espnStatValue(stats, ["pointdifferential", "goaldifferential"]),
-            points: espnStatValue(stats, ["points", "pts"]),
+            points: espnStatValue(stats, ["points", "pts", "matchpoints"]),
             // Win percentage / games-behind keep ESPN's own formatting (".596", "8.5",
             // "-"); a number would lose the leading dot and the leader's blank marker.
             winPercent: espnStatDisplay(stats, ["winpercent", "leaguewinpercent", "percentage", "pct"]),
@@ -2700,9 +2749,13 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
     // leagues (MLB AL/NL East/Central/West, NHL/NFL divisions) instead of a single
     // flat conference table. Leagues with no divisions (soccer) simply return their
     // one group unchanged; normalizeEspnStandings flattens to the leaf groups.
-    let url = ESPN_STANDINGS_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/standings?level=3";
+    // Cricket's standings were only verified without `level` (it has no divisions), so
+    // that request is sent exactly as ESPN serves it.
+    const isCricket = espnIsCricket(espnSport);
+    let url = ESPN_STANDINGS_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/standings"
+        + (isCricket ? "" : "?level=3");
     if (season.length > 0)
-        url += "&season=" + encodeURIComponent(season);
+        url += (isCricket ? "?" : "&") + "season=" + encodeURIComponent(season);
     requestEspnText(url, text => {
         let rows = [];
         try {
@@ -2710,7 +2763,8 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
         } catch (error) {
             rows = [];
         }
-        if (rows.length === 0) {
+        // Cricket tables carry no form column, so skip the form lookup's extra fetches.
+        if (rows.length === 0 || isCricket) {
             finish(onSuccess, rows);
             return;
         }
@@ -2825,6 +2879,27 @@ function normalizeEspnSeasons(payload, currentYear) {
 }
 
 // Teams → the same option shape as fetchCompetitionTeams.
+function espnTeamOptionRows(list, country, seen, rows) {
+    arrayValue(list).forEach(item => {
+        const team = (item && item.team) || item || {};
+        const label = stringValue(team.displayName || team.name || team.shortDisplayName);
+        const slug = ProviderCatalog.slugForValue(team.slug || team.abbreviation || team.id);
+        const key = label.toLowerCase();
+        if (label.length === 0 || seen[key])
+            return;
+        seen[key] = true;
+        rows.push({
+            label: label,
+            value: label,
+            slug: slug,
+            teamSlug: slug,
+            teamPath: "",
+            badge: espnLogoFromTeam(team),
+            country: country
+        });
+    });
+}
+
 function parseEspnTeamsPayload(text, country) {
     let rows = [];
     try {
@@ -2832,24 +2907,7 @@ function parseEspnTeamsPayload(text, country) {
         const groups = arrayValue(payload && payload.sports && payload.sports[0] && payload.sports[0].leagues);
         const list = groups.length > 0 ? arrayValue(groups[0].teams) : [];
         console.warn("[sports-widget-debug] parsed groups:", groups.length, "teams in list:", list.length);
-        const seen = {};
-        list.forEach(item => {
-            const team = (item && item.team) || item || {};
-            const label = stringValue(team.displayName || team.name || team.shortDisplayName);
-            const slug = ProviderCatalog.slugForValue(team.slug || team.abbreviation || team.id);
-            if (label.length === 0 || seen[slug || label.toLowerCase()])
-                return;
-            seen[slug || label.toLowerCase()] = true;
-            rows.push({
-                label: label,
-                value: label,
-                slug: slug,
-                teamSlug: slug,
-                teamPath: "",
-                badge: espnLogoFromTeam(team),
-                country: country
-            });
-        });
+        espnTeamOptionRows(list, country, {}, rows);
     } catch (error) {
         console.warn("[sports-widget-debug] JSON.parse threw:", error, "raw text length was:", stringValue(text).length);
         rows = [];
@@ -2858,9 +2916,62 @@ function parseEspnTeamsPayload(text, country) {
     return rows;
 }
 
+// Cricket teams. ESPN has no /teams endpoint for cricket series (it 404s), so the
+// roster is read from the two places that do list teams: the scoreboard's top-level
+// teams[] (every side in the series, including ones with no match in the window) and
+// the standings entries (the league table's sides). The scoreboard is tried first and
+// the standings only fill in teams it lacked - a bilateral tour has no standings.
+function parseEspnCricketTeams(scoreboardText, standingsText, country) {
+    const rows = [];
+    const seen = {};
+    try {
+        const payload = JSON.parse(scoreboardText);
+        espnTeamOptionRows(payload && payload.teams, country, seen, rows);
+        // Fallback for a payload without teams[]: the sides of the listed matches.
+        if (rows.length === 0) {
+            arrayValue(payload && payload.events).forEach(event => {
+                arrayValue(event && event.competitions && event.competitions[0] && event.competitions[0].competitors)
+                    .forEach(side => espnTeamOptionRows([side && side.team], country, seen, rows));
+            });
+        }
+    } catch (error) {
+        console.warn("[sports-widget-debug] cricket scoreboard teams parse failed:", error);
+    }
+    if (stringValue(standingsText).length > 0) {
+        try {
+            const groups = [];
+            espnStandingsLeafGroups(JSON.parse(standingsText), groups);
+            groups.forEach(group => espnTeamOptionRows(
+                arrayValue(group.entries).map(entry => entry && entry.team), country, seen, rows));
+        } catch (error) {
+            console.warn("[sports-widget-debug] cricket standings teams parse failed:", error);
+        }
+    }
+    rows.sort((a, b) => stringValue(a.label).localeCompare(stringValue(b.label)));
+    return rows;
+}
+
+function fetchEspnCricketTeams(league, options, onSuccess, onError) {
+    const country = stringValue(options && options.country);
+    requestEspnScoreboardText("cricket", league, scoreboardText => {
+        // Standings are optional (tours have none), so a failure there is not an error.
+        requestEspnText(ESPN_STANDINGS_BASE + "/cricket/" + encodeURIComponent(league) + "/standings?level=3",
+            standingsText => finish(onSuccess, parseEspnCricketTeams(scoreboardText, standingsText, country)),
+            () => finish(onSuccess, parseEspnCricketTeams(scoreboardText, "", country)));
+    }, error => finish(onError, error || "Unable to load ESPN cricket teams"));
+}
+
+function requestEspnScoreboardText(espnSport, league, onSuccess, onError) {
+    requestEspnText(espnScoreboardUrl(espnSport, league, "", ESPN_MATCH_LIMIT), onSuccess, onError);
+}
+
 function fetchEspnTeams(espnSport, league, options, onSuccess, onError) {
     if (stringValue(espnSport).length === 0 || stringValue(league).length === 0) {
         finish(onSuccess, []);
+        return;
+    }
+    if (espnIsCricket(espnSport)) {
+        fetchEspnCricketTeams(league, options, onSuccess, onError);
         return;
     }
     const country = stringValue(options && options.country);
@@ -4617,8 +4728,57 @@ function sportScoreCompetitionSlug(match) {
     return parsed ? ProviderCatalog.slugForValue(parsed[1]) : "";
 }
 
+// ESPN has no endpoint that lists cricket series (the core league list is empty), but
+// its scoreboard "header" feed - the one behind espn.com's cricket score strip - lists
+// every series with a match live, just finished or coming up, bilateral tours included.
+// Each carries the numeric id the scoreboard/standings endpoints take. Delivers
+// competition options in the wizard's shape (EspnSports.leaguesFor), [] on any failure.
+const ESPN_CRICKET_HEADER_URL = "https://site.api.espn.com/apis/personalized/v2/scoreboard/header?sport=cricket&region=in&tz=Asia%2FCalcutta";
+
+function parseEspnCricketSeries(text) {
+    const out = [];
+    const seen = {};
+    try {
+        const payload = JSON.parse(text);
+        arrayValue(payload && payload.sports).forEach(sportNode => {
+            arrayValue(sportNode && sportNode.leagues).forEach(league => {
+                const idCandidates = [league && league.slug, league && league.id];
+                const id = idCandidates.map(value => stringValue(value)).find(value => /^\d+$/.test(value)) || "";
+                const label = stringValue(league && (league.name || league.shortName)).trim();
+                if (id.length === 0 || label.length === 0 || seen[id])
+                    return;
+                seen[id] = true;
+                out.push({
+                    label: label,
+                    value: id,
+                    slug: id,
+                    country: "world",
+                    espnSport: "cricket",
+                    provider: "espn",
+                    path: "/cricket/competition/" + id + "/"
+                });
+            });
+        });
+    } catch (error) {
+        console.warn("[sports-widget-debug] cricket series parse failed:", error);
+    }
+    return out;
+}
+
+function fetchEspnCricketSeries(onSuccess) {
+    requestEspnText(ESPN_CRICKET_HEADER_URL,
+        text => finish(onSuccess, parseEspnCricketSeries(text)),
+        () => finish(onSuccess, []));
+}
+
 function fetchPopularEmblems(options, onSuccess) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
+    // Cricket is ESPN-only: its "Top" page is the curated catalog plus whatever series
+    // ESPN is currently running (see PopularCatalog.mergeDiscoveredCompetitions).
+    if (sport === "cricket") {
+        fetchEspnCricketSeries(list => finish(onSuccess, { "competitions": {}, "teams": {}, "competitionList": list }));
+        return;
+    }
     const url = SPORTSCORE_BASE_URL + "/api/widget/matches/?sport=" + encodeURIComponent(sport) + "&limit=50";
     requestText(cacheBustedUrl(url), text => {
         const competitions = {};
@@ -4849,12 +5009,7 @@ function normalizeSportScoreMatchPage(html, leagueLabel, options) {
         }
     }
 
-    if (sport === "cricket") {
-        rows = rows.concat(sportScoreCricketMatchRows(page, leagueLabel, options));
-        // Cricket global live page uses football-class containers (shared class across sports on sportscore)
-        appendPattern(/<div class="football-match-table-container w-100 nostyle sc-row-stretched">([\s\S]*?)(?=<div class="d-flex d-md-none|<div class="football-match-table-container w-100 nostyle sc-row-stretched">|<\/section>|$)/g);
-        appendPattern(/<a\b[^>]*class="[^"]*\bfootball-match-table-container\b[^"]*\bnostyle\b[^"]*"[^>]*>[\s\S]*?<\/a>/g);
-    } else if (sport === "tennis") {
+    if (sport === "tennis") {
         rows = rows.concat(sportScoreTennisMatchRows(page, leagueLabel, options));
     } else {
         appendPattern(/<div class="football-match-table-container w-100 nostyle sc-row-stretched">([\s\S]*?)(?=<div class="d-flex d-md-none|<div class="football-match-table-container w-100 nostyle sc-row-stretched">|<\/section>|$)/g);
@@ -5064,103 +5219,6 @@ function sportScoreTennisPlayers(block) {
     }
     return players;
 }
-
-function isCricketLiveStatus(rawStatus) {
-    const lower = stringValue(rawStatus).toLowerCase().replace(/\s+/g, " ").trim();
-    return /\binn(?:ing(?:s)?)?\b/.test(lower) || /\bovers?\b/.test(lower) ||
-           lower === "toss" || lower === "lunch" || lower === "tea" || lower === "drinks" ||
-           lower === "innings break";
-}
-
-function sportScoreCricketMatchRows(page, leagueLabel, options) {
-    let rows = [];
-    const pattern = /<a\b[^>]*href=["'](\/cricket\/match\/[^"']+\/?)["'][^>]*class=["'][^"']*\bcricket-match-table-container\b[^"']*\bnostyle\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/g;
-    let match;
-    while ((match = pattern.exec(stringValue(page))) !== null) {
-        const block = match[0];
-        const context = stringValue(page).slice(Math.max(0, match.index - 900), match.index);
-        const teams = sportScoreCricketTeams(block);
-        if (teams.length < 2)
-            continue;
-
-        const scores = sportScoreCricketScores(block);
-        const rawStatusFromBlock = sportScoreCricketStatus(block);
-        const liveSection = /match-state-header[^>]*\bis-live\b/i.test(context.slice(context.lastIndexOf("match-state-header")));
-        const rawStatus = liveSection ? "Live" : rawStatusFromBlock;
-        const isLive = isLiveStatus(rawStatus) || isCricketLiveStatus(rawStatusFromBlock);
-        const status = isLive ? "Live" : sportScoreMatchStatus(rawStatus, scores[0], scores[1]);
-        const minuteDisplay = rawStatusFromBlock.length > 0 && !isLiveStatus(rawStatusFromBlock) ? rawStatusFromBlock : "";
-        const timestamp = Date.parse(firstDataUtc(block));
-        const path = sportScorePathFromUrl(match[1]);
-        rows.push({
-            id: "sportscore-" + path,
-            sport: "cricket",
-            league: leagueLabel || sportScoreCompetitionLabelFromContext(context),
-            homeTeam: teams[0].name,
-            awayTeam: teams[1].name,
-            homeScore: status === "Upcoming" ? "" : stringValue(scores[0]),
-            awayScore: status === "Upcoming" ? "" : stringValue(scores[1]),
-            status,
-            minute: isLive ? minuteDisplay : "",
-            startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
-            timestamp: Number.isFinite(timestamp) ? timestamp : 0,
-            matchday: "",
-            group: "",
-            stadium: "",
-            homeBadge: teams[0].badge,
-            awayBadge: teams[1].badge,
-            poster: "",
-            popular: false,
-            matchPath: path,
-            liveUrl: sportScoreWidgetMatchUrlFromPath(path, "cricket"),
-            detailsProvider: "sportscore",
-            statsProvider: "sportscore",
-            sourceProvider: "SportScore"
-        });
-    }
-    return rows;
-}
-
-function sportScoreCricketTeams(block) {
-    let teams = [];
-    const imagePattern = /<img\b[^>]*>/g;
-    let imageMatch;
-    while ((imageMatch = imagePattern.exec(stringValue(block))) !== null) {
-        const tag = imageMatch[0];
-        const name = htmlAttribute(tag, "alt").replace(/\s+(?:logo|flag)$/i, "").trim();
-        if (name.length === 0 || name.toLowerCase() === "live")
-            continue;
-        const dataSrc = htmlAttribute(tag, "data-src");
-        const srcAttr = htmlAttribute(tag, "src");
-        const raw = dataSrc.length > 0 && dataSrc.indexOf("data:") !== 0 ? dataSrc : srcAttr;
-        const badge = raw.indexOf("data:") === 0 ? "" : absoluteSportScoreUrl(raw);
-        if (teams.some(team => normalizedTeamName(team.name) === normalizedTeamName(name)))
-            continue;
-        teams.push({ name, badge });
-        if (teams.length === 2)
-            break;
-    }
-    return teams;
-}
-
-function sportScoreCricketScores(block) {
-    const scoreBlockMatch = /<div\b[^>]*class=["'][^"']*\bcricket-match-score-center\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i.exec(stringValue(block));
-    if (!scoreBlockMatch)
-        return [];
-
-    let scores = [];
-    const boldPattern = /<b\b[^>]*>([\s\S]*?)<\/b>/g;
-    let boldMatch;
-    while ((boldMatch = boldPattern.exec(scoreBlockMatch[1])) !== null)
-        scores.push(htmlText(boldMatch[1]));
-    return scores.slice(0, 2);
-}
-
-function sportScoreCricketStatus(block) {
-    const statusMatch = /<div\b[^>]*class=["'][^"']*\bcricket-match-table-time-str\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i.exec(stringValue(block));
-    return statusMatch ? htmlText(statusMatch[1]) : "";
-}
-
 
 function normalizeSportScoreMatchRow(block, context, leagueLabel, options) {
     const sport = normalizedSport(options && (options.sports || options.sport)) || "football";
@@ -5408,7 +5466,7 @@ function sportScoreLastRound(context) {
 }
 
 function sportScoreCompetitionLabelFromContext(context) {
-    const links = stringValue(context).match(/<a\b[^>]*href="\/(?:football|basketball|cricket|tennis)\/competition\/[^"]+"[^>]*>([\s\S]*?)<\/a>/g) || [];
+    const links = stringValue(context).match(/<a\b[^>]*href="\/(?:football|basketball|tennis)\/competition\/[^"]+"[^>]*>([\s\S]*?)<\/a>/g) || [];
     if (links.length === 0)
         return "";
     return htmlText(links[links.length - 1]);
@@ -5802,7 +5860,7 @@ function sportScoreCountryOptions(html, sport) {
 }
 
 function sportScoreSportFromPath(path) {
-    const match = /^\/(football|basketball|cricket|tennis)\//.exec(sportScorePathFromUrl(path));
+    const match = /^\/(football|basketball|tennis)\//.exec(sportScorePathFromUrl(path));
     return match ? match[1] : "";
 }
 

@@ -128,11 +128,6 @@ const BASKETBALL_COMPETITIONS = [
     ["EuroLeague", "euroleague", "world"]
 ];
 
-const CRICKET_COMPETITIONS = [
-    ["ICC Cricket World Cup", "icc-cricket-world-cup", "world"],
-    ["Indian Premier League", "indian-premier-league", "india"]
-];
-
 function toCompetitionOptions(sport, rows) {
     return rows.map(row => ({
         "label": row[0],
@@ -168,8 +163,6 @@ function popularCompetitions(sport) {
             .filter(row => row.slug !== "nba");
         return espnRows.slice(0, 1).concat(sportScoreRows, espnRows.slice(1));
     }
-    case "cricket":
-        return toCompetitionOptions(value, CRICKET_COMPETITIONS);
     case "tennis":
         // Tennis is a SportScore "shared" sport, so it has no curated SportScore
         // top list and SportScore's live competition scrape is flaky. ESPN reliably
@@ -195,6 +188,23 @@ function popularTeams(sport) {
     default:
         return [];
     }
+}
+
+// Competitions ESPN is running right now that the curated list does not carry (cricket
+// tours and one-off series have fresh numeric ids every time), appended after the
+// curated ones. Entries already in the curated list are dropped by league id.
+function mergeDiscoveredCompetitions(curated, discovered) {
+    const base = Array.isArray(curated) ? curated.slice() : [];
+    const known = {};
+    base.forEach(row => { known[String(row && row.value || "").toLowerCase()] = true; });
+    (Array.isArray(discovered) ? discovered : []).forEach(row => {
+        const key = String(row && row.value || "").toLowerCase();
+        if (key.length === 0 || known[key])
+            return;
+        known[key] = true;
+        base.push(row);
+    });
+    return base;
 }
 
 function hasPopular(sport) {

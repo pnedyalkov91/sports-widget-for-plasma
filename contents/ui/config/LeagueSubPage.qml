@@ -349,7 +349,7 @@ Item {
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
-                    // SportScore only backs football/basketball/cricket/tennis;
+                    // SportScore only backs football/basketball/tennis;
                     // other sports are ESPN-only, so don't blame SportScore there.
                     // Hidden while (re)loading so "Try again" shows progress first.
                     visible: root.loadFailed && !root.loading && SportScoreSports.supports(root.sport)

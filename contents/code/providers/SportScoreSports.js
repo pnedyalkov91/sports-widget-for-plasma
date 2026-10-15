@@ -20,7 +20,6 @@
 const SPORTS = [
     { label: "Football", value: "football" },
     { label: "Basketball", value: "basketball" },
-    { label: "Cricket", value: "cricket" },
     { label: "Tennis", value: "tennis" }
 ];
 
@@ -62,8 +61,6 @@ function competitionSourcePath(sport, country) {
         return "";
     if (value === "tennis" || countrySlug === "world")
         return "/" + value + "/competitions/";
-    if (value === "cricket")
-        return "/" + value + "/";
     return "/" + value + "/country/" + countrySlug + "/";
 }
 
@@ -127,14 +124,17 @@ function standingsColumns(sport, i18nc) {
             column("trend", i18nc("Abbreviation for 'change since the previous ranking' in a tennis rankings table, keep very short", "+/-"), i18nc("@info:tooltip", "Places gained or lost since the previous ranking"), 2.6)
         ];
     }
+    // Cricket is ESPN-only (no SportScore); the columns match ESPN's cricket standings
+    // stats: matches played/won/lost, tied-or-drawn, no result, points and net run rate.
     if (value === "cricket") {
         return [
             column("played", i18nc("Abbreviation for 'matches played' in a cricket standings table, keep very short", "M"), i18nc("@info:tooltip", "Matches played"), 2.4),
             column("won", i18nc("Abbreviation for 'won' in a standings table, keep very short", "W"), i18nc("@info:tooltip", "Won"), 2),
             column("lost", i18nc("Abbreviation for 'lost' in a standings table, keep very short", "L"), i18nc("@info:tooltip", "Lost"), 2),
-            column("tied", i18nc("Abbreviation for 'tied or drawn' in a cricket standings table, keep very short", "T"), i18nc("@info:tooltip", "Tied or drawn"), 2),
+            column("draw", i18nc("Abbreviation for 'tied or drawn' in a cricket standings table, keep very short", "T"), i18nc("@info:tooltip", "Tied or drawn"), 2),
             column("noResult", i18nc("Abbreviation for 'no result' in a cricket standings table, keep very short", "NR"), i18nc("@info:tooltip", "No result"), 2.2),
-            column("points", i18nc("Abbreviation for 'points' in a standings table, keep very short", "Pts"), i18nc("@info:tooltip", "Points"), 2.8, true)
+            column("points", i18nc("Abbreviation for 'points' in a standings table, keep very short", "Pts"), i18nc("@info:tooltip", "Points"), 2.8, true),
+            column("netRunRate", i18nc("Abbreviation for 'net run rate' in a cricket standings table, keep very short", "NRR"), i18nc("@info:tooltip", "Net run rate"), 3.6)
         ];
     }
     // Baseball has no draws and no league points: teams are ranked by win pct, with
@@ -207,21 +207,6 @@ function standingsHtmlSchema(sport) {
             }
         };
     }
-    if (value === "cricket") {
-        return {
-            minimumCells: 8,
-            formCell: -1,
-            fields: {
-                played: 2,
-                won: 3,
-                lost: 4,
-                tied: 5,
-                noResult: 6,
-                points: 7
-            }
-        };
-    }
-
     return {
         minimumCells: 10,
         formCell: 10,
