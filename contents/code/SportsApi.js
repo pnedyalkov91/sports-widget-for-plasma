@@ -19,6 +19,7 @@
 .import "providers/ProviderCatalog.js" as ProviderCatalog
 .import "providers/SportScoreSports.js" as SportScoreSports
 .import "providers/EspnSports.js" as EspnSports
+.import "providers/ProviderCountries.js" as ProviderCountries
 
 const SPORTSCORE_BASE_URL = "https://sportscore.com";
 const ESPN_SITE_BASE = "https://site.api.espn.com/apis/site/v2/sports";
@@ -28,6 +29,7 @@ const ESPN_STANDINGS_BASE = "https://site.api.espn.com/apis/v2/sports";
 // Undocumented but stable ESPN "core" API; used only for the per-match play-by-play
 // feed (goals/cards/substitutions), which the site.api summary endpoint lacks.
 const ESPN_CORE_BASE = "https://sports.core.api.espn.com/v2/sports";
+const ESPN_CRICKET_SUMMARY_BASE = "https://site.web.api.espn.com/apis/site/v2/sports/cricket";
 const ESPN_MATCH_LIMIT = 100;
 const ESPN_PLAYS_LIMIT = 300;
 // How many days ahead of "today" to ask ESPN for when listing fixtures. (The
@@ -1438,6 +1440,12 @@ const ESPN_SPLIT_MONTH_LIMIT = 500;
 // this spacing is enough to see every one of them (see espnScoreboardChunks). The last day
 // of a stretch is sampled too unless the previous sample is within a day of it.
 const ESPN_TENNIS_SAMPLE_DAYS = 4;
+// Cricket: windows up to this many days are fetched day by day, longer ones per year.
+const ESPN_CRICKET_SHORT_WINDOW_DAYS = 4;
+// Cricket "recent" looks this far back (a series' results, across a year boundary too),
+// and its fixtures fall back to this look-ahead when the default window has none.
+const ESPN_CRICKET_RECENT_DAYS = 120;
+const ESPN_CRICKET_FIXTURES_FALLBACK_DAYS = 150;
 
 function espnIsTennis(espnSport) {
     return stringValue(espnSport).toLowerCase() === "tennis";
@@ -1459,6 +1467,30 @@ function espnScoreboardChunks(dates, limit, espnSport) {
     const end = new Date(Number(match[4]), Number(match[5]) - 1, Number(match[6]), 12, 0, 0);
     const dayLimit = numberValue(limit) > 0 ? numberValue(limit) : ESPN_MATCH_LIMIT;
     const chunks = [];
+    if (espnIsCricket(espnSport)) {
+        // The cricket scoreboard honours single days (YYYYMMDD), months and whole years
+        // (YYYY), but its default (no `dates`) answer is just the series' current/last
+        // match. A series is a handful of matches spread over months, so a wide window is
+        // best fetched as one request per calendar YEAR (an IPL season is ~75 matches),
+        // trimmed to the window client-side. A short window (the live poll) is fetched
+        // day by day plus the default answer - a Test that began days ago is still live
+        // but sits under its start date, which only the default answer reaches.
+        const spanDays = Math.round((end.getTime() - start.getTime()) / dayMs) + 1;
+        if (spanDays > ESPN_CRICKET_SHORT_WINDOW_DAYS) {
+            for (let year = start.getFullYear(); year <= end.getFullYear(); year += 1)
+                chunks.push({ dates: "" + year, limit: ESPN_SPLIT_MONTH_LIMIT, windowed: true });
+        } else {
+            for (let day = new Date(start.getTime()); day.getTime() <= end.getTime();
+                    day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1, 12, 0, 0))
+                chunks.push({ dates: espnDate(day.getTime()), limit: dayLimit, windowed: false });
+            chunks.push({ dates: "", limit: dayLimit, windowed: false });
+        }
+        return {
+            chunks: chunks,
+            windowStartMs: new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0).getTime() - dayMs / 2,
+            windowEndMs: new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1, 0, 0, 0).getTime() + dayMs / 2
+        };
+    }
     let cursor = start;
     while (cursor.getTime() <= end.getTime()) {
         const year = cursor.getFullYear();
@@ -1551,12 +1583,6 @@ function espnMergeDuplicateEvent(kept, extra) {
 // only some of the pieces fail the rest are delivered (a partial answer beats an empty
 // Live tab), and only when every piece fails is onError called.
 function requestEspnScoreboardPayload(espnSport, league, dates, limit, onSuccess, onError) {
-    // The cricket scoreboard (keyed by numeric series id) ignores `dates`: every date,
-    // month, year and range variant answers with the same payload as the plain URL -
-    // the series' live/most recent/next matches. Splitting a window into day requests
-    // would only download that identical body once per day, so ask for it once.
-    if (espnIsCricket(espnSport))
-        dates = "";
     const plan = espnScoreboardChunks(dates, limit, espnSport);
     if (!plan) {
         requestEspnText(espnScoreboardUrl(espnSport, league, dates, limit), text => {
@@ -1652,6 +1678,52 @@ function requestEspnScoreboardPayload(espnSport, league, dates, limit, onSuccess
             settle();
         });
     });
+}
+
+// Cricket emblems. ESPN does not give every side a logo in every payload: the same
+// team can carry one in scoreboard teams[] but not on a match competitor, or only in
+// the standings. So every logo seen is remembered by team name and reused wherever
+// that team shows up without one; a national side that has none anywhere falls back
+// to its country flag (the picker's own l10n flag, which the badge renders as an emoji).
+const _espnCricketLogos = {};
+const ESPN_CRICKET_TEAM_SUFFIX_RE = /\b(women|womens|men|mens|u-?19|u-?23|under[ -]?19|under[ -]?23|a|xi|lions|emerging|academy|development)\b/g;
+
+function espnCricketTeamName(team) {
+    return stringValue(team && (team.displayName || team.name || team.shortDisplayName || team.location));
+}
+
+function espnCricketRememberLogo(team) {
+    const key = normalizedTeamName(espnCricketTeamName(team));
+    const logo = espnLogoFromTeam(team);
+    if (key.length > 0 && logo.length > 0)
+        _espnCricketLogos[key] = logo;
+}
+
+function espnCricketRememberPayloadLogos(payload) {
+    arrayValue(payload && payload.teams).forEach(item => espnCricketRememberLogo((item && item.team) || item));
+    arrayValue(payload && payload.events).forEach(event => {
+        const competition = arrayValue(event && event.competitions)[0] || {};
+        arrayValue(competition.competitors).forEach(side => espnCricketRememberLogo(side && side.team));
+    });
+}
+
+function espnCricketFlagBadge(name) {
+    const base = normalizedTeamName(name).replace(ESPN_CRICKET_TEAM_SUFFIX_RE, " ").replace(/\s+/g, " ").trim();
+    const slug = ProviderCatalog.slugForValue(base === "usa" || base === "us" ? "united-states" : base);
+    const flag = ProviderCountries.flagSource(slug);
+    return flag.indexOf("file:///") === 0 ? flag : "";
+}
+
+function espnCricketBadge(team) {
+    const own = espnLogoFromTeam(team);
+    if (own.length > 0)
+        return own;
+    const name = espnCricketTeamName(team);
+    return _espnCricketLogos[normalizedTeamName(name)] || espnCricketFlagBadge(name);
+}
+
+function espnCricketBadgeForName(name) {
+    return _espnCricketLogos[normalizedTeamName(name)] || espnCricketFlagBadge(name);
 }
 
 function espnLogoFromTeam(team) {
@@ -1758,8 +1830,8 @@ function normalizeEspnEvent(event, sportValue, options) {
         matchday: "",
         group: "",
         stadium: stringValue(competition.venue && competition.venue.fullName),
-        homeBadge: espnLogoFromTeam(homeTeam),
-        awayBadge: espnLogoFromTeam(awayTeam),
+        homeBadge: isCricket ? espnCricketBadge(homeTeam) : espnLogoFromTeam(homeTeam),
+        awayBadge: isCricket ? espnCricketBadge(awayTeam) : espnLogoFromTeam(awayTeam),
         poster: "",
         popular: false,
         matchPath: "",
@@ -2085,6 +2157,8 @@ function normalizeEspnScoreboard(payload, sportValue, leagueLabel, options) {
     if (sport === "golf" || sport === "racing")
         return normalizeEspnLeaderboardScoreboard(payload, sportValue, merged);
 
+    if (sport === "cricket")
+        espnCricketRememberPayloadLogos(payload);
     const league = stringValue((payload && payload.leagues && payload.leagues[0] && payload.leagues[0].name)) || leagueLabel;
     return arrayValue(payload && payload.events)
         .map(event => {
@@ -2188,6 +2262,13 @@ function espnRecentWindow(sportValue) {
             limit: ESPN_MATCH_LIMIT
         };
     }
+    if (sport === "cricket") {
+        const now = Date.now();
+        return {
+            dates: espnDate(now - ESPN_CRICKET_RECENT_DAYS * 24 * 60 * 60 * 1000) + "-" + espnDate(now),
+            limit: ESPN_SPLIT_MONTH_LIMIT
+        };
+    }
     if (ESPN_DAILY_CADENCE_SPORTS.indexOf(sport) >= 0) {
         const now = Date.now();
         const day = 24 * 60 * 60 * 1000;
@@ -2229,6 +2310,16 @@ function espnRecentFallbackWindow(sportValue) {
 // in range, so the payload stays small. Returns null for non-daily sports.
 const ESPN_DAILY_FIXTURES_FALLBACK_DAYS = 100;
 function espnFixturesFallbackWindow(sportValue) {
+    // Cricket seasons start months apart (SA20 in January, the BBL in December), so
+    // look much further ahead than the default window when it holds nothing.
+    if (normalizedSport(sportValue) === "cricket") {
+        const now = Date.now();
+        const day = 24 * 60 * 60 * 1000;
+        return {
+            dates: espnDate(now - day) + "-" + espnDate(now + ESPN_CRICKET_FIXTURES_FALLBACK_DAYS * day),
+            limit: ESPN_SPLIT_MONTH_LIMIT
+        };
+    }
     if (ESPN_DAILY_CADENCE_SPORTS.indexOf(normalizedSport(sportValue)) < 0)
         return null;
     const now = Date.now();
@@ -2763,6 +2854,10 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
         } catch (error) {
             rows = [];
         }
+        if (isCricket) {
+            rows.forEach(row => { if (row.crest.length > 0) _espnCricketLogos[normalizedTeamName(row.team)] = row.crest; });
+            rows.forEach(row => { if (row.crest.length === 0) row.crest = espnCricketBadgeForName(row.team); });
+        }
         // Cricket tables carry no form column, so skip the form lookup's extra fetches.
         if (rows.length === 0 || isCricket) {
             finish(onSuccess, rows);
@@ -2879,7 +2974,7 @@ function normalizeEspnSeasons(payload, currentYear) {
 }
 
 // Teams → the same option shape as fetchCompetitionTeams.
-function espnTeamOptionRows(list, country, seen, rows) {
+function espnTeamOptionRows(list, country, seen, rows, badgeFor) {
     arrayValue(list).forEach(item => {
         const team = (item && item.team) || item || {};
         const label = stringValue(team.displayName || team.name || team.shortDisplayName);
@@ -2894,7 +2989,7 @@ function espnTeamOptionRows(list, country, seen, rows) {
             slug: slug,
             teamSlug: slug,
             teamPath: "",
-            badge: espnLogoFromTeam(team),
+            badge: badgeFor ? badgeFor(team) : espnLogoFromTeam(team),
             country: country
         });
     });
@@ -2924,29 +3019,36 @@ function parseEspnTeamsPayload(text, country) {
 function parseEspnCricketTeams(scoreboardText, standingsText, country) {
     const rows = [];
     const seen = {};
+    let payload = null;
+    let standingsGroups = [];
     try {
-        const payload = JSON.parse(scoreboardText);
-        espnTeamOptionRows(payload && payload.teams, country, seen, rows);
-        // Fallback for a payload without teams[]: the sides of the listed matches.
-        if (rows.length === 0) {
-            arrayValue(payload && payload.events).forEach(event => {
-                arrayValue(event && event.competitions && event.competitions[0] && event.competitions[0].competitors)
-                    .forEach(side => espnTeamOptionRows([side && side.team], country, seen, rows));
-            });
-        }
+        payload = JSON.parse(scoreboardText);
     } catch (error) {
         console.warn("[sports-widget-debug] cricket scoreboard teams parse failed:", error);
     }
     if (stringValue(standingsText).length > 0) {
         try {
-            const groups = [];
-            espnStandingsLeafGroups(JSON.parse(standingsText), groups);
-            groups.forEach(group => espnTeamOptionRows(
-                arrayValue(group.entries).map(entry => entry && entry.team), country, seen, rows));
+            espnStandingsLeafGroups(JSON.parse(standingsText), standingsGroups);
         } catch (error) {
             console.warn("[sports-widget-debug] cricket standings teams parse failed:", error);
+            standingsGroups = [];
         }
     }
+    // Learn every logo from every source first, so a team missing one in teams[] still
+    // gets the one its match rows or the standings carry.
+    espnCricketRememberPayloadLogos(payload);
+    standingsGroups.forEach(group => arrayValue(group.entries).forEach(entry => espnCricketRememberLogo(entry && entry.team)));
+
+    espnTeamOptionRows(payload && payload.teams, country, seen, rows, espnCricketBadge);
+    // Fallback for a payload without teams[]: the sides of the listed matches.
+    if (rows.length === 0) {
+        arrayValue(payload && payload.events).forEach(event => {
+            arrayValue(event && event.competitions && event.competitions[0] && event.competitions[0].competitors)
+                .forEach(side => espnTeamOptionRows([side && side.team], country, seen, rows, espnCricketBadge));
+        });
+    }
+    standingsGroups.forEach(group => espnTeamOptionRows(
+        arrayValue(group.entries).map(entry => entry && entry.team), country, seen, rows, espnCricketBadge));
     rows.sort((a, b) => stringValue(a.label).localeCompare(stringValue(b.label)));
     return rows;
 }
@@ -3607,8 +3709,12 @@ function fetchEspnMatchSummary(espnSport, espnLeague, eventId, sportValue, optio
         finish(onSuccess, null);
         return;
     }
-    const url = ESPN_SITE_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(espnLeague)
-        + "/summary?event=" + encodeURIComponent(eventId);
+    // Cricket's summary (scorecard, squads, leaders) is served from the "site.web" host
+    // and wants a region; the plain site.api host has no cricket summary.
+    const url = espnIsCricket(espnSport)
+        ? ESPN_CRICKET_SUMMARY_BASE + "/" + encodeURIComponent(espnLeague) + "/summary?event=" + encodeURIComponent(eventId) + "&lang=en&region=in"
+        : ESPN_SITE_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(espnLeague)
+            + "/summary?event=" + encodeURIComponent(eventId);
     requestEspnText(url, text => {
         let result = null;
         try {
