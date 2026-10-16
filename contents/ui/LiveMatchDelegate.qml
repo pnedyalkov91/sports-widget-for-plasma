@@ -54,6 +54,12 @@ Item {
         if (root.detailsProvider !== "espn" || root.espnEventId.length === 0)
             return "";
         const sportPath = root.espnSport.length > 0 ? root.espnSport.toLowerCase() : "soccer";
+        // Racing has no /game/_/gameId/ pages: F1 races are /f1/race/_/id/<id>; other
+        // racing series fall back to the ESPN racing hub.
+        if (sportPath === "racing")
+            return root.espnLeague.toLowerCase() === "f1"
+                ? "https://www.espn.com/f1/race/_/id/" + root.espnEventId
+                : "https://www.espn.com/racing/";
         const verb = sportPath === "soccer" ? "match" : "game";
         return "https://www.espn.com/" + sportPath + "/" + verb + "/_/gameId/" + root.espnEventId;
     }

@@ -1605,7 +1605,15 @@ PlasmoidItem {
             if (team.length === 0)
                 return false;
 
-            return SportsApi.sameTeamName(match && match.homeTeam, team) || SportsApi.sameTeamName(match && match.awayTeam, team) || SportsApi.sameTeamName(match && match.team, team);
+            if (SportsApi.sameTeamName(match && match.homeTeam, team) || SportsApi.sameTeamName(match && match.awayTeam, team) || SportsApi.sameTeamName(match && match.team, team))
+                return true;
+            // Racing weekends: a followed driver belongs to every weekend of their series
+            // that has no classification yet, and to the ones whose field includes them.
+            if (String(match && match.espnSport || "").toLowerCase() === "racing") {
+                const participants = String(match && match.participants || "");
+                return participants.length === 0 || SportsApi.espnParticipantsInclude(participants, team);
+            }
+            return false;
         }
 
         const leagueSlug = ProviderCatalog.slugForValue(entry && entry.league || "");
@@ -3262,6 +3270,13 @@ PlasmoidItem {
             return "";
 
         const espnSport = String((match && match.espnSport) || "").trim().toLowerCase();
+        // Racing has no /game/_/gameId/ pages. F1 races live at /f1/race/_/id/<id> (the
+        // `Gamecast` link ESPN itself returns); other series fall back to the racing hub.
+        if (espnSport === "racing") {
+            return String((match && match.espnLeague) || "").toLowerCase() === "f1"
+                ? "https://www.espn.com/f1/race/_/id/" + eventId
+                : "https://www.espn.com/racing/";
+        }
         const sportPath = espnSport.length > 0 ? espnSport : "soccer";
         const verb = sportPath === "soccer" ? "match" : "game";
         return "https://www.espn.com/" + sportPath + "/" + verb + "/_/gameId/" + eventId;

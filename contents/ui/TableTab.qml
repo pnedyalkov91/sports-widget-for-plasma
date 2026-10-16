@@ -47,8 +47,15 @@ Item {
     // Tennis rankings are one list per tour (ATP men / WTA women): shown as sub-tabs
     // under the Tables tab instead of the generic "Table:" dropdown.
     readonly property bool showTourTabs: root.sport === "tennis" && Array.isArray(root.tableOptions) && root.tableOptions.length > 1
-    readonly property var tableColumns: SportScoreSports.standingsColumns(root.sport, i18nc)
-    readonly property bool tableHasForm: SportScoreSports.standingsHasForm(root.sport)
+    // Racing (F1 / NASCAR / IndyCar): the table is the drivers' (and constructors')
+    // championship - points and the gap to the leader, no W/D/L and no form.
+    readonly property bool isRacing: String(root.sport || "").toLowerCase() === "racing"
+    readonly property var racingColumns: [
+        { "key": "points", "label": i18nc("@title:column championship points short", "Pts"), "tooltip": i18nc("@info:tooltip", "Championship points"), "width": 3, "emphasized": true },
+        { "key": "gap", "label": i18nc("@title:column points gap short", "Gap"), "tooltip": i18nc("@info:tooltip", "Points behind the leader"), "width": 3, "emphasized": false }
+    ]
+    readonly property var tableColumns: root.isRacing ? root.racingColumns : SportScoreSports.standingsColumns(root.sport, i18nc)
+    readonly property bool tableHasForm: root.isRacing ? false : SportScoreSports.standingsHasForm(root.sport)
     readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
     readonly property color tableSecondaryTextColor: Kirigami.Theme.disabledTextColor
     readonly property color tableHighlightTextColor: Kirigami.Theme.linkColor
@@ -90,6 +97,8 @@ Item {
         const label = root.leagueLabel.length > 0 ? root.leagueLabel : ProviderCatalog.leagueLabel(root.league);
         if (root.sport === "tennis")
             return label.length > 0 ? i18nc("@label", "%1 Rankings", label) : i18nc("@label", "Rankings");
+        if (root.isRacing)
+            return label.length > 0 ? i18nc("@label", "%1 Standings", label) : i18nc("@label", "Championship Standings");
         return label.length > 0 ? i18nc("@label", "%1 Table", label) : i18nc("@label", "League Table");
     }
 
@@ -111,7 +120,7 @@ Item {
                 return String(option.label || "").trim();
         }
 
-        return root.leagueLabel.length > 0 ? root.leagueLabel : root.leagueTitle().replace(/\s+(Table|Rankings)$/, "");
+        return root.leagueLabel.length > 0 ? root.leagueLabel : root.leagueTitle().replace(/\s+(Table|Rankings|Standings)$/, "");
     }
 
     onSelectedTableSlugChanged: {
@@ -404,7 +413,7 @@ Item {
                 }
 
                 HeaderLabel {
-                    text: root.sport === "tennis" ? i18nc("@label", "Player") : i18nc("@label", "Team")
+                    text: root.sport === "tennis" ? i18nc("@label", "Player") : root.isRacing ? i18nc("@label", "Driver") : i18nc("@label", "Team")
                     Layout.fillWidth: true
                 }
 

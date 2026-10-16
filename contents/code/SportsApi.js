@@ -884,6 +884,13 @@ function fetchEspnLiveMatchDetails(options, onSuccess) {
         return;
     }
 
+    // Racing: ESPN's site API has NO summary endpoint for it (racing/{league}/summary
+    // answers 404), so the panel is built from the weekend's own scoreboard event.
+    if (espnIsRacing(espnSport)) {
+        fetchEspnRacingDetails(options, onSuccess);
+        return;
+    }
+
     // Two best-effort feeds make up the details panel:
     //   • summary  - boxscore team stats (Statistics tab) + venue/attendance/referee
     //                and half-time score (Information tab). All ESPN sports.
@@ -933,6 +940,91 @@ function fetchEspnLiveMatchDetails(options, onSuccess) {
     } else {
         done();
     }
+}
+
+// Details panel rows for a racing weekend: circuit, every session with its start time and
+// state/winner, then the classification (top 10) of the live session or, failing that, the
+// Race (or the latest session that already has a classification).
+function espnRacingDetailsRows(event, options) {
+    const rows = [];
+    const append = (label, value) => {
+        value = stringValue(value);
+        if (value.length > 0)
+            rows.push({ label: label, value: value });
+    };
+    const sessions = espnRacingSessions(event);
+    const headline = espnRacingHeadlineSession(sessions);
+    const circuit = espnRacingCircuitInfo(event, headline && headline.competition);
+    append("Circuit", circuit.name);
+    append("Location", circuit.location);
+    sessions.forEach(session => {
+        let value = session.timestamp > 0 ? formatStartTime(session.timestamp, options) : "";
+        if (session.state === "in")
+            value += (value.length > 0 ? " · " : "") + "LIVE";
+        else if (session.state === "post") {
+            const winner = session.competitors.length > 0 ? espnRacingDriverName(session.competitors[0]) : "";
+            value += (value.length > 0 ? " · " : "") + (winner.length > 0 ? "P1 " + winner : "Final");
+        }
+        append(session.label, value);
+    });
+    let reference = sessions.find(session => session.state === "in" && session.competitors.length > 0);
+    if (!reference && headline && headline.competitors.length > 0)
+        reference = headline;
+    if (!reference)
+        reference = sessions.slice().reverse().find(session => session.competitors.length > 0) || null;
+    if (reference) {
+        reference.competitors.slice(0, 10).forEach((competitor, index) => {
+            const position = espnLeaderboardPosition(competitor, index + 1);
+            append(reference.label + " " + (position.length > 0 ? position : "P" + (index + 1)), espnRacingDriverName(competitor));
+        });
+    }
+    return rows;
+}
+
+function fetchEspnRacingDetails(options, onSuccess) {
+    const espnSport = stringValue(options && options.espnSport);
+    const espnLeague = stringValue(options && options.espnLeague);
+    const eventId = stringValue(options && options.espnEventId);
+    const timestamp = numberValue(options && options.timestamp);
+    const base = Object.assign(emptyLiveMatchDetails(), {
+        sourceProvider: "ESPN",
+        statsProvider: "ESPN",
+        competition: stringValue(options && options.league)
+    });
+    // ESPN answers a single-day scoreboard with the whole weekend event for every day of the
+    // weekend, so the row's own date finds it; the month is the fallback for date-line skew.
+    const attempts = [];
+    if (timestamp > 0) {
+        attempts.push(espnDate(timestamp));
+        attempts.push(espnDate(timestamp).slice(0, 6));
+    } else {
+        attempts.push("");
+    }
+    const tryAttempt = index => {
+        if (index >= attempts.length) {
+            finish(onSuccess, base);
+            return;
+        }
+        requestEspnScoreboardPayload(espnSport, espnLeague, attempts[index], attempts[index].length === 6 ? ESPN_SPLIT_MONTH_LIMIT : undefined, payload => {
+            const event = arrayValue(payload && payload.events).find(candidate => stringValue(candidate && candidate.id) === eventId);
+            if (!event) {
+                tryAttempt(index + 1);
+                return;
+            }
+            let rows = [];
+            try {
+                rows = espnRacingDetailsRows(event, options);
+            } catch (error) {
+                console.warn("[sports-widget-debug] racing details FAILED:", error);
+            }
+            const statusType = (event.status && event.status.type) || {};
+            finish(onSuccess, Object.assign(base, {
+                statusText: stringValue(statusType.shortDetail || statusType.detail),
+                matchInfoRows: rows
+            }));
+        }, () => tryAttempt(index + 1));
+    };
+    tryAttempt(0);
 }
 
 function emptyLiveMatchDetails() {
@@ -2145,6 +2237,234 @@ function normalizeEspnLeaderboardScoreboard(payload, sportValue, options) {
     return rows;
 }
 
+// ---------------------------------------------------------------------------
+// Racing (F1, NASCAR, IndyCar). One ESPN scoreboard `event` is a whole race WEEKEND:
+//   F1      competitions[] = one per session, `type.abbreviation` FP1/FP2/FP3/Qual/Race
+//           (+ SS "sprint qualifying" and SR "sprint" on sprint weekends). Sessions that
+//           are scheduled carry NO competitors; live/finished ones carry the classification
+//           (`order`, `winner`, `athlete`).
+//   NASCAR / IndyCar   a single competition without `type`, `circuit` or `endDate`.
+// The generic leaderboard code (golf) picked "the competition with most competitors" -
+// for F1 that is FP1 (every session lists the full grid), so Recent showed the FIRST
+// PRACTICE order as the race result - and returned null for every weekend that had no
+// competitors yet, which emptied the whole Schedule tab. The racing path below works on
+// sessions: the headline session is the Race, the live session is whichever one is `in`.
+// ---------------------------------------------------------------------------
+const ESPN_RACING_SESSION_LABELS = {
+    "fp1": "Practice 1",
+    "fp2": "Practice 2",
+    "fp3": "Practice 3",
+    "qual": "Qualifying",
+    "q": "Qualifying",
+    "ss": "Sprint Qualifying",
+    "sq": "Sprint Qualifying",
+    "sr": "Sprint",
+    "sprint": "Sprint",
+    "race": "Race"
+};
+
+function espnIsRacing(espnSport) {
+    return stringValue(espnSport).toLowerCase() === "racing";
+}
+
+function espnRacingSessionLabel(competition, index, total) {
+    const type = (competition && competition.type) || {};
+    const key = stringValue(type.abbreviation).toLowerCase();
+    if (ESPN_RACING_SESSION_LABELS[key])
+        return ESPN_RACING_SESSION_LABELS[key];
+    const text = stringValue(type.text || type.displayName || type.name || type.abbreviation);
+    if (text.length > 0)
+        return text;
+    return total <= 1 ? "Race" : "Session " + (index + 1);
+}
+
+function espnRacingSessions(event) {
+    const list = arrayValue(event && event.competitions);
+    const eventStatusType = (event && event.status && event.status.type) || {};
+    return list.map((competition, index) => {
+        const statusType = (competition && competition.status && competition.status.type) || eventStatusType;
+        const abbreviation = stringValue(competition && competition.type && competition.type.abbreviation).toLowerCase();
+        const timestamp = Date.parse(stringValue((competition && competition.date) || (event && event.date)));
+        const competitors = arrayValue(competition && competition.competitors)
+            .slice()
+            .sort((a, b) => (numberValue(a && a.order) || 9999) - (numberValue(b && b.order) || 9999));
+        return {
+            competition: competition || {},
+            label: espnRacingSessionLabel(competition, index, list.length),
+            isRace: abbreviation === "race" || list.length === 1,
+            state: stringValue(statusType.state).toLowerCase(),
+            statusName: stringValue(statusType.name).toUpperCase(),
+            statusType: statusType,
+            completed: statusType.completed === true,
+            timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+            competitors: competitors
+        };
+    });
+}
+
+function espnRacingIsCancelled(event, sessions) {
+    const eventName = stringValue(event && event.status && event.status.type && event.status.type.name).toUpperCase();
+    if (eventName.indexOf("CANCEL") >= 0)
+        return true;
+    return sessions.length > 0 && sessions.every(session => session.statusName.indexOf("CANCEL") >= 0);
+}
+
+// The session a weekend is "about": the Race, else the last session of the weekend.
+function espnRacingHeadlineSession(sessions) {
+    return sessions.find(session => session.isRace && session.state !== "") || sessions.find(session => session.isRace)
+        || sessions[sessions.length - 1] || null;
+}
+
+function espnRacingCircuitInfo(event, competition) {
+    const circuit = (event && event.circuit) || {};
+    const address = circuit.address || {};
+    const venue = (competition && competition.venue) || {};
+    const venueAddress = venue.address || {};
+    const name = stringValue(circuit.fullName || circuit.name || venue.fullName);
+    const city = stringValue(address.city || venueAddress.city);
+    const country = stringValue(address.country || venueAddress.country || venueAddress.state);
+    return {
+        name: name,
+        location: [city, country].filter(part => part.length > 0).join(", ")
+    };
+}
+
+function espnRacingDriverName(competitor) {
+    const athlete = (competitor && competitor.athlete) || {};
+    return stringValue(athlete.displayName || athlete.fullName || athlete.shortName);
+}
+
+function normalizeEspnRacingEvent(event, sportValue, options) {
+    let sessions = espnRacingSessions(event);
+    if (sessions.length === 0)
+        sessions = [{
+            competition: {}, label: "Race", isRace: true,
+            state: stringValue(event && event.status && event.status.type && event.status.type.state).toLowerCase(),
+            statusName: "", statusType: (event && event.status && event.status.type) || {}, completed: false,
+            timestamp: Date.parse(stringValue(event && event.date)) || 0, competitors: []
+        }];
+    if (espnRacingIsCancelled(event, sessions))
+        return null;
+
+    const eventName = stringValue(event && event.name);
+    if (eventName.length === 0)
+        return null;
+    const leagueLabel = stringValue(options && options.leagueLabel);
+    const headline = espnRacingHeadlineSession(sessions);
+    const liveSession = sessions.find(session => session.state === "in")
+        || (stringValue(event && event.status && event.status.type && event.status.type.state).toLowerCase() === "in" && !sessions.some(s => s.state === "pre" || s.state === "post") ? headline : null);
+    const raceFinished = headline.state === "post" || headline.completed
+        || (stringValue(event && event.status && event.status.type && event.status.type.state).toLowerCase() === "post"
+            && !sessions.some(session => session.state === "pre"));
+
+    let status = "Upcoming";
+    let reference = null;
+    if (liveSession) {
+        status = "Live";
+        reference = liveSession;
+    } else if (raceFinished) {
+        status = "Finished";
+        reference = headline;
+    }
+
+    const circuit = espnRacingCircuitInfo(event, headline.competition);
+    const nextSession = sessions.filter(session => session.state === "pre" && session.timestamp > 0)
+        .sort((a, b) => a.timestamp - b.timestamp)[0] || null;
+    const rowTimestamp = status === "Live" && reference.timestamp > 0 ? reference.timestamp
+        : (headline.timestamp || Date.parse(stringValue(event && event.date)));
+
+    // Classification of the reference session (live: running order, finished: result).
+    const field = reference ? reference.competitors : [];
+    const followed = stringValue(options && options.favoriteTeam);
+    let home = null;
+    let away = null;
+    if (field.length > 0) {
+        const leader = field[0];
+        home = leader;
+        if (followed.length > 0) {
+            const mine = field.find(c => sameTeamName(espnRacingDriverName(c), followed));
+            if (mine)
+                home = mine;
+        }
+        away = home === leader ? (field[1] || null) : leader;
+    }
+    // Every driver of the headline session (or the reference one): lets a followed driver
+    // match the weekend even when the row's two shown names are somebody else.
+    const participantSource = (headline.competitors.length > 0 ? headline.competitors : field);
+    const participants = participantSource.map(espnRacingDriverName).filter(name => name.length > 0).join(" | ");
+
+    const homeAthlete = (home && home.athlete) || {};
+    const awayAthlete = (away && away.athlete) || {};
+    const homeName = home ? espnRacingDriverName(home) : "";
+    const awayName = away ? espnRacingDriverName(away) : "";
+    const hasField = homeName.length > 0;
+
+    const statusType = (reference ? reference.statusType : headline.statusType) || {};
+    let minute = "";
+    if (status === "Live") {
+        const detail = stringValue(statusType.shortDetail || statusType.detail);
+        // "Lap 12/57" style detail is worth keeping next to the session name; the generic
+        // "In Progress"/"Live" text is not.
+        minute = /lap|\d/i.test(detail) && !/^(in progress|live)$/i.test(detail)
+            ? reference.label + " · " + detail : reference.label;
+    }
+    const nextText = nextSession
+        ? nextSession.label + " · " + formatStartTime(nextSession.timestamp, options) : "";
+    const statusText = status === "Live" ? minute
+        : (status === "Finished" ? "Final" : (nextText.length > 0 ? "Next: " + nextText : ""));
+
+    return {
+        id: "espn-" + stringValue(event && event.id),
+        sport: sportValue,
+        league: leagueLabel || eventName,
+        // With a classification: "leader vs runner-up" (or the followed driver vs the
+        // leader). Without one (a scheduled weekend): the Grand Prix and its circuit.
+        homeTeam: hasField ? homeName : eventName,
+        awayTeam: hasField ? (awayName.length > 0 ? awayName : eventName)
+            : (circuit.location || circuit.name || leagueLabel),
+        homeScore: hasField ? (stringValue(home.score) || espnLeaderboardPosition(home, 1)) : "",
+        awayScore: hasField && awayName.length > 0 ? (stringValue(away.score) || espnLeaderboardPosition(away, 2)) : "",
+        status,
+        statusText,
+        minute,
+        startTime: Number.isFinite(rowTimestamp) && rowTimestamp > 0 ? formatStartTime(rowTimestamp, options) : "",
+        timestamp: Number.isFinite(rowTimestamp) ? rowTimestamp : 0,
+        matchday: hasField ? eventName : headline.label,
+        group: eventName,
+        stadium: circuit.name.length > 0 && circuit.location.length > 0 && hasField
+            ? circuit.name + ", " + circuit.location : circuit.name,
+        homeBadge: hasField ? stringValue(homeAthlete.flag && homeAthlete.flag.href) : "",
+        awayBadge: hasField ? stringValue(awayAthlete.flag && awayAthlete.flag.href) : "",
+        poster: "",
+        popular: false,
+        matchPath: "",
+        liveUrl: "",
+        detailsProvider: "espn",
+        statsProvider: "espn",
+        sourceProvider: "ESPN",
+        espnEventId: stringValue(event && event.id),
+        espnSport: stringValue(options && options.espnSport),
+        espnLeague: stringValue(options && options.espnLeague),
+        // Pipe-joined driver names of the weekend (see filterEspnRowsForEntry).
+        participants: participants
+    };
+}
+
+function normalizeEspnRacingScoreboard(payload, sportValue, options) {
+    const rows = [];
+    arrayValue(payload && payload.events).forEach(event => {
+        const row = normalizeEspnRacingEvent(event, sportValue, options);
+        if (row)
+            rows.push(row);
+    });
+    return rows;
+}
+
+// Does a pipe-joined participants string (see normalizeEspnRacingEvent) contain `name`?
+function espnParticipantsInclude(participants, name) {
+    return stringValue(participants).split("|").some(part => sameTeamName(part.trim(), name));
+}
+
 function normalizeEspnScoreboard(payload, sportValue, leagueLabel, options) {
     const merged = Object.assign({ leagueLabel: leagueLabel }, options || {});
     const sport = normalizedSport(sportValue);
@@ -2152,7 +2472,9 @@ function normalizeEspnScoreboard(payload, sportValue, leagueLabel, options) {
         return normalizeEspnTennisScoreboard(payload, sportValue, merged);
     if (sport === "mma")
         return normalizeEspnMmaScoreboard(payload, sportValue, merged);
-    if (sport === "golf" || sport === "racing")
+    if (sport === "racing")
+        return normalizeEspnRacingScoreboard(payload, sportValue, merged);
+    if (sport === "golf")
         return normalizeEspnLeaderboardScoreboard(payload, sportValue, merged);
 
     if (sport === "cricket")
@@ -2199,7 +2521,17 @@ function filterEspnRowsForEntry(rows, options) {
     const team = stringValue(options && options.favoriteTeam);
     if (team.length === 0)
         return arrayValue(rows);
-    return arrayValue(rows).filter(row => matchBelongsToTeam(row, team));
+    return arrayValue(rows).filter(row => {
+        if (matchBelongsToTeam(row, team))
+            return true;
+        // Racing weekends: keep the weekend when the followed driver is in its field,
+        // and keep a scheduled weekend (no classification yet) - the grid isn't known.
+        if (stringValue(row && row.espnSport).toLowerCase() === "racing") {
+            const participants = stringValue(row && row.participants);
+            return participants.length === 0 || espnParticipantsInclude(participants, team);
+        }
+        return false;
+    });
 }
 
 // Sort + return only the rows for one mode out of a fully-normalized scoreboard.
@@ -2307,6 +2639,7 @@ function espnRecentFallbackWindow(sportValue) {
 // out (NHL: July → mid-September preseason). Offseason there are few scheduled games
 // in range, so the payload stays small. Returns null for non-daily sports.
 const ESPN_DAILY_FIXTURES_FALLBACK_DAYS = 100;
+const ESPN_RACING_FIXTURES_FALLBACK_DAYS = 150;
 function espnFixturesFallbackWindow(sportValue) {
     // Cricket seasons start months apart (SA20 in January, the BBL in December), so
     // look much further ahead than the default window when it holds nothing.
@@ -2315,6 +2648,17 @@ function espnFixturesFallbackWindow(sportValue) {
         const day = 24 * 60 * 60 * 1000;
         return {
             dates: espnDate(now - day) + "-" + espnDate(now + ESPN_CRICKET_FIXTURES_FALLBACK_DAYS * day),
+            limit: ESPN_SPLIT_MONTH_LIMIT
+        };
+    }
+    // Racing weekends are 1-2 weeks apart and the off-season (F1: December-March) is
+    // months long, so the default 14-day look-ahead is often empty. A long window costs
+    // little: a season is ~25 events and most of the span is fetched as single months.
+    if (normalizedSport(sportValue) === "racing") {
+        const now = Date.now();
+        const day = 24 * 60 * 60 * 1000;
+        return {
+            dates: espnDate(now - day) + "-" + espnDate(now + ESPN_RACING_FIXTURES_FALLBACK_DAYS * day),
             limit: ESPN_SPLIT_MONTH_LIMIT
         };
     }
@@ -2564,11 +2908,14 @@ function espnStatDisplay(stats, names) {
 
 function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows) {
     arrayValue(entries).forEach(entry => {
-        const team = entry && entry.team ? entry.team : {};
+        // Racing driver standings hang an `athlete` (not a `team`) off each entry; the
+        // constructors table (F1) uses `team`. The flag stands in for the crest.
+        const isAthlete = !(entry && entry.team) && !!(entry && entry.athlete);
+        const team = entry && entry.team ? entry.team : ((entry && entry.athlete) || {});
         const stats = (entry && entry.stats) || [];
         rows.push({
             position: espnStatValue(stats, ["rank", "playoffseed", "position"]),
-            team: stringValue(team.displayName || team.name || team.shortDisplayName),
+            team: stringValue(team.displayName || team.name || team.shortDisplayName || team.shortName),
             group: group,
             groupIndex: groupIndex,
             // Cricket stat names: matchesPlayed/matchesWon/matchesLost/matchesTied/
@@ -2587,17 +2934,33 @@ function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows)
             // Prefer pointDifferential/goalDifferential (the real +33/+47/+170); the
             // bare "differential" is a per-game ratio (+0.3) and must not win.
             goalDifference: espnStatValue(stats, ["pointdifferential", "goaldifferential"]),
-            points: espnStatValue(stats, ["points", "pts", "matchpoints"]),
+            // "championshippts" is the racing (F1/NASCAR/IndyCar) championship total.
+            points: espnStatValue(stats, ["points", "pts", "matchpoints", "championshippts"]),
             // Win percentage / games-behind keep ESPN's own formatting (".596", "8.5",
             // "-"); a number would lose the leading dot and the leader's blank marker.
             winPercent: espnStatDisplay(stats, ["winpercent", "leaguewinpercent", "percentage", "pct"]),
             gamesBehind: espnStatDisplay(stats, ["gamesbehind", "gb"]),
             form: "",
-            crest: espnLogoFromTeam(team),
+            crest: isAthlete ? stringValue(team.flag && team.flag.href) : espnLogoFromTeam(team),
             teamPath: "",
             teamSlug: ProviderCatalog.slugForValue(team.slug || team.abbreviation || team.id),
             league: league
         });
+    });
+}
+
+// Racing tables show the points gap to the leader of each table. Computed per group so the
+// drivers' and the constructors' tables each get their own leader.
+function espnAddPointsGap(rows) {
+    const leaders = {};
+    rows.forEach(row => {
+        const key = numberValue(row.groupIndex);
+        if (leaders[key] === undefined || numberValue(row.points) > leaders[key])
+            leaders[key] = numberValue(row.points);
+    });
+    rows.forEach(row => {
+        const diff = leaders[numberValue(row.groupIndex)] - numberValue(row.points);
+        row.gap = diff > 0 ? "-" + diff : "-";
     });
 }
 
@@ -2640,6 +3003,7 @@ function normalizeEspnStandings(payload, leagueLabel) {
     groups.forEach((group, index) => {
         normalizeEspnStandingsEntries(group.entries, labelled ? group.name : "", index, league, rows);
     });
+    espnAddPointsGap(rows);
 
     return rows.filter(row => stringValue(row.team).length > 0)
         .sort((left, right) => numberValue(left.groupIndex) - numberValue(right.groupIndex)
@@ -2856,8 +3220,9 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
             rows.forEach(row => { if (row.crest.length > 0) _espnCricketLogos[normalizedTeamName(row.team)] = row.crest; });
             rows.forEach(row => { if (row.crest.length === 0) row.crest = espnCricketBadgeForName(row.team); });
         }
-        // Cricket tables carry no form column, so skip the form lookup's extra fetches.
-        if (rows.length === 0 || isCricket) {
+        // Cricket and racing tables carry no form column, so skip the form lookup's extra
+        // fetches (for racing it would pull a year of scoreboards for nothing).
+        if (rows.length === 0 || isCricket || espnIsRacing(espnSport)) {
             finish(onSuccess, rows);
             return;
         }
@@ -3149,6 +3514,39 @@ function fetchEspnEventPlayers(espnSport, league, options, onSuccess, onError) {
         rows.sort((a, b) => stringValue(a.label).localeCompare(stringValue(b.label)));
         finish(onSuccess, rows);
     }, error => finish(onError, error || "Unable to load ESPN players"));
+}
+
+// Racing: the followable drivers are the championship standings' athletes. Unlike the
+// scoreboard (whose grid only exists for sessions that already ran, and is empty for
+// every upcoming weekend) the standings always list the full field, in points order.
+// Constructors (F1 children[1]) have `team` entries, not `athlete`, so they are skipped.
+function fetchEspnRacingDrivers(espnSport, league, options, onSuccess, onError) {
+    const url = ESPN_STANDINGS_BASE + "/" + encodeURIComponent(espnSport) + "/" + encodeURIComponent(league) + "/standings";
+    requestEspnText(url, text => {
+        let rows = [];
+        try {
+            const groups = [];
+            espnStandingsLeafGroups(JSON.parse(text), groups);
+            const seen = {};
+            groups.forEach(group => {
+                arrayValue(group.entries).forEach(entry => {
+                    const row = entry && entry.athlete ? espnAthleteRow(entry.athlete, options) : null;
+                    if (!row || seen[row.slug || row.label.toLowerCase()])
+                        return;
+                    seen[row.slug || row.label.toLowerCase()] = true;
+                    rows.push(row);
+                });
+            });
+        } catch (error) {
+            rows = [];
+        }
+        if (rows.length > 0) {
+            finish(onSuccess, rows);
+            return;
+        }
+        // No standings yet (new season): fall back to whatever grid the scoreboard has.
+        fetchEspnEventPlayers(espnSport, league, options, onSuccess, onError);
+    }, () => fetchEspnEventPlayers(espnSport, league, options, onSuccess, onError));
 }
 
 // Tennis (and other player sports) have no roster, but ESPN's rankings feed lists
@@ -4746,7 +5144,9 @@ function fetchCompetitionTeams(options, onSuccess, onError) {
     //   tennis            → the tour rankings feed (top ranked players);
     //   golf/mma/racing   → the event's competitors (field / fight card / grid).
     if (plan && EspnSports.usesPlayers(options && (options.sports || options.sport))) {
-        if (EspnSports.playerSource(options && (options.sports || options.sport)) === "scoreboard")
+        if (espnIsRacing(plan.espnSport))
+            fetchEspnRacingDrivers(plan.espnSport, plan.league, options, onSuccess, onError);
+        else if (EspnSports.playerSource(options && (options.sports || options.sport)) === "scoreboard")
             fetchEspnEventPlayers(plan.espnSport, plan.league, options, onSuccess, onError);
         else
             fetchEspnTennisPlayers(plan.espnSport, plan.league, options, onSuccess, onError);
