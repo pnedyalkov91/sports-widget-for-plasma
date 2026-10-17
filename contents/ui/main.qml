@@ -517,13 +517,118 @@ PlasmoidItem {
         return 120000;
     }
 
+    // ─── Wake / offline recovery ─────────────────────────────────────────────
+    // After resume the network (NetworkManager + DNS) usually needs a few seconds to
+    // come back. Refreshing immediately makes every ESPN curl fail with exit 6, which
+    // SportsApi reports as an EMPTY SUCCESS - so the widget showed nothing and waited
+    // for the next regular refresh (up to 30 min away in smart/idle mode). Instead we
+    // probe connectivity with exponential backoff and refresh only once it answers.
+    property bool wakeRecoveryActive: false
+    property int wakeProbeAttempt: 0
+    property int wakeRecoveryToken: 0
+    property int networkProbeSeq: 0
+    // After this many failed probes (~6 min) stop waiting and refresh anyway, so a
+    // blocked probe host can never leave the widget permanently paused.
+    readonly property int wakeProbeMaxAttempts: 10
+    // Safety net for any other network failure (Wi-Fi roaming, VPN reconnect...).
+    property int networkRetryAttempt: 0
+    property double refreshStartedMs: 0
+
     function handleSystemWake() {
+        // A curl started just before suspend may never report back, which would
+        // keep ESPN request slots occupied forever. Release them first.
+        root.reapStaleEspnJobs();
+
         // Live matches shown from before the suspend are almost certainly stale
         // (often already finished). Drop them right away so the user never sees
-        // phantom live games, then pull everything fresh.
+        // phantom live games, then pull everything fresh once the network is up.
         liveMatchesModel.clear();
         root.latestLiveMatches = [];
-        root.refreshScores(true);
+
+        networkRetryTimer.stop();
+        root.networkRetryAttempt = 0;
+        root.wakeRecoveryToken += 1;
+        root.wakeProbeAttempt = 0;
+        root.wakeRecoveryActive = true;
+        root.probeNetwork(root.wakeRecoveryToken);
+    }
+
+    function probeNetwork(token) {
+        if (!root.wakeRecoveryActive || token !== root.wakeRecoveryToken)
+            return;
+
+        root.networkProbeSeq += 1;
+        // Any HTTP answer (even 403/404) gives curl exit 0, so this only tests
+        // DNS + connectivity. PROBE_ID is an inert variable assignment that just
+        // keeps every command string unique (DataSource source names must differ).
+        const command = "PROBE_ID=" + root.networkProbeSeq + " curl -s -m 5 -o /dev/null -I https://site.api.espn.com/";
+        const tokens = Object.assign({}, networkProbe.tokens);
+        tokens[command] = token;
+        networkProbe.tokens = tokens;
+        console.warn("[sports-widget-debug] wake: probing network, attempt", root.wakeProbeAttempt + 1);
+        networkProbe.connectSource(command);
+    }
+
+    function onNetworkProbeFinished(ok, token) {
+        if (!root.wakeRecoveryActive || token !== root.wakeRecoveryToken)
+            return;
+
+        if (ok || root.wakeProbeAttempt + 1 >= root.wakeProbeMaxAttempts) {
+            console.warn("[sports-widget-debug] wake: network", ok ? "is back" : "still unreachable, refreshing anyway", "- refreshing");
+            root.wakeRecoveryActive = false;
+            SportsApi.resetNetworkState();
+            root.refreshScores(true);
+            return;
+        }
+
+        root.wakeProbeAttempt += 1;
+        // 1.5 s, 3 s, 6 s, 12 s, 24 s, 48 s, then every 60 s.
+        const delay = Math.min(60000, 1500 * Math.pow(2, root.wakeProbeAttempt - 1));
+        root.scheduleNetworkDelay(() => root.probeNetwork(token), delay);
+    }
+
+    function reapStaleEspnJobs() {
+        const now = Date.now();
+        let reaped = 0;
+        Object.keys(espnCurlSource.pending).forEach(command => {
+            const job = espnCurlSource.pending[command];
+            // curl runs with -m 14, so anything this old can only be a lost callback.
+            if (!job || now - job.startedAt < 30000)
+                return;
+            delete espnCurlSource.pending[command];
+            espnCurlSource.disconnectSource(command);
+            root._espnInFlight = Math.max(0, root._espnInFlight - 1);
+            reaped += 1;
+            job.onError("curl job abandoned after suspend");
+        });
+        if (reaped > 0)
+            console.warn("[sports-widget-debug] wake: released", reaped, "stale ESPN curl job(s)");
+    }
+
+    Plasma5Support.DataSource {
+        id: networkProbe
+        engine: "executable"
+        // command string -> recovery token it was started for
+        property var tokens: ({})
+
+        onNewData: (sourceName, data) => {
+            disconnectSource(sourceName);
+            const token = tokens[sourceName];
+            const next = Object.assign({}, tokens);
+            delete next[sourceName];
+            tokens = next;
+            root.onNetworkProbeFinished(data["exit code"] === 0, token);
+        }
+    }
+
+    // Retries a refresh that ran into a network failure (see finishRefresh).
+    Timer {
+        id: networkRetryTimer
+        repeat: false
+        onTriggered: {
+            SportsApi.resetNetworkState();
+            root.refreshScores(false);
+        }
     }
 
     function liveRefreshIsEnabled() {
@@ -1770,6 +1875,7 @@ PlasmoidItem {
 
         const token = root.refreshToken + 1;
         root.refreshToken = token;
+        root.refreshStartedMs = Date.now();
         root.liveRefreshToken += 1;
         root.liveRefreshInFlight = false;
         root.clearMatchModelCache();
@@ -2750,6 +2856,23 @@ PlasmoidItem {
         refreshWatchdogTimer.stop();
         promoteLiveMatches(root.latestScheduleMatches);
         root.loading = false;
+
+        // ESPN network failures are reported upstream as empty successes, so ask
+        // SportsApi whether this refresh hit one, and schedule a backed-off retry
+        // instead of sitting on empty data until the next regular refresh.
+        const networkFailed = SportsApi.lastNetworkFailureMs() >= root.refreshStartedMs;
+        if (networkFailed && !root.wakeRecoveryActive) {
+            root.networkRetryAttempt += 1;
+            if (root.networkRetryAttempt <= 6) {
+                // 15 s, 30 s, 60 s, 120 s, 120 s, 120 s
+                networkRetryTimer.interval = Math.min(120000, 15000 * Math.pow(2, root.networkRetryAttempt - 1));
+                networkRetryTimer.restart();
+            }
+        } else if (!networkFailed) {
+            root.networkRetryAttempt = 0;
+            networkRetryTimer.stop();
+        }
+
         if (root.refreshErrors.length > 0 && liveMatchesModel.count === 0 && root.scheduleCount === 0 && root.recentResultsCount === 0 && tableModel.count === 0) {
             emptySchedulesTimer.stop();
             root.schedulesLoading = false;
@@ -4375,15 +4498,17 @@ PlasmoidItem {
 
         onNewData: (sourceName, data) => {
             disconnectSource(sourceName);
-            root._espnInFlight = Math.max(0, root._espnInFlight - 1);
-            root.pumpEspnQueue();
 
             const callbacks = pending[sourceName];
             delete pending[sourceName];
             if (!callbacks) {
+                // Already released by reapStaleEspnJobs(); don't count it twice.
                 console.warn("[sports-widget-debug][raw]", sourceName, "| exit:", data["exit code"], "| stdout:", data["stdout"], "| stderr:", data["stderr"]);
                 return;
             }
+
+            root._espnInFlight = Math.max(0, root._espnInFlight - 1);
+            root.pumpEspnQueue();
 
             const exitCode = data["exit code"];
             const stdout = String(data["stdout"] || "");
@@ -4652,7 +4777,11 @@ PlasmoidItem {
         }
         repeat: true
         running: true
-        onTriggered: root.refreshScores(false)
+        // Skipped while waiting for the network after a wake; recovery refreshes itself.
+        onTriggered: {
+            if (!root.wakeRecoveryActive)
+                root.refreshScores(false);
+        }
     }
 
     Timer {
@@ -4670,7 +4799,10 @@ PlasmoidItem {
         }
         repeat: true
         running: false
-        onTriggered: root.refreshLiveMatches(false)
+        onTriggered: {
+            if (!root.wakeRecoveryActive)
+                root.refreshLiveMatches(false);
+        }
     }
 
     // One-shot wake fired ~at the next kickoff so a starting match is picked up

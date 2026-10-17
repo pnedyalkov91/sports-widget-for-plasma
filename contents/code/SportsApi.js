@@ -100,6 +100,33 @@ function setEspnRequester(runner) {
     _espnRequester = (typeof runner === "function") ? runner : null;
 }
 
+// Wake/offline recovery support. ESPN failures are deliberately reported to the
+// callers of fetchLiveScores/fetchScoresFixtures/fetchRecentResults as an EMPTY
+// SUCCESS (see tryEspnMatches), so a dead network (curl exit 6/7/28) never reaches
+// the QML layer as an error. These helpers let main.qml notice that a refresh ran
+// into a network failure, and drop any partial data cached during the outage.
+let _lastNetworkFailureMs = 0;
+
+function isNetworkFailureText(text) {
+    return /curl exit (6|7|28)\b/.test(stringValue(text));
+}
+
+function lastNetworkFailureMs() {
+    return _lastNetworkFailureMs;
+}
+
+// Called once the network is confirmed back: forget anything that may hold
+// partial/failed-era data and release the SportScore circuit breaker + cooldown.
+function resetNetworkState() {
+    Object.keys(_espnScoreboardCache).forEach(key => delete _espnScoreboardCache[key]);
+    Object.keys(_espnRecentCache).forEach(key => delete _espnRecentCache[key]);
+    Object.keys(_espnFormCache).forEach(key => delete _espnFormCache[key]);
+    Object.keys(_espnInflight).forEach(key => delete _espnInflight[key]);
+    _sportScoreFailureStreak = 0;
+    _sportScoreBreakerUntil = 0;
+    _requestCooldownUntil = 0;
+}
+
 // Single choke point for ALL ESPN requests (site.api.espn.com's /apis/site/v2,
 // /apis/v2, and sports.core.api.espn.com alike - all sit behind the same edge/
 // WAF that 403s plain XHR traffic). Every ESPN-hitting fetch function should
@@ -143,6 +170,8 @@ function requestEspnText(url, onSuccess, onError) {
             console.warn(tag(), "short response preview:", value.slice(0, 300));
     }
     function logEspnError(error) {
+        if (isNetworkFailureText(error))
+            _lastNetworkFailureMs = Date.now();
         console.warn(tag(), "FAILED:", error, "<-", shortUrl);
     }
 
@@ -6829,6 +6858,10 @@ function sendQueuedRequest(job) {
             pumpRequestQueue();
             return;
         }
+
+        // status 0 = no HTTP response at all (DNS failure, offline, timeout).
+        if (status === 0)
+            _lastNetworkFailureMs = Date.now();
 
         // A gateway/timeout failure means the origin is overloaded: pause new
         // requests briefly so we don't pile on while it recovers, and count it
