@@ -2363,6 +2363,38 @@ function espnRacingDriverName(competitor) {
     return stringValue(athlete.displayName || athlete.fullName || athlete.shortName);
 }
 
+// One classification line for the racing UI, in a compact form (the whole weekend is
+// serialised into one string per row, see racingData): p position, n name, s short name,
+// f flag URL, w winner, x extra text (team / car number / gap-like statistics when ESPN
+// supplies them - the scoreboard's `statistics` array is empty for F1 today, so this is
+// normally "").
+function espnRacingEntry(competitor, index) {
+    const athlete = (competitor && competitor.athlete) || {};
+    const name = stringValue(athlete.displayName || athlete.fullName || athlete.shortName);
+    const parts = [];
+    const team = competitor && (competitor.team || (competitor.vehicle && competitor.vehicle.manufacturer));
+    const teamName = stringValue(team && (team.displayName || team.name || team));
+    if (teamName.length > 0 && teamName !== "[object Object]")
+        parts.push(teamName);
+    const carNumber = stringValue(competitor && competitor.vehicle && competitor.vehicle.number);
+    if (carNumber.length > 0)
+        parts.push("#" + carNumber);
+    arrayValue(competitor && competitor.statistics).forEach(stat => {
+        const label = stringValue(stat && (stat.name || stat.abbreviation));
+        const value = stringValue(stat && stat.displayValue);
+        if (value.length > 0 && parts.length < 3 && /^(gap|interval|behind|time|totaltime|laps|lapscompleted|bestlap|fastestlap)$/i.test(label))
+            parts.push(value);
+    });
+    return {
+        p: numberValue(competitor && competitor.order) || index + 1,
+        n: name,
+        s: stringValue(athlete.shortName) || name,
+        f: stringValue(athlete.flag && athlete.flag.href),
+        w: competitor && competitor.winner === true ? 1 : 0,
+        x: parts.join(" · ")
+    };
+}
+
 function normalizeEspnRacingEvent(event, sportValue, options) {
     let sessions = espnRacingSessions(event);
     if (sessions.length === 0)
@@ -2422,6 +2454,26 @@ function normalizeEspnRacingEvent(event, sportValue, options) {
     const participantSource = (headline.competitors.length > 0 ? headline.competitors : field);
     const participants = participantSource.map(espnRacingDriverName).filter(name => name.length > 0).join(" | ");
 
+    // The whole weekend as one JSON string (ListModel-safe): the racing delegates render
+    // the podium, the session timetable and every session's full classification from it,
+    // so expanding a race needs no extra request - and the live poll that refreshes this
+    // row refreshes the running order too.
+    const sessionData = sessions.map((session, index) => ({
+        key: stringValue(session.competition && session.competition.type && session.competition.type.abbreviation) || ("s" + index),
+        label: session.label,
+        state: session.state,
+        ts: session.timestamp,
+        time: session.timestamp > 0 ? formatStartTime(session.timestamp, options) : "",
+        results: session.competitors.map((competitor, position) => espnRacingEntry(competitor, position))
+    }));
+    const racingData = JSON.stringify({
+        event: eventName,
+        circuit: circuit.name,
+        location: circuit.location,
+        sessions: sessionData
+    });
+    const racingTop = JSON.stringify(field.slice(0, 3).map((competitor, position) => espnRacingEntry(competitor, position)));
+
     const homeAthlete = (home && home.athlete) || {};
     const awayAthlete = (away && away.athlete) || {};
     const homeName = home ? espnRacingDriverName(home) : "";
@@ -2475,8 +2527,43 @@ function normalizeEspnRacingEvent(event, sportValue, options) {
         espnSport: stringValue(options && options.espnSport),
         espnLeague: stringValue(options && options.espnLeague),
         // Pipe-joined driver names of the weekend (see filterEspnRowsForEntry).
-        participants: participants
+        participants: participants,
+        // Racing-specific fields for RaceDelegate.qml.
+        racingEvent: eventName,
+        racingCircuit: circuit.name,
+        racingLocation: circuit.location,
+        racingSession: status === "Live" ? reference.label : headline.label,
+        racingTop: racingTop,
+        racingData: racingData
     };
+}
+
+// Live running order: how many places each driver gained (+) or lost (-) since the order
+// the previous poll reported. The live model is rebuilt on every refresh (so delegates are
+// recreated), hence the memory lives here in the library. Idempotent for identical data:
+// repeated calls with an unchanged order return the same deltas (for three minutes, then
+// the arrows fade).
+const _racingOrderMemory = {};
+function racingPositionDeltas(eventId, sessionKey, results) {
+    const key = stringValue(eventId) + "|" + stringValue(sessionKey);
+    const list = arrayValue(results);
+    const order = list.map(entry => stringValue(entry && entry.n));
+    const signature = order.join("|");
+    const now = Date.now();
+    const memory = _racingOrderMemory[key];
+    if (memory && memory.signature === signature)
+        return now - memory.changedAt < 180000 ? memory.deltas : {};
+    const deltas = {};
+    if (memory) {
+        const previous = {};
+        memory.order.forEach((name, index) => { previous[name] = index; });
+        order.forEach((name, index) => {
+            if (previous[name] !== undefined && previous[name] !== index)
+                deltas[name] = previous[name] - index;
+        });
+    }
+    _racingOrderMemory[key] = { signature: signature, order: order, deltas: deltas, changedAt: now };
+    return deltas;
 }
 
 function normalizeEspnRacingScoreboard(payload, sportValue, options) {

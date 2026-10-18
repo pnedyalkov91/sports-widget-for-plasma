@@ -52,6 +52,8 @@ Item {
     signal matchFavoriteToggled(string teamName, var match)
     signal matchPanelPinToggled(var match)
 
+    onScheduleModelChanged: scheduleList.expandedIndex = -1
+
     function modelMatch(model) {
         return {
             "sport": model.sport || "",
@@ -145,7 +147,13 @@ Item {
             // height never drifts as the Loader's item settles - keeps the ListView
             // contentHeight stable and the scroll from jumping.
             readonly property real matchRowHeight: Kirigami.Units.gridUnit * 4.2
-            height: visible ? (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2 : matchRowHeight) : 0
+            // Racing weekends get their own row (RaceDelegate): one line per Grand Prix
+            // instead of a "team vs team" score row, expandable to the session timetable.
+            readonly property bool isRacing: String(scheduleRow.model.sport || "").toLowerCase() === "racing"
+            readonly property real racingRowHeight: Kirigami.Units.gridUnit * (String(scheduleRow.model.racingTop || "[]").length > 2 ? 5.0 : 4.2)
+            readonly property bool racingExpanded: isRacing && scheduleRow.index === scheduleList.expandedIndex
+            height: visible ? (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+                : (isRacing ? (racingExpanded && scoreLoader.item ? scoreLoader.item.implicitHeight : racingRowHeight) : matchRowHeight)) : 0
 
             PlasmaComponents.Label {
                 id: noticeLabel
@@ -160,13 +168,10 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Loader {
-                id: scoreLoader
+            Component {
+                id: scoreComponent
 
-                anchors.fill: parent
-                active: scheduleRow.shown && !scheduleRow.isNotice
-                visible: active
-                sourceComponent: ScoreDelegate {
+                ScoreDelegate {
                     width: scheduleRow.width
                     sport: scheduleRow.model.sport
                     league: scheduleRow.model.league
@@ -199,7 +204,58 @@ Item {
                     onClicked: root.matchSelected(scheduleRow.index)
                 }
             }
+
+            Component {
+                id: raceComponent
+
+                RaceDelegate {
+                    width: scheduleRow.width
+                    league: scheduleRow.model.league || ""
+                    status: scheduleRow.model.status || ""
+                    minute: scheduleRow.model.minute || ""
+                    statusText: scheduleRow.model.statusText || ""
+                    startTime: scheduleRow.model.startTime || ""
+                    timestamp: Number(scheduleRow.model.timestamp || 0)
+                    eventName: scheduleRow.model.racingEvent || ""
+                    circuit: scheduleRow.model.racingCircuit || ""
+                    location: scheduleRow.model.racingLocation || ""
+                    sessionLabel: scheduleRow.model.racingSession || ""
+                    racingTop: scheduleRow.model.racingTop || "[]"
+                    racingData: scheduleRow.model.racingData || ""
+                    espnEventId: scheduleRow.model.espnEventId || ""
+                    espnLeague: scheduleRow.model.espnLeague || ""
+                    headerHeight: scheduleRow.racingRowHeight
+                    favorite: root.isFavoriteTeam(scheduleRow.model.homeTeam) || root.isFavoriteTeam(scheduleRow.model.awayTeam) || (root.matchActionsTick, root.matchFavoriteState(root.modelMatch(scheduleRow.model)))
+                    selected: scheduleRow.index === root.selectedIndex
+                    expanded: scheduleRow.racingExpanded
+                    selectedSession: scheduleList.expandedSession
+                    showMatchActions: root.showMatchActions
+                    matchNotifyOn: (root.matchActionsTick, root.matchNotifyState(root.modelMatch(scheduleRow.model)))
+                    matchPinnedToPanel: (root.matchActionsTick, root.matchPinnedState(root.modelMatch(scheduleRow.model)))
+                    onSessionPicked: key => scheduleList.expandedSession = key
+                    onNotifyToggled: root.matchNotifyToggled(root.modelMatch(scheduleRow.model))
+                    onPanelPinToggled: root.matchPanelPinToggled(root.modelMatch(scheduleRow.model))
+                    onClicked: {
+                        root.matchSelected(scheduleRow.index);
+                        scheduleList.expandedIndex = scheduleList.expandedIndex === scheduleRow.index ? -1 : scheduleRow.index;
+                    }
+                }
+            }
+
+            Loader {
+                id: scoreLoader
+
+                width: parent.width
+                height: parent.height
+                active: scheduleRow.shown && !scheduleRow.isNotice
+                visible: active
+                sourceComponent: scheduleRow.isRacing ? raceComponent : scoreComponent
+            }
         }
+
+        property int expandedIndex: -1
+        property string expandedSession: ""
+        onExpandedIndexChanged: expandedSession = ""
     }
 
     ColumnLayout {

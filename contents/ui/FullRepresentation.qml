@@ -748,7 +748,7 @@ Item {
 
             visible: !root.simpleMode && root.heroEnabled
             Layout.fillWidth: true
-            Layout.preferredHeight: Kirigami.Units.gridUnit * 8
+            Layout.preferredHeight: Kirigami.Units.gridUnit * (isRacing ? 8.6 : 8)
             homeTeam: root.selectedMatchValue("homeTeam", i18nc("@info:placeholder", "Home team"))
             awayTeam: root.selectedMatchValue("awayTeam", i18nc("@info:placeholder", "Away team"))
             homeScore: root.selectedMatchValue("homeScore", "")
@@ -764,6 +764,13 @@ Item {
             sport: root.selectedMatchValue("sport", root.sport)
             league: root.selectedMatchValue("league", "")
             showScore: root.selectedMatchBool("showScore", root.activeTab === 0)
+            statusText: root.selectedMatchValue("statusText", "")
+            timestamp: Number(root.selectedMatchValue("timestamp", 0))
+            racingEvent: root.selectedMatchValue("racingEvent", "")
+            racingCircuit: root.selectedMatchValue("racingCircuit", "")
+            racingLocation: root.selectedMatchValue("racingLocation", "")
+            racingSession: root.selectedMatchValue("racingSession", "")
+            racingTop: root.selectedMatchValue("racingTop", "[]")
             loading: root.heroLoading()
         }
 
@@ -1085,6 +1092,63 @@ Item {
         property string league: ""
         property bool showScore: true
         property bool loading: false
+        property string statusText: ""
+        // Racing weekends (F1 / NASCAR / IndyCar) get their own hero: the Grand Prix, the
+        // circuit and the podium instead of "driver vs driver" with a "P1 - P2" score.
+        property string racingEvent: ""
+        property string racingCircuit: ""
+        property string racingLocation: ""
+        property string racingSession: ""
+        property string racingTop: "[]"
+        readonly property bool isRacing: String(sport || "").toLowerCase() === "racing" && racingEvent.length > 0
+        readonly property var racingPodium: hero.parseRacingTop()
+        // Row timestamp (ms, or seconds from some providers) for the upcoming-race date tile.
+        property real timestamp: 0
+        readonly property real racingTimestamp: timestamp > 0 && timestamp < 100000000000 ? timestamp * 1000 : timestamp
+
+        function parseRacingTop() {
+            try {
+                const parsed = JSON.parse(String(racingTop || "[]"));
+                return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
+            } catch (error) {
+                return [];
+            }
+        }
+
+        function racingCircuitLine() {
+            const parts = [];
+            if (racingCircuit.length > 0)
+                parts.push(racingCircuit);
+            if (racingLocation.length > 0)
+                parts.push(racingLocation);
+            return parts.length > 0 ? parts.join(" · ") : league;
+        }
+
+        // Line under the Grand Prix name: running session / result / start.
+        function racingStatusLine() {
+            if (loading)
+                return i18nc("@info:status", "Updating");
+            if (status === "Live")
+                return minute.length > 0 ? minute : (racingSession.length > 0 ? racingSession : i18nc("@info:live match status", "Live"));
+            if (status === "Upcoming")
+                return racingSession.length > 0 && startTime.length > 0 ? racingSession + " · " + startTime : startTime;
+            return startTime.length > 0 ? i18nc("@info:status finished race with date", "Final · %1", startTime) : i18nc("@info:status", "Final");
+        }
+
+        // "Next: Practice 1 · ..." is redundant when it is the session already shown.
+        function racingNextLine() {
+            if (status !== "Upcoming" || statusText.indexOf("Next: ") !== 0)
+                return "";
+            return racingSession.length > 0 && statusText.indexOf("Next: " + racingSession) === 0 ? "" : statusText;
+        }
+
+        function racingMonth() {
+            return racingTimestamp > 0 ? Qt.formatDate(new Date(racingTimestamp), "MMM").toUpperCase() : "";
+        }
+
+        function racingDay() {
+            return racingTimestamp > 0 ? Qt.formatDate(new Date(racingTimestamp), "d") : "";
+        }
 
         function scoreText() {
             if (!showScore)
@@ -1158,6 +1222,7 @@ Item {
             anchors.rightMargin: Kirigami.Units.smallSpacing
             anchors.topMargin: Kirigami.Units.smallSpacing
             anchors.bottomMargin: Kirigami.Units.smallSpacing
+            visible: !hero.isRacing
 
             ColumnLayout {
                 id: heroScoreColumn
@@ -1309,6 +1374,190 @@ Item {
 
         }
 
+        // ---- Racing hero: Grand Prix, circuit and podium ----
+        Item {
+            anchors.fill: parent
+            anchors.leftMargin: Kirigami.Units.smallSpacing
+            anchors.rightMargin: Kirigami.Units.smallSpacing
+            anchors.topMargin: Kirigami.Units.smallSpacing
+            anchors.bottomMargin: Kirigami.Units.smallSpacing
+            visible: hero.isRacing
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: Kirigami.Units.smallSpacing
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 0
+
+                    PlasmaComponents.Label {
+                        Layout.fillWidth: true
+                        text: hero.racingEvent
+                        color: Kirigami.Theme.textColor
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                        font.bold: true
+                        font.pixelSize: Kirigami.Theme.defaultFont.pixelSize + 3
+                    }
+
+                    PlasmaComponents.Label {
+                        Layout.fillWidth: true
+                        // Upcoming weekends show the start in the body instead.
+                        visible: hero.status !== "Upcoming" || hero.loading
+                        text: (hero.isLiveMatch() ? "● " : "") + hero.racingStatusLine()
+                        color: hero.isLiveMatch() ? root.liveColor : Kirigami.Theme.highlightColor
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                        font.bold: true
+                    }
+
+                    PlasmaComponents.Label {
+                        Layout.fillWidth: true
+                        visible: text.length > 0
+                        text: hero.racingCircuitLine()
+                        color: Kirigami.Theme.disabledTextColor
+                        horizontalAlignment: Text.AlignHCenter
+                        elide: Text.ElideRight
+                        font: Kirigami.Theme.smallFont
+                    }
+                }
+
+                // Podium in stage order: P2 | P1 | P3, the winner's flag the largest.
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillHeight: true
+                    spacing: Kirigami.Units.gridUnit * 2
+                    visible: hero.racingPodium.length > 0
+
+                    Repeater {
+                        model: [1, 0, 2]
+
+                        RacingHeroDriver {
+                            required property int modelData
+
+                            Layout.alignment: Qt.AlignHCenter | Qt.AlignBottom
+                            entry: modelData < hero.racingPodium.length ? hero.racingPodium[modelData] : null
+                            place: modelData + 1
+                        }
+                    }
+                }
+
+                // No classification yet (a weekend still to come): start time + next session.
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.fillHeight: true
+                    spacing: Kirigami.Units.gridUnit
+                    visible: hero.racingPodium.length === 0
+
+                    Rectangle {
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: Kirigami.Units.gridUnit * 3.4
+                        Layout.preferredHeight: Kirigami.Units.gridUnit * 3.4
+                        radius: Kirigami.Units.smallSpacing * 2
+                        color: root.withAlpha(Kirigami.Theme.textColor, 0.08)
+                        border.width: 1
+                        border.color: root.withAlpha(Kirigami.Theme.textColor, 0.14)
+                        visible: hero.racingTimestamp > 0
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 0
+
+                            PlasmaComponents.Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: hero.racingMonth()
+                                color: Kirigami.Theme.disabledTextColor
+                                font.bold: true
+                                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            }
+
+                            PlasmaComponents.Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: hero.racingDay()
+                                font.bold: true
+                                font.pixelSize: Kirigami.Units.gridUnit * 1.6
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.alignment: Qt.AlignVCenter
+                        spacing: 1
+
+                        PlasmaComponents.Label {
+                            text: hero.racingSession
+                            visible: text.length > 0
+                            font.bold: true
+                        }
+
+                        PlasmaComponents.Label {
+                            text: hero.startTime
+                            color: Kirigami.Theme.highlightColor
+                            font.bold: true
+                            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize + 4
+                        }
+
+                        PlasmaComponents.Label {
+                            visible: text.length > 0
+                            text: hero.racingNextLine()
+                            color: Kirigami.Theme.disabledTextColor
+                            font: Kirigami.Theme.smallFont
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+
+    // One podium place in the racing hero: medal, flag and surname.
+    component RacingHeroDriver: ColumnLayout {
+        id: heroDriver
+
+        property var entry: null
+        property int place: 1
+        readonly property real flagHeight: Kirigami.Units.gridUnit * (place === 1 ? 2.6 : 2.0)
+        readonly property string surname: {
+            const full = String(entry && (entry.n || entry.s) || "").trim();
+            const words = full.split(/\s+/).filter(word => word.length > 0);
+            while (words.length > 1 && /^(jr\.?|sr\.?|ii|iii|iv)$/i.test(words[words.length - 1]))
+                words.pop();
+            return words.length > 0 ? words[words.length - 1] : full;
+        }
+
+        visible: entry !== null
+        spacing: 2
+
+        PlasmaComponents.Label {
+            Layout.alignment: Qt.AlignHCenter
+            text: heroDriver.place === 1 ? "🥇" : (heroDriver.place === 2 ? "🥈" : "🥉")
+            font.pixelSize: Kirigami.Theme.defaultFont.pixelSize + 2
+        }
+
+        Item {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.preferredHeight: heroDriver.flagHeight
+            Layout.preferredWidth: Math.round(heroDriver.flagHeight * 1.5)
+
+            TeamBadgeImage {
+                anchors.fill: parent
+                sourceUrl: heroDriver.entry ? String(heroDriver.entry.f || "") : ""
+                fallbackIcon: "flag"
+                fallbackEmoji: "🏁"
+                fallbackOpacity: 0.6
+            }
+        }
+
+        PlasmaComponents.Label {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 8
+            text: heroDriver.surname
+            color: Kirigami.Theme.textColor
+            elide: Text.ElideRight
+            font.bold: heroDriver.place === 1
+            font.pixelSize: Math.max(Kirigami.Theme.defaultFont.pixelSize, Kirigami.Theme.smallFont.pixelSize + 2)
+        }
     }
 
     component HeroTeam: ColumnLayout {

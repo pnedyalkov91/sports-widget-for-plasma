@@ -116,6 +116,12 @@ Item {
     }
 
     function liveStatus(match) {
+        // Racing: the running session ("Qualifying · Lap 12/57"), not a football minute.
+        if (String(match && match.sport || "").toLowerCase() === "racing") {
+            const session = String(match && match.minute || "").trim();
+            return session.length > 0 ? session : i18nc("@info:live match status", "Live");
+        }
+
         if (String(match && match.sport || "").toLowerCase() === "basketball") {
             const period = SportsApi.liveStatusText("basketball", match && (match.minute || match.statusText));
             return period.length > 0 ? i18nc("@info:live match status", "Live %1", period) : i18nc("@info:live match status", "Live");
@@ -232,9 +238,27 @@ Item {
         // Recent rows show the final score and finished date/time, like live
         // rows show the score but unlike live rows the left label isn't red/bold.
         property bool finished: false
+        // Racing weekends are one line - Grand Prix and podium - not "team vs team".
+        readonly property bool racing: String(match.sport || "").toLowerCase() === "racing"
 
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
+
+        function racingSummary() {
+            let top = [];
+            try {
+                top = JSON.parse(String(match.racingTop || "[]"));
+            } catch (error) {
+                top = [];
+            }
+            if (!Array.isArray(top) || top.length === 0)
+                return String(match.racingLocation || "");
+            const medals = ["🥇", "🥈", "🥉"];
+            return top.slice(0, 3).map((entry, index) => {
+                const name = String(entry && (entry.s || entry.n) || "");
+                return medals[index] + name.substring(name.lastIndexOf(" ") + 1);
+            }).join(" ");
+        }
 
         Item {
             Layout.preferredWidth: 7
@@ -264,12 +288,33 @@ Item {
             elide: Text.ElideRight
         }
 
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            visible: matchRow.racing
+            text: String(matchRow.match.racingEvent || matchRow.match.homeTeam || "")
+            color: Kirigami.Theme.textColor
+            font.bold: true
+            elide: Text.ElideRight
+        }
+
+        PlasmaComponents.Label {
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 16
+            visible: matchRow.racing
+            text: matchRow.racingSummary()
+            color: Kirigami.Theme.textColor
+            horizontalAlignment: Text.AlignRight
+            elide: Text.ElideRight
+        }
+
         TeamBadge {
+            visible: !matchRow.racing
             sourceUrl: String(parent.match.homeBadge || "")
             sport: String(parent.match.sport || "")
         }
 
         PlasmaComponents.Label {
+            visible: !matchRow.racing
             Layout.preferredWidth: Kirigami.Units.gridUnit * 9
             Layout.minimumWidth: Layout.preferredWidth
             Layout.maximumWidth: Layout.preferredWidth
@@ -281,6 +326,7 @@ Item {
         }
 
         PlasmaComponents.Label {
+            visible: !matchRow.racing
             Layout.preferredWidth: Kirigami.Units.gridUnit * 3.2
             Layout.minimumWidth: Layout.preferredWidth
             Layout.maximumWidth: Layout.preferredWidth
@@ -291,6 +337,7 @@ Item {
         }
 
         PlasmaComponents.Label {
+            visible: !matchRow.racing
             Layout.preferredWidth: Kirigami.Units.gridUnit * 9
             Layout.minimumWidth: Layout.preferredWidth
             Layout.maximumWidth: Layout.preferredWidth
@@ -302,6 +349,7 @@ Item {
         }
 
         TeamBadge {
+            visible: !matchRow.racing
             sourceUrl: String(parent.match.awayBadge || "")
             sport: String(parent.match.sport || "")
         }

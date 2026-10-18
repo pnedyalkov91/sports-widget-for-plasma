@@ -577,7 +577,7 @@ PlasmoidItem {
             console.warn("[sports-widget-debug] wake: network", ok ? "is back" : "still unreachable, refreshing anyway", "- refreshing");
             root.wakeRecoveryActive = false;
             SportsApi.resetNetworkState();
-            root.refreshScores(true);
+        root.refreshScores(true);
             return;
         }
 
@@ -1309,6 +1309,10 @@ PlasmoidItem {
     }
 
     function matchForModel(match) {
+        // Racing rows carry the whole weekend's classification (racingData). The cache key
+        // below ignores it, so a live running order that changed outside the top two would
+        // be served stale - racing rows are never memoized (there are only a handful).
+        const memoize = !(match && match.racingData);
         const key = root.matchModelCacheKey(match);
         const cached = root._matchModelCache[key];
         if (cached !== undefined)
@@ -1319,7 +1323,8 @@ PlasmoidItem {
         copy.awayBadge = root.preferredTeamBadge(copy.awayTeam, copy.awayBadge);
         copy.showScore = matchHasDisplayScore(copy);
         copy.startTime = formattedMatchStartTime(copy);
-        root._matchModelCache[key] = copy;
+        if (memoize)
+            root._matchModelCache[key] = copy;
         return Object.assign({}, copy);
     }
 
@@ -4498,6 +4503,8 @@ PlasmoidItem {
 
         onNewData: (sourceName, data) => {
             disconnectSource(sourceName);
+            root._espnInFlight = Math.max(0, root._espnInFlight - 1);
+            root.pumpEspnQueue();
 
             const callbacks = pending[sourceName];
             delete pending[sourceName];

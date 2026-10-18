@@ -132,58 +132,120 @@ Item {
             text: i18nc("@info:placeholder", "No live matches")
         }
 
-        delegate: LiveMatchDelegate {
+        delegate: Item {
+            id: leagueRow
+
+            required property var model
+            required property int index
+
+            readonly property bool isRacing: String(leagueRow.model.sport || "").toLowerCase() === "racing"
+            readonly property real racingRowHeight: Kirigami.Units.gridUnit * (String(leagueRow.model.racingTop || "[]").length > 2 ? 5.0 : 4.2)
+
             width: leaguesList.contentColumnWidth
-            visible: !root.isGroupCollapsed(model.leagueGroup)
-            height: visible ? implicitHeight : 0
+            visible: !root.isGroupCollapsed(leagueRow.model.leagueGroup)
+            height: visible ? (rowLoader.item ? rowLoader.item.implicitHeight : Kirigami.Units.gridUnit * 5.2) : 0
             enabled: visible
-            sport: model.sport || ""
-            league: model.league || ""
-            homeTeam: model.homeTeam || ""
-            awayTeam: model.awayTeam || ""
-            homeScore: model.homeScore || ""
-            awayScore: model.awayScore || ""
-            homeGames: model.homeGames || ""
-            awayGames: model.awayGames || ""
-            homePenaltyScore: model.homePenaltyScore || ""
-            awayPenaltyScore: model.awayPenaltyScore || ""
-            status: model.status || ""
-            minute: model.minute || ""
-            startTime: model.startTime || ""
-            splitLeagueAndTimeLines: true
-            scoreRowHeight: Kirigami.Units.gridUnit * 5.2
-            timestamp: Number(model.timestamp || 0)
-            stadium: model.stadium || ""
-            homeBadge: model.homeBadge || ""
-            awayBadge: model.awayBadge || ""
-            poster: model.poster || ""
-            popular: Boolean(model.popular)
-            showScore: model.showScore !== false
-            favorite: root.isFavoriteTeam(model.homeTeam) || root.isFavoriteTeam(model.awayTeam) || (root.matchActionsTick, root.matchFavoriteState(root.modelMatch(model)))
-            expanded: visible && index === leaguesList.expandedIndex
-            matchPath: model.matchPath || ""
-            liveUrl: model.liveUrl || ""
-            detailsProvider: model.detailsProvider || ""
-            espnEventId: model.espnEventId || ""
-            espnSport: model.espnSport || ""
-            espnLeague: model.espnLeague || ""
-            showMatchActions: root.showMatchActions
-            matchNotifyOn: (root.matchActionsTick, root.matchNotifyState(root.modelMatch(model)))
-            matchPinnedToPanel: (root.matchActionsTick, root.matchPinnedState(root.modelMatch(model)))
-            homeIsFavorite: (root.matchActionsTick, root.teamFavoriteState(model.homeTeam || ""))
-            awayIsFavorite: (root.matchActionsTick, root.teamFavoriteState(model.awayTeam || ""))
-            activeDetailsTab: leaguesList.expandedDetailsTab
-            onActiveDetailsTabChanged: leaguesList.expandedDetailsTab = activeDetailsTab
-            onClicked: leaguesList.expandedIndex = leaguesList.expandedIndex === index ? -1 : index
-            onRequestExpand: leaguesList.expandedIndex = index
-            onNotifyToggled: root.matchNotifyToggled(root.modelMatch(model))
-            onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName, root.modelMatch(model))
-            onPanelPinToggled: root.matchPanelPinToggled(root.modelMatch(model))
+
+            Component {
+                id: matchComponent
+
+                LiveMatchDelegate {
+                    width: leagueRow.width
+                    sport: leagueRow.model.sport || ""
+                    league: leagueRow.model.league || ""
+                    homeTeam: leagueRow.model.homeTeam || ""
+                    awayTeam: leagueRow.model.awayTeam || ""
+                    homeScore: leagueRow.model.homeScore || ""
+                    awayScore: leagueRow.model.awayScore || ""
+                    homeGames: leagueRow.model.homeGames || ""
+                    awayGames: leagueRow.model.awayGames || ""
+                    homePenaltyScore: leagueRow.model.homePenaltyScore || ""
+                    awayPenaltyScore: leagueRow.model.awayPenaltyScore || ""
+                    status: leagueRow.model.status || ""
+                    minute: leagueRow.model.minute || ""
+                    startTime: leagueRow.model.startTime || ""
+                    splitLeagueAndTimeLines: true
+                    scoreRowHeight: Kirigami.Units.gridUnit * 5.2
+                    timestamp: Number(leagueRow.model.timestamp || 0)
+                    stadium: leagueRow.model.stadium || ""
+                    homeBadge: leagueRow.model.homeBadge || ""
+                    awayBadge: leagueRow.model.awayBadge || ""
+                    poster: leagueRow.model.poster || ""
+                    popular: Boolean(leagueRow.model.popular)
+                    showScore: leagueRow.model.showScore !== false
+                    favorite: root.isFavoriteTeam(leagueRow.model.homeTeam) || root.isFavoriteTeam(leagueRow.model.awayTeam) || (root.matchActionsTick, root.matchFavoriteState(root.modelMatch(leagueRow.model)))
+                    expanded: leagueRow.visible && leagueRow.index === leaguesList.expandedIndex
+                    matchPath: leagueRow.model.matchPath || ""
+                    liveUrl: leagueRow.model.liveUrl || ""
+                    detailsProvider: leagueRow.model.detailsProvider || ""
+                    espnEventId: leagueRow.model.espnEventId || ""
+                    espnSport: leagueRow.model.espnSport || ""
+                    espnLeague: leagueRow.model.espnLeague || ""
+                    showMatchActions: root.showMatchActions
+                    matchNotifyOn: (root.matchActionsTick, root.matchNotifyState(root.modelMatch(leagueRow.model)))
+                    matchPinnedToPanel: (root.matchActionsTick, root.matchPinnedState(root.modelMatch(leagueRow.model)))
+                    homeIsFavorite: (root.matchActionsTick, root.teamFavoriteState(leagueRow.model.homeTeam || ""))
+                    awayIsFavorite: (root.matchActionsTick, root.teamFavoriteState(leagueRow.model.awayTeam || ""))
+                    activeDetailsTab: leaguesList.expandedDetailsTab
+                    onActiveDetailsTabChanged: leaguesList.expandedDetailsTab = activeDetailsTab
+                    onClicked: leaguesList.expandedIndex = leaguesList.expandedIndex === leagueRow.index ? -1 : leagueRow.index
+                    onRequestExpand: leaguesList.expandedIndex = leagueRow.index
+                    onNotifyToggled: root.matchNotifyToggled(root.modelMatch(leagueRow.model))
+                    onFavoriteToggled: (teamName) => root.matchFavoriteToggled(teamName, root.modelMatch(leagueRow.model))
+                    onPanelPinToggled: root.matchPanelPinToggled(root.modelMatch(leagueRow.model))
+                }
+            }
+
+            // Racing weekends: the live session's running order (top three plus the
+            // full classification when expanded) instead of a two-sided score row.
+            Component {
+                id: raceComponent
+
+                RaceDelegate {
+                    width: leagueRow.width
+                    league: leagueRow.model.league || ""
+                    status: leagueRow.model.status || ""
+                    minute: leagueRow.model.minute || ""
+                    statusText: leagueRow.model.statusText || ""
+                    startTime: leagueRow.model.startTime || ""
+                    timestamp: Number(leagueRow.model.timestamp || 0)
+                    eventName: leagueRow.model.racingEvent || ""
+                    circuit: leagueRow.model.racingCircuit || ""
+                    location: leagueRow.model.racingLocation || ""
+                    sessionLabel: leagueRow.model.racingSession || ""
+                    racingTop: leagueRow.model.racingTop || "[]"
+                    racingData: leagueRow.model.racingData || ""
+                    espnEventId: leagueRow.model.espnEventId || ""
+                    espnLeague: leagueRow.model.espnLeague || ""
+                    headerHeight: leagueRow.racingRowHeight
+                    favorite: root.isFavoriteTeam(leagueRow.model.homeTeam) || root.isFavoriteTeam(leagueRow.model.awayTeam) || (root.matchActionsTick, root.matchFavoriteState(root.modelMatch(leagueRow.model)))
+                    expanded: leagueRow.visible && leagueRow.index === leaguesList.expandedIndex
+                    selectedSession: leaguesList.expandedSession
+                    showMatchActions: root.showMatchActions
+                    matchNotifyOn: (root.matchActionsTick, root.matchNotifyState(root.modelMatch(leagueRow.model)))
+                    matchPinnedToPanel: (root.matchActionsTick, root.matchPinnedState(root.modelMatch(leagueRow.model)))
+                    onSessionPicked: key => leaguesList.expandedSession = key
+                    onNotifyToggled: root.matchNotifyToggled(root.modelMatch(leagueRow.model))
+                    onPanelPinToggled: root.matchPanelPinToggled(root.modelMatch(leagueRow.model))
+                    onClicked: leaguesList.expandedIndex = leaguesList.expandedIndex === leagueRow.index ? -1 : leagueRow.index
+                }
+            }
+
+            Loader {
+                id: rowLoader
+
+                width: parent.width
+                sourceComponent: leagueRow.isRacing ? raceComponent : matchComponent
+            }
         }
 
         property int expandedIndex: -1
         property int expandedDetailsTab: 0
-        onExpandedIndexChanged: expandedDetailsTab = 0
+        property string expandedSession: ""
+        onExpandedIndexChanged: {
+            expandedDetailsTab = 0;
+            expandedSession = "";
+        }
     }
 
     ColumnLayout {

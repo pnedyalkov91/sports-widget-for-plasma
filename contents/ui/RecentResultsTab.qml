@@ -118,7 +118,12 @@ Item {
             readonly property string rowType: String(recentRow.model.rowType || "match")
             readonly property bool isNotice: rowType === "notice"
             readonly property bool shown: rowType !== "header" && !root.isGroupCollapsed(recentRow.model.leagueGroup)
-            readonly property real matchRowHeight: String(recentRow.model.stadium || "").length > 0 ? Kirigami.Units.gridUnit * 5.4 : Kirigami.Units.gridUnit * 4.6
+            // Racing weekends use RaceDelegate: podium (P1-P3) in the row, the full
+            // classification of every session when expanded.
+            readonly property bool isRacing: String(recentRow.model.sport || "").toLowerCase() === "racing"
+            readonly property real matchRowHeight: isRacing
+                ? Kirigami.Units.gridUnit * (String(recentRow.model.racingTop || "[]").length > 2 ? 5.0 : 4.2)
+                : (String(recentRow.model.stadium || "").length > 0 ? Kirigami.Units.gridUnit * 5.4 : Kirigami.Units.gridUnit * 4.6)
             visible: shown
             height: !shown ? 0 : (isNotice ? noticeLabel.implicitHeight + Kirigami.Units.smallSpacing * 2 : (matchLoader.item && matchLoader.item.expanded ? matchLoader.item.implicitHeight : matchRowHeight))
 
@@ -135,13 +140,10 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Loader {
-                id: matchLoader
+            Component {
+                id: liveComponent
 
-                width: parent.width
-                active: recentRow.shown && !recentRow.isNotice
-                visible: active
-                sourceComponent: LiveMatchDelegate {
+                LiveMatchDelegate {
                     width: recentRow.width
                     scoreRowHeight: recentRow.matchRowHeight
                     sport: recentRow.model.sport
@@ -183,11 +185,56 @@ Item {
                     onRequestExpand: resultsList.expandedIndex = recentRow.index
                 }
             }
+
+            Component {
+                id: raceComponent
+
+                RaceDelegate {
+                    width: recentRow.width
+                    league: recentRow.model.league || ""
+                    status: recentRow.model.status || ""
+                    minute: recentRow.model.minute || ""
+                    statusText: recentRow.model.statusText || ""
+                    startTime: recentRow.model.startTime || ""
+                    timestamp: Number(recentRow.model.timestamp || 0)
+                    eventName: recentRow.model.racingEvent || ""
+                    circuit: recentRow.model.racingCircuit || ""
+                    location: recentRow.model.racingLocation || ""
+                    sessionLabel: recentRow.model.racingSession || ""
+                    racingTop: recentRow.model.racingTop || "[]"
+                    racingData: recentRow.model.racingData || ""
+                    espnEventId: recentRow.model.espnEventId || ""
+                    espnLeague: recentRow.model.espnLeague || ""
+                    headerHeight: recentRow.matchRowHeight
+                    favorite: root.isFavoriteTeam(recentRow.model.homeTeam) || root.isFavoriteTeam(recentRow.model.awayTeam)
+                    selected: recentRow.index === root.selectedIndex
+                    expanded: recentRow.index === resultsList.expandedIndex
+                    selectedSession: resultsList.expandedSession
+                    onSessionPicked: key => resultsList.expandedSession = key
+                    onClicked: {
+                        root.matchSelected(recentRow.index);
+                        resultsList.expandedIndex = resultsList.expandedIndex === recentRow.index ? -1 : recentRow.index;
+                    }
+                }
+            }
+
+            Loader {
+                id: matchLoader
+
+                width: parent.width
+                active: recentRow.shown && !recentRow.isNotice
+                visible: active
+                sourceComponent: recentRow.isRacing ? raceComponent : liveComponent
+            }
         }
 
         property int expandedIndex: -1
         property int expandedDetailsTab: 0
-        onExpandedIndexChanged: expandedDetailsTab = 0
+        property string expandedSession: ""
+        onExpandedIndexChanged: {
+            expandedDetailsTab = 0;
+            expandedSession = "";
+        }
     }
 
     ColumnLayout {

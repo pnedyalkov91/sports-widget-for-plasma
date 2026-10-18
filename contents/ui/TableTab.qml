@@ -44,6 +44,13 @@ Item {
     property bool seasonLoading: false
     readonly property int rowCount: tableRows ? tableRows.length : 0
     readonly property var displayRows: groupedRows()
+    // Racing standings come as two tables (drivers / constructors). When ESPN
+    // returns both they are shown as sub-tabs instead of one long stacked list.
+    property string selectedRacingGroup: ""
+    readonly property var racingGroups: root.collectRacingGroups()
+    readonly property bool showRacingTabs: root.isRacing && root.racingGroups.length > 1
+    readonly property string effectiveRacingGroup: root.racingGroups.indexOf(root.selectedRacingGroup) >= 0
+        ? root.selectedRacingGroup : (root.racingGroups.length > 0 ? root.racingGroups[0] : "")
     // Tennis rankings are one list per tour (ATP men / WTA women): shown as sub-tabs
     // under the Tables tab instead of the generic "Table:" dropdown.
     readonly property bool showTourTabs: root.sport === "tennis" && Array.isArray(root.tableOptions) && root.tableOptions.length > 1
@@ -64,8 +71,48 @@ Item {
     signal tableSelected(string slug)
     signal seasonSelected(string seasonKey)
 
+    function collectRacingGroups() {
+        const rows = root.tableRows || [];
+        const names = [];
+        rows.forEach(row => {
+            const group = String(row.group || "").trim();
+            if (group.length > 0 && names.indexOf(group) < 0)
+                names.push(group);
+        });
+        return names;
+    }
+
+    function racingGroupKind(group) {
+        const text = String(group || "").toLowerCase();
+        if (text.indexOf("constructor") >= 0 || text.indexOf("team") >= 0 || text.indexOf("manufacturer") >= 0)
+            return "constructor";
+        if (text.indexOf("driver") >= 0)
+            return "driver";
+        return "";
+    }
+
+    function racingGroupLabel(group) {
+        const kind = root.racingGroupKind(group);
+        if (kind === "constructor")
+            return i18nc("@title:tab racing constructors' championship", "Constructors");
+        if (kind === "driver")
+            return i18nc("@title:tab racing drivers' championship", "Drivers");
+        return String(group || "");
+    }
+
+    // First column header of the racing table follows the selected sub-tab.
+    function racingNameHeader() {
+        return root.racingGroupKind(root.showRacingTabs ? root.effectiveRacingGroup : "") === "constructor"
+            ? i18nc("@label", "Constructor") : i18nc("@label", "Driver");
+    }
+
     function groupedRows() {
         const rows = root.tableRows || [];
+        // Racing with several tables: show only the selected one, no inner header.
+        if (root.showRacingTabs) {
+            const wanted = root.effectiveRacingGroup;
+            return rows.filter(row => String(row.group || "").trim() === wanted);
+        }
         if (!rows.some(row => String(row.group || "").trim().length > 0))
             return rows;
 
@@ -167,6 +214,26 @@ Item {
                         if (slug.length > 0 && !active)
                             root.tableSelected(slug);
                     }
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: root.showRacingTabs
+
+            Repeater {
+                model: root.showRacingTabs ? root.racingGroups : []
+
+                TourTab {
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    text: root.racingGroupLabel(modelData)
+                    active: String(modelData) === root.effectiveRacingGroup
+                    onClicked: root.selectedRacingGroup = String(modelData)
                 }
             }
         }
@@ -413,7 +480,7 @@ Item {
                 }
 
                 HeaderLabel {
-                    text: root.sport === "tennis" ? i18nc("@label", "Player") : root.isRacing ? i18nc("@label", "Driver") : i18nc("@label", "Team")
+                    text: root.sport === "tennis" ? i18nc("@label", "Player") : root.isRacing ? root.racingNameHeader() : i18nc("@label", "Team")
                     Layout.fillWidth: true
                 }
 
