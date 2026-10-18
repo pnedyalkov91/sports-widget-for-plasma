@@ -19,7 +19,7 @@
 
 // ESPN public API catalog. Used both as a fallback for the SportScore sports
 // (football, basketball, tennis) when SportScore fails, and as the data
-// source for the ESPN-native sports (NFL, MLB, NHL, cricket, golf, racing, …).
+// source for the ESPN-native sports (NFL, MLB, NHL, cricket, racing, …).
 //
 // Each sport maps to an ESPN "sport" path segment plus a curated list of leagues
 // (ESPN league path segments). Endpoints:
@@ -27,11 +27,11 @@
 //
 // "kind":
 //   "team-league" - has standings + a team roster (league table & follow teams)
-//   "event"       - individual/event based (golf, tennis, racing, mma): scoreboard
+//   "event"       - individual/event based (tennis, racing, mma): scoreboard
 //                   only; standings/teams degrade to empty states in the UI.
 //
 // Well-known league slugs (soccer big-5 + UCL/UEL/MLS/World Cup, nba/wnba, nfl,
-// mlb, nhl, atp/wta, pga, f1) are validated by common ESPN usage. The more obscure
+// mlb, nhl, atp/wta, f1) are validated by common ESPN usage. The more obscure
 // ones are best-effort; if a slug is wrong ESPN simply returns no events and the UI
 // shows its normal empty state.
 
@@ -311,20 +311,6 @@ const SPORTS = [
         ]
     },
     {
-        label: "Golf", value: "golf", espnSport: "golf", kind: "event",
-        leagues: [
-            { label: "PGA Tour", league: "pga", country: "world" },
-            { label: "LPGA", league: "lpga", country: "world" },
-            { label: "DP World Tour", league: "eur", country: "world" },
-            { label: "LIV Golf", league: "liv", country: "world" },
-            { label: "PGA Tour Champions", league: "champions-tour", country: "world" },
-            { label: "Korn Ferry Tour", league: "ntw", country: "world" },
-            { label: "TGL", league: "tgl", country: "world" },
-            { label: "Olympics Men's Golf", league: "mens-olympics-golf", country: "world" },
-            { label: "Olympics Women's Golf", league: "womens-olympics-golf", country: "world" }
-        ]
-    },
-    {
         label: "Racing", value: "racing", espnSport: "racing", kind: "event",
         leagues: [
             { label: "Formula 1", league: "f1", country: "world" },
@@ -365,14 +351,6 @@ const SPORTS = [
         ]
     },
     {
-        // ESPN's only field-hockey league is NCAA Women's (slug
-        // womens-college-field-hockey); the "fih"/international slug 400s.
-        label: "Field Hockey", value: "field-hockey", espnSport: "field-hockey", kind: "team-league",
-        leagues: [
-            { label: "NCAA Women's Field Hockey", league: "womens-college-field-hockey", country: "usa" }
-        ]
-    },
-    {
         label: "Lacrosse", value: "lacrosse", espnSport: "lacrosse", kind: "team-league",
         leagues: [
             { label: "PLL", league: "pll", country: "usa" },
@@ -387,13 +365,6 @@ const SPORTS = [
             { label: "NCAA Women's", league: "womens-college-volleyball", country: "usa" },
             { label: "NCAA Men's", league: "mens-college-volleyball", country: "usa" }
         ]
-    },
-    {
-        label: "Water Polo", value: "water-polo", espnSport: "water-polo", kind: "team-league",
-        leagues: [
-            { label: "NCAA Men's", league: "mens-college-water-polo", country: "usa" },
-            { label: "NCAA Women's", league: "womens-college-water-polo", country: "usa" }
-        ]
     }
 ];
 
@@ -405,8 +376,8 @@ const SHARED_SPORTS = ["football", "basketball", "tennis"];
 // no meaningful per-country catalog to browse, so the wizard skips the country
 // step and ends on the Top page for them.
 const NO_COUNTRY_BROWSE_SPORTS = [
-    "american-football", "baseball", "hockey", "golf", "racing", "mma", "rugby",
-    "australian-football", "field-hockey", "volleyball", "water-polo", "cricket"
+    "american-football", "baseball", "hockey", "racing", "mma", "rugby",
+    "australian-football", "volleyball", "cricket"
 ];
 
 // Maps a SportScore competition identity to an ESPN league, so SportScore's saved
@@ -544,11 +515,10 @@ function usesTeams(sport) {
 // teams, so the wizard offers players to follow instead of teams. They differ in
 // where ESPN exposes the player list:
 //   "rankings"  - tennis: a tour rankings feed (top ranked athletes).
-//   "scoreboard"- golf/mma/racing: the athletes are the event's competitors
+//   "scoreboard"- mma/racing: the athletes are the event's competitors
 //                 (tournament field / fight card / race grid) on the scoreboard.
 const PLAYER_SOURCE = {
     "tennis": "rankings",
-    "golf": "scoreboard",
     "mma": "scoreboard",
     "racing": "scoreboard"
 };

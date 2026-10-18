@@ -81,7 +81,9 @@ function create(serializedEntries, options) {
 function parseEntries(serializedEntries, options) {
     try {
         const parsed = JSON.parse(stringValue(serializedEntries || "[]"));
-        return Array.isArray(parsed) ? parsed.map(entry => normalizeEntry(entry, options)) : [];
+        return Array.isArray(parsed)
+            ? parsed.filter(entry => !ProviderCatalog.isRemovedSport(entry && entry.sport)).map(entry => normalizeEntry(entry, options))
+            : [];
     } catch (error) {
         return [];
     }

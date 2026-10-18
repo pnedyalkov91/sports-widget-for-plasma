@@ -2184,88 +2184,6 @@ function espnLeaderboardPosition(competitor, fallbackOrder) {
     return order > 0 ? "P" + order : "";
 }
 
-// Golf / racing are leaderboards, not head-to-head, but the UI delegate is two-
-// sided. Represent each event as a single row "leader vs runner-up", with the
-// event name as the competition. When a specific player is followed
-// (filterEspnRowsForEntry uses favoriteTeam), surface that player as the home side
-// against the leader instead, so a follower sees their own standing.
-function normalizeEspnLeaderboardEvent(event, sportValue, options) {
-    const competition = arrayValue(event && event.competitions)
-        // Pick the competition with the most competitors (the race/round with the
-        // full field, not an empty practice session).
-        .reduce((best, c) => (arrayValue(c && c.competitors).length > arrayValue(best && best.competitors).length ? c : best), null);
-    const competitors = arrayValue(competition && competition.competitors)
-        .slice()
-        .sort((a, b) => (numberValue(a && a.order) || 9999) - (numberValue(b && b.order) || 9999));
-    if (competitors.length < 1)
-        return null;
-
-    const eventName = stringValue(event && event.name);
-    const statusType = (competition.status && competition.status.type) || (event && event.status && event.status.type) || {};
-    const status = espnStatusFromState(statusType.state, statusType.completed);
-    const timestamp = Date.parse(stringValue((competition && competition.date) || (event && event.date)));
-
-    const leader = competitors[0];
-    const followed = stringValue(options && options.favoriteTeam);
-    // Home side: the followed player if they are in this field, else the leader.
-    let home = leader;
-    if (followed.length > 0) {
-        const mine = competitors.find(c => sameTeamName((c.athlete || {}).displayName || (c.athlete || {}).fullName, followed));
-        if (mine)
-            home = mine;
-    }
-    // Away side: the leader (or runner-up when the followed player IS the leader).
-    let away = (home === leader) ? (competitors[1] || null) : leader;
-
-    const homeAthlete = (home && home.athlete) || {};
-    const awayAthlete = (away && away.athlete) || {};
-    const homeName = stringValue(homeAthlete.displayName || homeAthlete.fullName);
-    if (homeName.length === 0)
-        return null;
-    const awayName = stringValue(awayAthlete.displayName || awayAthlete.fullName);
-
-    return {
-        id: "espn-" + stringValue(event && event.id),
-        sport: sportValue,
-        league: eventName || stringValue(options && options.leagueLabel),
-        homeTeam: homeName,
-        awayTeam: awayName.length > 0 ? awayName : eventName,
-        homeScore: status === "Upcoming" ? "" : (stringValue(home.score) || espnLeaderboardPosition(home, 1)),
-        awayScore: status === "Upcoming" || awayName.length === 0 ? "" : (stringValue(away.score) || espnLeaderboardPosition(away, 2)),
-        status,
-        statusText: stringValue(statusType.shortDetail || statusType.detail || statusType.description),
-        minute: status === "Live" ? stringValue(statusType.shortDetail) : "",
-        startTime: Number.isFinite(timestamp) ? formatStartTime(timestamp, options) : "",
-        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
-        matchday: eventName,
-        group: eventName,
-        stadium: stringValue((competition && competition.venue && competition.venue.fullName)
-            || (event && event.circuit && event.circuit.fullName)),
-        homeBadge: stringValue(homeAthlete.flag && homeAthlete.flag.href),
-        awayBadge: stringValue(awayAthlete.flag && awayAthlete.flag.href),
-        poster: "",
-        popular: false,
-        matchPath: "",
-        liveUrl: "",
-        detailsProvider: "espn",
-        statsProvider: "espn",
-        sourceProvider: "ESPN",
-        espnEventId: stringValue(event && event.id),
-        espnSport: stringValue(options && options.espnSport),
-        espnLeague: stringValue(options && options.espnLeague)
-    };
-}
-
-function normalizeEspnLeaderboardScoreboard(payload, sportValue, options) {
-    let rows = [];
-    arrayValue(payload && payload.events).forEach(event => {
-        const row = normalizeEspnLeaderboardEvent(event, sportValue, options);
-        if (row)
-            rows.push(row);
-    });
-    return rows;
-}
-
 // ---------------------------------------------------------------------------
 // Racing (F1, NASCAR, IndyCar). One ESPN scoreboard `event` is a whole race WEEKEND:
 //   F1      competitions[] = one per session, `type.abbreviation` FP1/FP2/FP3/Qual/Race
@@ -2273,11 +2191,11 @@ function normalizeEspnLeaderboardScoreboard(payload, sportValue, options) {
 //           are scheduled carry NO competitors; live/finished ones carry the classification
 //           (`order`, `winner`, `athlete`).
 //   NASCAR / IndyCar   a single competition without `type`, `circuit` or `endDate`.
-// The generic leaderboard code (golf) picked "the competition with most competitors" -
-// for F1 that is FP1 (every session lists the full grid), so Recent showed the FIRST
-// PRACTICE order as the race result - and returned null for every weekend that had no
-// competitors yet, which emptied the whole Schedule tab. The racing path below works on
-// sessions: the headline session is the Race, the live session is whichever one is `in`.
+// Picking "the competition with most competitors" does not work here - for F1 that is
+// FP1 (every session lists the full grid), so Recent would show the FIRST PRACTICE order
+// as the race result - and returning null for every weekend that had no competitors yet
+// would empty the whole Schedule tab. The racing path below works on sessions: the
+// headline session is the Race, the live session is whichever one is `in`.
 // ---------------------------------------------------------------------------
 const ESPN_RACING_SESSION_LABELS = {
     "fp1": "Practice 1",
@@ -2590,8 +2508,6 @@ function normalizeEspnScoreboard(payload, sportValue, leagueLabel, options) {
         return normalizeEspnMmaScoreboard(payload, sportValue, merged);
     if (sport === "racing")
         return normalizeEspnRacingScoreboard(payload, sportValue, merged);
-    if (sport === "golf")
-        return normalizeEspnLeaderboardScoreboard(payload, sportValue, merged);
 
     if (sport === "cricket")
         espnCricketRememberPayloadLogos(payload);
@@ -3592,7 +3508,7 @@ function espnAthleteRow(athlete, options) {
     };
 }
 
-// Players for golf / mma / racing: their athletes are the event's competitors (the
+// Players for mma / racing: their athletes are the event's competitors (the
 // tournament field, the fight card, the race grid), exposed inline on the
 // scoreboard - no rankings feed. Collect competitors across every event and every
 // competition within it (MMA fight cards and racing weekends split into several
@@ -3603,7 +3519,7 @@ function fetchEspnEventPlayers(espnSport, league, options, onSuccess, onError) {
         return;
     }
     // Use a wide fixed window (not the user's narrow scoreboard window), so the
-    // field/grid is found even between events: racing grids and golf fields only
+    // field/grid is found even between events: racing grids and fight cards only
     // populate during an event, so look back ~120 days and ahead ~60 to catch the
     // most recent or next one regardless of when the wizard is opened.
     const day = 24 * 60 * 60 * 1000;
@@ -5258,7 +5174,7 @@ function fetchCompetitionTeams(options, onSuccess, onError) {
     // instead. ESPN-only - never SportScore. The player list comes from one of two
     // places depending on the sport (see EspnSports.playerSource):
     //   tennis            → the tour rankings feed (top ranked players);
-    //   golf/mma/racing   → the event's competitors (field / fight card / grid).
+    //   mma/racing        → the event's competitors (field / fight card / grid).
     if (plan && EspnSports.usesPlayers(options && (options.sports || options.sport))) {
         if (espnIsRacing(plan.espnSport))
             fetchEspnRacingDrivers(plan.espnSport, plan.league, options, onSuccess, onError);

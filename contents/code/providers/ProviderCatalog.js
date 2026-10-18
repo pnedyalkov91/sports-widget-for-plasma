@@ -107,6 +107,14 @@ function normalizedSport(value) {
     return sport;
 }
 
+// Sports that are no longer offered. Saved entries left over from earlier versions
+// are dropped on load so they don't linger as orphaned items that never load data.
+const REMOVED_SPORTS = ["golf", "water-polo", "field-hockey"];
+
+function isRemovedSport(sport) {
+    return REMOVED_SPORTS.indexOf(normalizedSport(sport)) >= 0;
+}
+
 function titleFromSlug(value) {
     return stringValue(value)
         .replace(/[-_]+/g, " ")

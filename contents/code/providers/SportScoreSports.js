@@ -33,7 +33,7 @@ function supports(sport) {
 }
 
 // Individual sports where a "team" is really a single player/competitor.
-const PLAYER_SPORTS = ["tennis", "golf", "mma", "racing"];
+const PLAYER_SPORTS = ["tennis", "mma", "racing"];
 
 function usesPlayers(sport) {
     return PLAYER_SPORTS.indexOf(normalizedSport(sport)) >= 0;
@@ -224,7 +224,7 @@ function standingsHtmlSchema(sport) {
 }
 
 // Individual / event sports have no league table.
-const NO_STANDINGS_SPORTS = ["tennis", "golf", "racing", "mma"];
+const NO_STANDINGS_SPORTS = ["tennis", "racing", "mma"];
 
 function supportsStandings(sport) {
     return NO_STANDINGS_SPORTS.indexOf(normalizedSport(sport)) < 0;

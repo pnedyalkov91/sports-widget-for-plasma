@@ -48,9 +48,7 @@ function emoji(value) {
         "baseball": "⚾",
         "basketball": "🏀",
         "cricket": "🏏",
-        "field-hockey": "🏑",
         "football": "⚽",
-        "golf": "⛳",
         "hockey": "🏒",
         "lacrosse": "🥍",
         "mma": "🥊",
@@ -59,8 +57,7 @@ function emoji(value) {
         "rugby-league": "🏉",
         "snooker": "🎱",
         "tennis": "🎾",
-        "volleyball": "🏐",
-        "water-polo": "🤽"
+        "volleyball": "🏐"
     };
     return emojis[sport] || "🏆";
 }
@@ -73,9 +70,7 @@ function label(value) {
         "baseball": "Baseball",
         "basketball": "Basketball",
         "cricket": "Cricket",
-        "field-hockey": "Field Hockey",
         "football": "Football",
-        "golf": "Golf",
         "hockey": "Ice Hockey",
         "lacrosse": "Lacrosse",
         "mma": "MMA",
@@ -84,8 +79,7 @@ function label(value) {
         "rugby-league": "Rugby League",
         "snooker": "Snooker",
         "tennis": "Tennis",
-        "volleyball": "Volleyball",
-        "water-polo": "Water Polo"
+        "volleyball": "Volleyball"
     };
     return labels[sport] || titleFromSlug(sport);
 }

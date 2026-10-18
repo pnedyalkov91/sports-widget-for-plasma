@@ -1733,7 +1733,7 @@ PlasmoidItem {
 
         // ESPN stamps every row with the ESPN league slug it was fetched from. When that
         // is this entry's league the row belongs to it, whatever label the row carries.
-        // Essential for the event sports (tennis, MMA, golf, racing), whose rows are
+        // Essential for the event sports (tennis, MMA, racing), whose rows are
         // labelled with the TOURNAMENT / event name ("Rolex Shanghai Masters") rather
         // than the tour ("ATP") - the label comparison below can never match those.
         const rowEspnLeagueSlug = ProviderCatalog.slugForValue(match && match.espnLeague || "");

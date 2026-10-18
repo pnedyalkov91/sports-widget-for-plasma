@@ -357,7 +357,9 @@ KCM.SimpleKCM {
     function savedLeagues() {
         try {
             const parsed = JSON.parse(root.cfg_savedLeagues || "[]");
-            return Array.isArray(parsed) ? parsed.map(entry => root.normalizedSavedEntry(entry)) : [];
+            return Array.isArray(parsed)
+                ? parsed.filter(entry => !ProviderCatalog.isRemovedSport(entry && entry.sport)).map(entry => root.normalizedSavedEntry(entry))
+                : [];
         } catch (error) {
             return [];
         }
