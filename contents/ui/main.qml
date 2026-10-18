@@ -2505,6 +2505,18 @@ PlasmoidItem {
                 options.push({ "slug": tour.slug, "label": tour.label, "country": "" });
             });
         }
+        // Racing "tables" are the championship standings, one per series. Offer every
+        // series the widget supports (F1, NASCAR Cup/O'Reilly/Truck, IndyCar) in the
+        // dropdown even when only some are saved; ESPN serves standings for all of them.
+        if (SportVisuals.normalizedSport(root.selectedSport) === "racing") {
+            EspnSports.leaguesFor("racing").forEach(series => {
+                const slug = ProviderCatalog.slugForValue(series.slug);
+                if (slug.length === 0 || seen[slug])
+                    return;
+                seen[slug] = true;
+                options.push({ "slug": slug, "label": series.label, "country": "" });
+            });
+        }
         return options;
     }
 

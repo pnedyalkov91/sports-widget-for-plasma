@@ -244,7 +244,7 @@ Item {
             visible: !root.showTourTabs && Array.isArray(root.tableOptions) && root.tableOptions.length > 0
 
             PlasmaComponents.Label {
-                text: i18nc("@label", "Table:")
+                text: root.isRacing ? i18nc("@label racing series selector", "Series:") : i18nc("@label", "Table:")
                 color: root.tablePrimaryTextColor
             }
 
