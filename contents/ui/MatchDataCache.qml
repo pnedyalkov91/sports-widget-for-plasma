@@ -32,7 +32,8 @@ QtObject {
     // cache in particular survives reinstalls (it's on-disk SQLite), so a parsing fix
     // - e.g. excluding goal-kicks from goals - would otherwise keep showing the old,
     // wrong cached details for already-finished matches. Increment to invalidate.
-    readonly property int cacheVersion: 4
+    // 5: standings rows gained homeRecord/awayRecord/lastTen/streak/clincher/... (MLB table).
+    readonly property int cacheVersion: 5
 
     function _database() {
         if (cache._db)

@@ -2938,6 +2938,26 @@ function espnStatDisplay(stats, names) {
     return entry ? stringValue(entry.displayValue) : "";
 }
 
+// ESPN's record-type stats (Home / Road / Last Ten Games / Intradivision ...) carry no
+// numeric `value`, only a `summary` such as "53-26". Returns that text, or "" when the
+// stat is absent. `fallback` is used when the record stat is missing but the win/loss
+// halves are shipped separately (homeWins + homeLosses).
+function espnStatSummary(stats, names, fallback) {
+    const entry = espnStatEntry(stats, names);
+    const text = entry ? stringValue(entry.summary || entry.displayValue) : "";
+    return text.length > 0 ? text : stringValue(fallback);
+}
+
+// "53-26" from the separate wins/losses stats when ESPN omits the record summary.
+function espnStatRecordPair(stats, winNames, lossNames) {
+    const wins = espnStatEntry(stats, winNames);
+    const losses = espnStatEntry(stats, lossNames);
+    if (!wins || !losses)
+        return "";
+    return String(numberValue(wins.value !== undefined ? wins.value : wins.displayValue))
+        + "-" + String(numberValue(losses.value !== undefined ? losses.value : losses.displayValue));
+}
+
 function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows) {
     arrayValue(entries).forEach(entry => {
         // Racing driver standings hang an `athlete` (not a `team`) off each entry; the
@@ -2972,6 +2992,22 @@ function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows)
             // "-"); a number would lose the leading dot and the leader's blank marker.
             winPercent: espnStatDisplay(stats, ["winpercent", "leaguewinpercent", "percentage", "pct"]),
             gamesBehind: espnStatDisplay(stats, ["gamesbehind", "gb"]),
+            // Numeric win percentage, for sorting/league-wide re-ranking (the display
+            // string above has lost its sortable form).
+            winPercentValue: espnStatValue(stats, ["winpercent", "leaguewinpercent", "percentage", "pct"]),
+            // Extra columns of ESPN's MLB standings page. Record stats ship a text
+            // `summary` ("53-26"); streak is ESPN's own "W3"/"L1"; clincher is the
+            // playoff marker letter ("z" best record, "y" division, "x" berth, "e" out).
+            homeRecord: espnStatSummary(stats, ["home"], espnStatRecordPair(stats, ["homewins"], ["homelosses"])),
+            awayRecord: espnStatSummary(stats, ["road", "away"], espnStatRecordPair(stats, ["roadwins"], ["roadlosses"])),
+            lastTen: espnStatSummary(stats, ["last ten games", "lasttengames", "l10"], ""),
+            divisionRecord: espnStatSummary(stats, ["intradivision"], ""),
+            streak: espnStatDisplay(stats, ["streak", "strk"]),
+            clincher: espnStatDisplay(stats, ["clincher"]),
+            clincherDescription: (function () {
+                const entry = espnStatEntry(stats, ["clincher"]);
+                return entry ? stringValue(entry.description) : "";
+            })(),
             form: "",
             crest: isAthlete ? stringValue(team.flag && team.flag.href) : espnLogoFromTeam(team),
             teamPath: "",

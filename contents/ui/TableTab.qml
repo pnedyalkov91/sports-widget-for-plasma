@@ -61,12 +61,36 @@ Item {
         { "key": "points", "label": i18nc("@title:column championship points short", "Pts"), "tooltip": i18nc("@info:tooltip", "Championship points"), "width": 3, "emphasized": true },
         { "key": "gap", "label": i18nc("@title:column points gap short", "Gap"), "tooltip": i18nc("@info:tooltip", "Points behind the leader"), "width": 3, "emphasized": false }
     ]
-    readonly property var tableColumns: root.isRacing ? root.racingColumns : SportScoreSports.standingsColumns(root.sport, i18nc)
-    readonly property bool tableHasForm: root.isRacing ? false : SportScoreSports.standingsHasForm(root.sport)
+    // Baseball (MLB) mirrors ESPN's standings page: record, win %, games behind, home /
+    // away records, runs scored / allowed / differential, streak and last ten. Columns are
+    // ranked by `priority` (lower = more important); the ones that do not fit the current
+    // popup width are dropped from the least important end, see visibleBaseballColumns().
+    readonly property bool isBaseball: String(root.sport || "").toLowerCase() === "baseball"
+    // "division" (AL East, AL Central ...) or "league" (all AL / NL teams ranked together).
+    property string selectedBaseballView: "division"
+    readonly property bool showBaseballTabs: root.isBaseball && root.rowCount > 0
+    readonly property var baseballColumns: [
+        { "key": "won", "label": i18nc("@title:column baseball wins short", "W"), "tooltip": i18nc("@info:tooltip", "Wins"), "width": 1.6, "emphasized": true, "priority": 1 },
+        { "key": "lost", "label": i18nc("@title:column baseball losses short", "L"), "tooltip": i18nc("@info:tooltip", "Losses"), "width": 1.6, "emphasized": true, "priority": 1 },
+        { "key": "winPercent", "label": i18nc("@title:column baseball win percentage short", "PCT"), "tooltip": i18nc("@info:tooltip", "Winning percentage"), "width": 2.2, "emphasized": false, "priority": 1 },
+        { "key": "gamesBehind", "label": i18nc("@title:column baseball games behind short", "GB"), "tooltip": i18nc("@info:tooltip", "Games behind the leader"), "width": 2.0, "emphasized": false, "priority": 1 },
+        { "key": "homeRecord", "label": i18nc("@title:column baseball home record short", "HOME"), "tooltip": i18nc("@info:tooltip", "Home record"), "width": 2.8, "emphasized": false, "priority": 6 },
+        { "key": "awayRecord", "label": i18nc("@title:column baseball away record short", "AWAY"), "tooltip": i18nc("@info:tooltip", "Away record"), "width": 2.8, "emphasized": false, "priority": 6 },
+        { "key": "goalsFor", "label": i18nc("@title:column baseball runs scored short", "RS"), "tooltip": i18nc("@info:tooltip", "Runs scored"), "width": 2.0, "emphasized": false, "priority": 5 },
+        { "key": "goalsAgainst", "label": i18nc("@title:column baseball runs allowed short", "RA"), "tooltip": i18nc("@info:tooltip", "Runs allowed"), "width": 2.0, "emphasized": false, "priority": 5 },
+        { "key": "goalDifference", "label": i18nc("@title:column baseball run differential short", "DIFF"), "tooltip": i18nc("@info:tooltip", "Run differential"), "width": 2.2, "emphasized": false, "priority": 4 },
+        { "key": "streak", "label": i18nc("@title:column baseball streak short", "STRK"), "tooltip": i18nc("@info:tooltip", "Current winning / losing streak"), "width": 2.0, "emphasized": false, "priority": 2 },
+        { "key": "lastTen", "label": i18nc("@title:column baseball last ten games short", "L10"), "tooltip": i18nc("@info:tooltip", "Record in the last ten games"), "width": 2.2, "emphasized": false, "priority": 3 }
+    ]
+    readonly property var tableColumns: root.isRacing ? root.racingColumns
+        : (root.isBaseball ? root.visibleBaseballColumns(root.width) : SportScoreSports.standingsColumns(root.sport, i18nc))
+    readonly property bool tableHasForm: (root.isRacing || root.isBaseball) ? false : SportScoreSports.standingsHasForm(root.sport)
     readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
     readonly property color tableSecondaryTextColor: Kirigami.Theme.disabledTextColor
     readonly property color tableHighlightTextColor: Kirigami.Theme.linkColor
     readonly property color tableRowDividerColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.12)
+    readonly property color tablePositiveColor: "#0b8f08"
+    readonly property color tableNegativeColor: "#e91e63"
 
     signal tableSelected(string slug)
     signal seasonSelected(string seasonKey)
@@ -106,8 +130,105 @@ Item {
             ? i18nc("@label", "Constructor") : i18nc("@label", "Driver");
     }
 
+    // Baseball columns that fit `widthPx`. The fixed part of a row (rank, crest, clinch
+    // letter and a readable team name) is reserved first; the stat columns are then added
+    // priority level by priority level while they fit, so a narrow popup keeps
+    // W / L / PCT / GB (+ streak ...) and a wide one shows the whole ESPN column set.
+    function visibleBaseballColumns(widthPx) {
+        const all = root.baseballColumns;
+        const unit = Kirigami.Units.gridUnit;
+        if (!(widthPx > 0) || unit <= 0)
+            return all;
+
+        const gap = Kirigami.Units.smallSpacing / unit;
+        let budget = (widthPx - unit) / unit            // list area (scroll bar gutter removed)
+            - 2 * gap                                   // row side margins
+            - 1.35 - 1.5 - 0.9 - 7                      // rank, crest, clinch letter, team name
+            - 4 * gap;                                  // gaps between those fixed items
+        const levels = [];
+        all.forEach(column => {
+            if (levels.indexOf(column.priority) < 0)
+                levels.push(column.priority);
+        });
+        levels.sort((left, right) => left - right);
+
+        const chosen = [];
+        for (let index = 0; index < levels.length; index += 1) {
+            const members = all.filter(column => column.priority === levels[index]);
+            let cost = 0;
+            members.forEach(column => { cost += column.width + gap; });
+            if (cost > budget && chosen.length > 0)
+                break;
+            budget -= cost;
+            members.forEach(column => chosen.push(column.key));
+        }
+        // Keep ESPN's column order, only filtering.
+        return all.filter(column => chosen.indexOf(column.key) >= 0);
+    }
+
+    function baseballGamesBehindText(value) {
+        if (value <= 0)
+            return "-";
+        return value % 1 === 0 ? String(value) : value.toFixed(1);
+    }
+
+    // "American League East" -> "American League" (AL/NL together for the league view).
+    function baseballLeagueName(group) {
+        const name = String(group || "").trim();
+        const stripped = name.replace(/\s+(East|Central|West)$/i, "").trim();
+        return stripped.length > 0 ? stripped : name;
+    }
+
+    function baseballSorted(list) {
+        const indexed = list.map((row, index) => ({ "row": row, "index": index }));
+        indexed.sort((left, right) => Number(right.row.winPercentValue || 0) - Number(left.row.winPercentValue || 0)
+            || Number(right.row.won || 0) - Number(left.row.won || 0)
+            || left.index - right.index);
+        return indexed.map(item => item.row);
+    }
+
+    // Baseball rows for the selected view. Division: ESPN's own groups, ranked by win %
+    // with 1..n numbering inside each division. League: every team of AL / NL in one list,
+    // games behind recomputed against the league leader.
+    function baseballGroups() {
+        const rows = root.tableRows || [];
+        const groups = [];
+        const byName = {};
+        const leagueView = root.selectedBaseballView === "league";
+        rows.forEach(row => {
+            const raw = String(row.group || "").trim();
+            const name = leagueView ? root.baseballLeagueName(raw) : raw;
+            if (byName[name] === undefined) {
+                byName[name] = groups.length;
+                groups.push({ "name": name, "rows": [] });
+            }
+            groups[byName[name]].rows.push(row);
+        });
+
+        let result = [];
+        groups.forEach(group => {
+            if (group.name.length > 0)
+                result.push({ "isGroupHeader": true, "group": group.name });
+
+            const ranked = root.baseballSorted(group.rows);
+            const leader = ranked.length > 0 ? ranked[0] : null;
+            ranked.forEach((row, index) => {
+                const copy = Object.assign({}, row);
+                copy.position = index + 1;
+                if (leagueView && leader) {
+                    const behind = ((Number(leader.won || 0) - Number(row.won || 0)) + (Number(row.lost || 0) - Number(leader.lost || 0))) / 2;
+                    copy.gamesBehind = root.baseballGamesBehindText(behind);
+                }
+                result.push(copy);
+            });
+        });
+        return result;
+    }
+
     function groupedRows() {
         const rows = root.tableRows || [];
+        if (root.isBaseball && rows.length > 0)
+            return root.baseballGroups();
         // Racing with several tables: show only the selected one, no inner header.
         if (root.showRacingTabs) {
             const wanted = root.effectiveRacingGroup;
@@ -146,7 +267,14 @@ Item {
             return label.length > 0 ? i18nc("@label", "%1 Rankings", label) : i18nc("@label", "Rankings");
         if (root.isRacing)
             return label.length > 0 ? i18nc("@label", "%1 Standings", label) : i18nc("@label", "Championship Standings");
+        if (root.isBaseball)
+            return label.length > 0 ? i18nc("@label", "%1 Standings", label) : i18nc("@label", "Standings");
         return label.length > 0 ? i18nc("@label", "%1 Table", label) : i18nc("@label", "League Table");
+    }
+
+    function baseballViewLabel(view) {
+        return view === "league" ? i18nc("@title:tab baseball standings by league", "League")
+            : i18nc("@title:tab baseball standings by division", "Division");
     }
 
     function tourTabLabel(option) {
@@ -234,6 +362,27 @@ Item {
                     text: root.racingGroupLabel(modelData)
                     active: String(modelData) === root.effectiveRacingGroup
                     onClicked: root.selectedRacingGroup = String(modelData)
+                }
+            }
+        }
+
+        // Baseball: Division (AL East ...) / League (all AL or NL teams) view switch.
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: root.showBaseballTabs
+
+            Repeater {
+                model: root.showBaseballTabs ? ["division", "league"] : []
+
+                TourTab {
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    text: root.baseballViewLabel(String(modelData))
+                    active: String(modelData) === root.selectedBaseballView
+                    onClicked: root.selectedBaseballView = String(modelData)
                 }
             }
         }
@@ -569,12 +718,46 @@ Item {
         readonly property string team: String(rowData.team || "")
         readonly property string form: String(rowData.form || "")
         readonly property string crest: String(rowData.crest || "")
+        readonly property string clincher: String(rowData.clincher || "")
+        readonly property string clincherDescription: String(rowData.clincherDescription || "")
         readonly property bool favorite: root.isFavoriteTeam(team)
 
         function valueForColumn(column) {
             const key = String(column && column.key || "");
             const value = rowData && rowData[key] !== undefined && rowData[key] !== null ? rowData[key] : 0;
+            if (root.isBaseball) {
+                // ESPN-style baseball cells: a signed run differential and "-" for
+                // anything the API did not provide (streak before a first game ...).
+                if (key === "goalDifference") {
+                    const diff = Number(value) || 0;
+                    return diff > 0 ? "+" + diff : String(diff);
+                }
+                if (String(value).length === 0)
+                    return "-";
+            }
             return String(value);
+        }
+
+        // Baseball colouring: winning streak / positive run differential in green, losing
+        // streak / negative differential in red; everything else keeps the theme colour.
+        function colorForColumn(column) {
+            if (!root.isBaseball)
+                return root.tablePrimaryTextColor;
+            const key = String(column && column.key || "");
+            if (key === "streak") {
+                const text = String(rowData.streak || "").toUpperCase();
+                if (text.charAt(0) === "W")
+                    return root.tablePositiveColor;
+                if (text.charAt(0) === "L")
+                    return root.tableNegativeColor;
+            } else if (key === "goalDifference") {
+                const diff = Number(rowData.goalDifference) || 0;
+                if (diff > 0)
+                    return root.tablePositiveColor;
+                if (diff < 0)
+                    return root.tableNegativeColor;
+            }
+            return root.tablePrimaryTextColor;
         }
 
         height: Kirigami.Units.gridUnit * 2.7
@@ -609,6 +792,25 @@ Item {
                 fallbackEmoji: SportVisuals.emoji(root.sport)
             }
 
+            // Baseball: ESPN's playoff marker (x / y / z / e) in front of the team name.
+            PlasmaComponents.Label {
+                id: clinchMarker
+
+                visible: root.isBaseball
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 0.9
+                text: tableRow.clincher
+                horizontalAlignment: Text.AlignHCenter
+                font.bold: true
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                color: tableRow.clincher.toLowerCase() === "e" ? root.tableSecondaryTextColor : root.tablePositiveColor
+                ToolTip.text: tableRow.clincherDescription
+                ToolTip.visible: tableRow.clincherDescription.length > 0 && clinchHover.hovered
+
+                HoverHandler {
+                    id: clinchHover
+                }
+            }
+
             PlasmaComponents.Label {
                 text: team
                 color: root.tablePrimaryTextColor
@@ -624,7 +826,7 @@ Item {
                     required property var modelData
 
                     text: tableRow.valueForColumn(modelData)
-                    color: root.tablePrimaryTextColor
+                    color: tableRow.colorForColumn(modelData)
                     font.bold: Boolean(modelData.emphasized)
                     font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
                     Layout.preferredWidth: Kirigami.Units.gridUnit * Number(modelData.width || 2)
