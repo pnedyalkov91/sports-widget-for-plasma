@@ -154,6 +154,8 @@ Item {
                     awayScore: recentRow.model.awayScore
                     homePenaltyScore: recentRow.model.homePenaltyScore || ""
                     awayPenaltyScore: recentRow.model.awayPenaltyScore || ""
+                    homeRecord: recentRow.model.homeRecordText || ""
+                    awayRecord: recentRow.model.awayRecordText || ""
                     status: recentRow.model.status
                     minute: recentRow.model.minute
                     startTime: recentRow.model.startTime

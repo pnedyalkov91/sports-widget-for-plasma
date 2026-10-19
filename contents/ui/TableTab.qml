@@ -66,24 +66,45 @@ Item {
     // ranked by `priority` (lower = more important); the ones that do not fit the current
     // popup width are dropped from the least important end, see visibleBaseballColumns().
     readonly property bool isBaseball: String(root.sport || "").toLowerCase() === "baseball"
-    // "division" (AL East, AL Central ...) or "league" (all AL / NL teams ranked together).
+    // Standings views (ESPN's MLB page tabs):
+    //   "division" - AL East, AL Central ... (ESPN's own groups)
+    //   "league"   - every AL / NL team ranked together
+    //   "overall"  - all 30 teams in one table
+    //   "wildcard" - per league: division leaders, then the wild-card race
+    //   "expanded" - division table with every column (scrolls sideways when wide)
     property string selectedBaseballView: "division"
     readonly property bool showBaseballTabs: root.isBaseball && root.rowCount > 0
+    readonly property bool baseballExpanded: root.isBaseball && root.selectedBaseballView === "expanded"
+    readonly property var baseballViews: ["division", "league", "overall", "wildcard", "expanded"]
     readonly property var baseballColumns: [
-        { "key": "won", "label": i18nc("@title:column baseball wins short", "W"), "tooltip": i18nc("@info:tooltip", "Wins"), "width": 1.6, "emphasized": true, "priority": 1 },
-        { "key": "lost", "label": i18nc("@title:column baseball losses short", "L"), "tooltip": i18nc("@info:tooltip", "Losses"), "width": 1.6, "emphasized": true, "priority": 1 },
-        { "key": "winPercent", "label": i18nc("@title:column baseball win percentage short", "PCT"), "tooltip": i18nc("@info:tooltip", "Winning percentage"), "width": 2.2, "emphasized": false, "priority": 1 },
-        { "key": "gamesBehind", "label": i18nc("@title:column baseball games behind short", "GB"), "tooltip": i18nc("@info:tooltip", "Games behind the leader"), "width": 2.0, "emphasized": false, "priority": 1 },
+        { "key": "won", "label": i18nc("@title:column baseball wins short", "W"), "tooltip": i18nc("@info:tooltip", "Wins"), "width": 1.7, "emphasized": true, "priority": 1 },
+        { "key": "lost", "label": i18nc("@title:column baseball losses short", "L"), "tooltip": i18nc("@info:tooltip", "Losses"), "width": 1.7, "emphasized": true, "priority": 1 },
+        { "key": "winPercent", "label": i18nc("@title:column baseball win percentage short", "PCT"), "tooltip": i18nc("@info:tooltip", "Winning percentage"), "width": 2.4, "emphasized": false, "priority": 1 },
+        { "key": "gamesBehind", "label": i18nc("@title:column baseball games behind short", "GB"), "tooltip": i18nc("@info:tooltip", "Games behind the leader"), "width": 2.1, "emphasized": false, "priority": 1 },
         { "key": "homeRecord", "label": i18nc("@title:column baseball home record short", "HOME"), "tooltip": i18nc("@info:tooltip", "Home record"), "width": 2.8, "emphasized": false, "priority": 6 },
         { "key": "awayRecord", "label": i18nc("@title:column baseball away record short", "AWAY"), "tooltip": i18nc("@info:tooltip", "Away record"), "width": 2.8, "emphasized": false, "priority": 6 },
-        { "key": "goalsFor", "label": i18nc("@title:column baseball runs scored short", "RS"), "tooltip": i18nc("@info:tooltip", "Runs scored"), "width": 2.0, "emphasized": false, "priority": 5 },
-        { "key": "goalsAgainst", "label": i18nc("@title:column baseball runs allowed short", "RA"), "tooltip": i18nc("@info:tooltip", "Runs allowed"), "width": 2.0, "emphasized": false, "priority": 5 },
-        { "key": "goalDifference", "label": i18nc("@title:column baseball run differential short", "DIFF"), "tooltip": i18nc("@info:tooltip", "Run differential"), "width": 2.2, "emphasized": false, "priority": 4 },
-        { "key": "streak", "label": i18nc("@title:column baseball streak short", "STRK"), "tooltip": i18nc("@info:tooltip", "Current winning / losing streak"), "width": 2.0, "emphasized": false, "priority": 2 },
-        { "key": "lastTen", "label": i18nc("@title:column baseball last ten games short", "L10"), "tooltip": i18nc("@info:tooltip", "Record in the last ten games"), "width": 2.2, "emphasized": false, "priority": 3 }
+        { "key": "goalsFor", "label": i18nc("@title:column baseball runs scored short", "RS"), "tooltip": i18nc("@info:tooltip", "Runs scored"), "width": 2.1, "emphasized": false, "priority": 5 },
+        { "key": "goalsAgainst", "label": i18nc("@title:column baseball runs allowed short", "RA"), "tooltip": i18nc("@info:tooltip", "Runs allowed"), "width": 2.1, "emphasized": false, "priority": 5 },
+        { "key": "goalDifference", "label": i18nc("@title:column baseball run differential short", "DIFF"), "tooltip": i18nc("@info:tooltip", "Run differential"), "width": 2.5, "emphasized": false, "priority": 4 },
+        { "key": "streak", "label": i18nc("@title:column baseball streak short", "STRK"), "tooltip": i18nc("@info:tooltip", "Current winning / losing streak"), "width": 2.7, "emphasized": false, "priority": 2 },
+        { "key": "lastTen", "label": i18nc("@title:column baseball last ten games short", "L10"), "tooltip": i18nc("@info:tooltip", "Record in the last ten games"), "width": 2.5, "emphasized": false, "priority": 3 },
+        { "key": "playoffPercent", "label": i18nc("@title:column baseball playoff probability short", "POFF"), "tooltip": i18nc("@info:tooltip", "Chance of making the playoffs"), "width": 3.0, "emphasized": false, "priority": 7 },
+        { "key": "divisionRecord", "label": i18nc("@title:column baseball record in own division short", "DIV"), "tooltip": i18nc("@info:tooltip", "Record against the team's own division"), "width": 2.8, "emphasized": false, "priority": 8, "expandedOnly": true },
+        { "key": "leagueRecord", "label": i18nc("@title:column baseball record in own league short", "LG"), "tooltip": i18nc("@info:tooltip", "Record against the team's own league"), "width": 3.0, "emphasized": false, "priority": 8, "expandedOnly": true }
     ]
     readonly property var tableColumns: root.isRacing ? root.racingColumns
         : (root.isBaseball ? root.visibleBaseballColumns(root.width) : SportScoreSports.standingsColumns(root.sport, i18nc))
+    // Total row width (px) of the Expanded view, which scrolls sideways instead of
+    // dropping columns; 0 for every other view/sport.
+    readonly property real expandedContentWidth: {
+        if (!root.baseballExpanded)
+            return 0;
+        const unit = Kirigami.Units.gridUnit;
+        const gap = Kirigami.Units.smallSpacing / unit;
+        let units = 1.35 + 1.5 + 0.9 + 8.5 + 1 + 2 * gap;   // rank, crest, marker, team, scroll gutter, margins
+        root.tableColumns.forEach(column => { units += column.width + gap; });
+        return units * unit + 4 * Kirigami.Units.smallSpacing;
+    }
     readonly property bool tableHasForm: (root.isRacing || root.isBaseball) ? false : SportScoreSports.standingsHasForm(root.sport)
     readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
     readonly property color tableSecondaryTextColor: Kirigami.Theme.disabledTextColor
@@ -134,16 +155,33 @@ Item {
     // letter and a readable team name) is reserved first; the stat columns are then added
     // priority level by priority level while they fit, so a narrow popup keeps
     // W / L / PCT / GB (+ streak ...) and a wide one shows the whole ESPN column set.
+    // Columns of the selected baseball view. The expanded-only ones (DIV / LG) appear only
+    // in the Expanded view; the Wild Card view calls its games-behind column WCGB.
+    function baseballColumnsForView() {
+        const expanded = root.selectedBaseballView === "expanded";
+        const wildCard = root.selectedBaseballView === "wildcard";
+        return root.baseballColumns
+            .filter(column => expanded || column.expandedOnly !== true)
+            .map(column => (wildCard && column.key === "gamesBehind")
+                ? Object.assign({}, column, {
+                    "label": i18nc("@title:column baseball wild card games behind short", "WCGB"),
+                    "tooltip": i18nc("@info:tooltip", "Games behind the last wild card spot (+ = games ahead of it)"),
+                    "width": 2.8
+                })
+                : column);
+    }
+
     function visibleBaseballColumns(widthPx) {
-        const all = root.baseballColumns;
+        const all = root.baseballColumnsForView();
         const unit = Kirigami.Units.gridUnit;
-        if (!(widthPx > 0) || unit <= 0)
+        // The Expanded view never drops columns - it scrolls sideways instead.
+        if (!(widthPx > 0) || unit <= 0 || root.selectedBaseballView === "expanded")
             return all;
 
         const gap = Kirigami.Units.smallSpacing / unit;
         let budget = (widthPx - unit) / unit            // list area (scroll bar gutter removed)
             - 2 * gap                                   // row side margins
-            - 1.35 - 1.5 - 0.9 - 7                      // rank, crest, clinch letter, team name
+            - 1.35 - 1.5 - 0.9 - 6.5                    // rank, crest, clinch letter, team name
             - 4 * gap;                                  // gaps between those fixed items
         const levels = [];
         all.forEach(column => {
@@ -187,17 +225,91 @@ Item {
         return indexed.map(item => item.row);
     }
 
-    // Baseball rows for the selected view. Division: ESPN's own groups, ranked by win %
-    // with 1..n numbering inside each division. League: every team of AL / NL in one list,
-    // games behind recomputed against the league leader.
-    function baseballGroups() {
-        const rows = root.tableRows || [];
-        const groups = [];
-        const byName = {};
-        const leagueView = root.selectedBaseballView === "league";
+    // Games `row` is behind `leader`: ((leader W - W) + (L - leader L)) / 2.
+    function baseballBehind(leader, row) {
+        return ((Number(leader.won || 0) - Number(row.won || 0)) + (Number(row.lost || 0) - Number(leader.lost || 0))) / 2;
+    }
+
+    // "+1.5" / "-" / "2.0": signed games ahead of (+) or behind a cut-off team.
+    function baseballCutoffText(cutoff, row) {
+        const behind = root.baseballBehind(cutoff, row);
+        if (behind === 0)
+            return "-";
+        const size = Math.abs(behind);
+        const text = size % 1 === 0 ? String(size) : size.toFixed(1);
+        return behind < 0 ? "+" + text : text;
+    }
+
+    // Wild Card view: for each league the three division leaders, then the rest of the
+    // league ranked as the wild-card race. Derived from the standings rows (a division's
+    // best record leads it) - ESPN's standings feed has no separate wild-card table.
+    function baseballWildCardGroups(rows) {
+        const leagues = [];
+        const byLeague = {};
         rows.forEach(row => {
             const raw = String(row.group || "").trim();
-            const name = leagueView ? root.baseballLeagueName(raw) : raw;
+            const leagueName = root.baseballLeagueName(raw);
+            if (byLeague[leagueName] === undefined) {
+                byLeague[leagueName] = leagues.length;
+                leagues.push({ "name": leagueName, "divisions": {}, "order": [] });
+            }
+            const league = leagues[byLeague[leagueName]];
+            if (league.divisions[raw] === undefined) {
+                league.divisions[raw] = [];
+                league.order.push(raw);
+            }
+            league.divisions[raw].push(row);
+        });
+
+        const result = [];
+        leagues.forEach(league => {
+            let leaders = [];
+            let rest = [];
+            league.order.forEach(division => {
+                const ranked = root.baseballSorted(league.divisions[division]);
+                if (ranked.length > 0)
+                    leaders.push(ranked[0]);
+                rest = rest.concat(ranked.slice(1));
+            });
+            leaders = root.baseballSorted(leaders);
+            rest = root.baseballSorted(rest);
+            // The last wild-card spot is the 3rd (MLB: three per league).
+            const cutoff = rest.length > 0 ? rest[Math.min(2, rest.length - 1)] : null;
+
+            result.push({ "isGroupHeader": true, "group": i18nc("@title:group baseball division leaders of a league", "%1 · Division Leaders", league.name) });
+            leaders.forEach((row, index) => {
+                const copy = Object.assign({}, row);
+                copy.position = index + 1;
+                copy.gamesBehind = "-";
+                result.push(copy);
+            });
+            result.push({ "isGroupHeader": true, "group": i18nc("@title:group baseball wild card race of a league", "%1 · Wild Card", league.name) });
+            rest.forEach((row, index) => {
+                const copy = Object.assign({}, row);
+                copy.position = index + 1;
+                copy.gamesBehind = cutoff ? root.baseballCutoffText(cutoff, row) : "-";
+                result.push(copy);
+            });
+        });
+        return result;
+    }
+
+    // Baseball rows for the selected view (see selectedBaseballView). Division / Expanded:
+    // ESPN's own groups ranked by win % with 1..n numbering inside each division.
+    // League / Overall: AL + NL teams (or all teams) in one list, games behind recomputed
+    // against the leader of that list. Wild Card: baseballWildCardGroups().
+    function baseballGroups() {
+        const rows = root.tableRows || [];
+        const view = root.selectedBaseballView;
+        if (view === "wildcard")
+            return root.baseballWildCardGroups(rows);
+
+        const regroup = view === "league" || view === "overall";
+        const groups = [];
+        const byName = {};
+        rows.forEach(row => {
+            const raw = String(row.group || "").trim();
+            const name = view === "overall" ? "" : (view === "league" ? root.baseballLeagueName(raw) : raw);
             if (byName[name] === undefined) {
                 byName[name] = groups.length;
                 groups.push({ "name": name, "rows": [] });
@@ -215,10 +327,8 @@ Item {
             ranked.forEach((row, index) => {
                 const copy = Object.assign({}, row);
                 copy.position = index + 1;
-                if (leagueView && leader) {
-                    const behind = ((Number(leader.won || 0) - Number(row.won || 0)) + (Number(row.lost || 0) - Number(leader.lost || 0))) / 2;
-                    copy.gamesBehind = root.baseballGamesBehindText(behind);
-                }
+                if (regroup && leader)
+                    copy.gamesBehind = root.baseballGamesBehindText(root.baseballBehind(leader, row));
                 result.push(copy);
             });
         });
@@ -273,8 +383,15 @@ Item {
     }
 
     function baseballViewLabel(view) {
-        return view === "league" ? i18nc("@title:tab baseball standings by league", "League")
-            : i18nc("@title:tab baseball standings by division", "Division");
+        if (view === "league")
+            return i18nc("@title:tab baseball standings by league", "League");
+        if (view === "overall")
+            return i18nc("@title:tab baseball standings of all teams", "Overall");
+        if (view === "wildcard")
+            return i18nc("@title:tab baseball wild card race", "Wild Card");
+        if (view === "expanded")
+            return i18nc("@title:tab baseball standings with all columns", "Expanded");
+        return i18nc("@title:tab baseball standings by division", "Division");
     }
 
     function tourTabLabel(option) {
@@ -366,14 +483,14 @@ Item {
             }
         }
 
-        // Baseball: Division (AL East ...) / League (all AL or NL teams) view switch.
+        // Baseball: Division / League / Overall / Wild Card / Expanded view switch.
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
             visible: root.showBaseballTabs
 
             Repeater {
-                model: root.showBaseballTabs ? ["division", "league"] : []
+                model: root.showBaseballTabs ? root.baseballViews : []
 
                 TourTab {
                     required property var modelData
@@ -478,39 +595,58 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            ListView {
-                id: tableList
+            // Sideways scroller: only the baseball Expanded view is wider than the popup
+            // (contentWidth > width); every other table fits, so it behaves like a plain
+            // full-size list there.
+            Flickable {
+                id: tableFlick
 
                 anchors.fill: parent
                 visible: !root.tableLoading
                 clip: true
-                spacing: 0
+                contentWidth: Math.max(width, root.expandedContentWidth)
+                contentHeight: height
+                flickableDirection: Flickable.HorizontalFlick
                 boundsBehavior: Flickable.StopAtBounds
-                model: root.displayRows
-                ScrollBar.vertical: ScrollBar {
+                interactive: contentWidth > width
+                ScrollBar.horizontal: ScrollBar {
                     policy: ScrollBar.AsNeeded
                 }
 
-                readonly property int contentColumnWidth: Math.max(0, width - Kirigami.Units.gridUnit)
+                ListView {
+                    id: tableList
 
-                header: TableHeader {
-                    width: tableList.contentColumnWidth
-                    title: root.leagueTitle()
-                }
+                    width: tableFlick.contentWidth
+                    height: tableFlick.height
+                    clip: true
+                    spacing: 0
+                    boundsBehavior: Flickable.StopAtBounds
+                    model: root.displayRows
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
 
-                delegate: Loader {
-                    id: rowLoader
+                    readonly property int contentColumnWidth: Math.max(0, width - Kirigami.Units.gridUnit)
 
-                    width: tableList.contentColumnWidth
-                    height: item ? item.height : 0
-                    sourceComponent: modelData.isGroupHeader ? groupHeaderComponent : tableRowComponent
+                    header: TableHeader {
+                        width: tableList.contentColumnWidth
+                        title: root.leagueTitle()
+                    }
 
-                    readonly property var rowData: modelData
+                    delegate: Loader {
+                        id: rowLoader
 
-                    onLoaded: item.rowData = rowData
-                    onRowDataChanged: {
-                        if (item)
-                            item.rowData = rowData;
+                        width: tableList.contentColumnWidth
+                        height: item ? item.height : 0
+                        sourceComponent: modelData.isGroupHeader ? groupHeaderComponent : tableRowComponent
+
+                        readonly property var rowData: modelData
+
+                        onLoaded: item.rowData = rowData
+                        onRowDataChanged: {
+                            if (item)
+                                item.rowData = rowData;
+                        }
                     }
                 }
             }
@@ -732,6 +868,9 @@ Item {
                     const diff = Number(value) || 0;
                     return diff > 0 ? "+" + diff : String(diff);
                 }
+                // POFF: ESPN sends "100.0%" / "4.8%"; show whole numbers without ".0".
+                if (key === "playoffPercent")
+                    return String(value).length === 0 ? "-" : String(value).replace(/\.0%$/, "%");
                 if (String(value).length === 0)
                     return "-";
             }

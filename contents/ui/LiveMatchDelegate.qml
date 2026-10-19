@@ -31,6 +31,10 @@ Item {
     property string awayGames: ""
     property string homePenaltyScore: ""
     property string awayPenaltyScore: ""
+    // Season/venue record shown under each team name, e.g. "98-64, 43-38 Away"
+    // (baseball only; empty for every other sport, which then shows nothing).
+    property string homeRecord: ""
+    property string awayRecord: ""
     property string status: ""
     property string minute: ""
     property string startTime: ""
@@ -60,8 +64,16 @@ Item {
             return root.espnLeague.toLowerCase() === "f1"
                 ? "https://www.espn.com/f1/race/_/id/" + root.espnEventId
                 : "https://www.espn.com/racing/";
-        const verb = sportPath === "soccer" ? "match" : "game";
-        return "https://www.espn.com/" + sportPath + "/" + verb + "/_/gameId/" + root.espnEventId;
+        // ESPN's US-league pages are addressed by LEAGUE, not by the API's sport path:
+        // MLB is /mlb/game/_/gameId/<id> (/baseball/game/... is not a page), likewise
+        // /nba/, /nhl/, /nfl/ and the college leagues. Soccer and the other sports keep
+        // their sport path.
+        const leaguePathSports = ["baseball", "basketball", "hockey", "football"];
+        const leagueSlug = root.espnLeague.trim().toLowerCase();
+        const useLeaguePath = leaguePathSports.indexOf(sportPath) >= 0 && /^[a-z][a-z0-9-]*$/.test(leagueSlug);
+        const pagePath = useLeaguePath ? leagueSlug : sportPath;
+        const verb = pagePath === "soccer" ? "match" : "game";
+        return "https://www.espn.com/" + pagePath + "/" + verb + "/_/gameId/" + root.espnEventId;
     }
     property bool popular: false
     property bool favorite: false
@@ -243,6 +255,8 @@ Item {
             awayGames: root.awayGames
             homePenaltyScore: root.homePenaltyScore
             awayPenaltyScore: root.awayPenaltyScore
+            homeRecord: root.homeRecord
+            awayRecord: root.awayRecord
             status: root.status
             minute: root.minute
             startTime: root.startTime

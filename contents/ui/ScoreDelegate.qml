@@ -37,6 +37,10 @@ Rectangle {
     property string awayGames: ""
     property string homePenaltyScore: ""
     property string awayPenaltyScore: ""
+    // Record line under each team name, e.g. "98-64, 43-38 Away" (baseball only;
+    // an empty string hides the line, so other sports look exactly as before).
+    property string homeRecord: ""
+    property string awayRecord: ""
     property string status: ""
     property string minute: ""
     property string startTime: ""
@@ -417,7 +421,14 @@ Rectangle {
                     elide: Text.ElideRight
                     font.bold: true
                 }
-
+                PlasmaComponents.Label {
+                    Layout.fillWidth: true
+                    visible: root.homeRecord.length > 0
+                    text: root.homeRecord
+                    color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.disabledTextColor
+                    elide: Text.ElideRight
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                }
             }
         }
 
@@ -440,7 +451,15 @@ Rectangle {
                     elide: Text.ElideRight
                     font.bold: true
                 }
-
+                PlasmaComponents.Label {
+                    Layout.fillWidth: true
+                    visible: root.awayRecord.length > 0
+                    text: root.awayRecord
+                    color: root.selected ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.disabledTextColor
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                }
             }
 
             TeamLogo {

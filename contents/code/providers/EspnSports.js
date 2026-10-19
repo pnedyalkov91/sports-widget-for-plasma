@@ -599,6 +599,13 @@ const ESPN_PLAYER_BOX = {
         { group: "defenses", title: "Defense", columns: ["G", "A", "SOG", "HT", "+/-", "TOI"] },
         { group: "goalies", title: "Goalies", columns: ["SV", "GA", "SV%", "TOI"] }
     ],
+    // Baseball: ESPN's boxscore.players statistics blocks are typed "batting" / "pitching"
+    // (matched by espnPlayerBoxSection via the block's name or type). Columns missing from
+    // a block are simply left out, so the list may name labels some feeds do not send.
+    "baseball": [
+        { group: "batting", title: "Batting", columns: ["H-AB", "R", "RBI", "HR", "BB", "K", "AVG"] },
+        { group: "pitching", title: "Pitching", columns: ["IP", "H", "R", "ER", "BB", "K", "HR", "ERA"] }
+    ],
     "american-football": [
         { group: "passing", title: "Passing", columns: ["C/ATT", "YDS", "TD", "INT"] },
         { group: "rushing", title: "Rushing", columns: ["CAR", "YDS", "TD", "LONG"] },

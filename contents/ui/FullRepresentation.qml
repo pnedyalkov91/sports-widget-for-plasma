@@ -759,6 +759,8 @@ Item {
             stadium: root.selectedMatchValue("stadium", "")
             homeBadge: root.selectedMatchValue("homeBadge", "")
             awayBadge: root.selectedMatchValue("awayBadge", "")
+            homeRecord: root.selectedMatchValue("homeRecordText", "")
+            awayRecord: root.selectedMatchValue("awayRecordText", "")
             matchPath: root.selectedMatchValue("matchPath", "")
             liveUrl: root.selectedMatchValue("liveUrl", "")
             sport: root.selectedMatchValue("sport", root.sport)
@@ -1086,6 +1088,9 @@ Item {
         property string stadium: ""
         property string homeBadge: ""
         property string awayBadge: ""
+        // "98-64, 43-38 Away" under each team (baseball); empty for other sports.
+        property string homeRecord: ""
+        property string awayRecord: ""
         property string matchPath: ""
         property string liveUrl: ""
         property string sport: "football"
@@ -1360,6 +1365,7 @@ Item {
                 height: parent.height
                 name: hero.homeTeam
                 badge: hero.homeBadge
+                record: hero.homeRecord
             }
 
             HeroTeam {
@@ -1370,6 +1376,7 @@ Item {
                 height: parent.height
                 name: hero.awayTeam
                 badge: hero.awayBadge
+                record: hero.awayRecord
             }
 
         }
@@ -1565,6 +1572,7 @@ Item {
 
         property string name: ""
         property string badge: ""
+        property string record: ""
         readonly property int badgeSize: Kirigami.Units.iconSizes.huge + Kirigami.Units.gridUnit
         readonly property int backingSize: Math.ceil(badgeSize * Math.max(1, Screen.devicePixelRatio) * 2)
 
@@ -1593,6 +1601,18 @@ Item {
             elide: Text.ElideRight
             font.bold: true
             font.pixelSize: Math.max(Kirigami.Theme.defaultFont.pixelSize, Kirigami.Theme.smallFont.pixelSize + 2)
+        }
+
+        // Season record and the home/away record for this game (baseball), e.g.
+        // "98-64, 43-38 Away".
+        PlasmaComponents.Label {
+            Layout.fillWidth: true
+            visible: heroTeam.record.length > 0
+            text: heroTeam.record
+            color: Kirigami.Theme.disabledTextColor
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            font: Kirigami.Theme.smallFont
         }
 
     }
