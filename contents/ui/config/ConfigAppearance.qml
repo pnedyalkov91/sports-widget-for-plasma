@@ -63,6 +63,8 @@ KCM.SimpleKCM {
     property string cfg_widgetLayoutMode: Plasmoid.configuration.widgetLayoutMode
     property string cfg_widgetSimpleScheduleWindow: Plasmoid.configuration.widgetSimpleScheduleWindow
     property bool cfg_widgetHeroEnabled: Plasmoid.configuration.widgetHeroEnabled
+    property bool cfg_widgetLiveAllSports: Plasmoid.configuration.widgetLiveAllSports
+    property bool cfg_widgetLiveGrouped: Plasmoid.configuration.widgetLiveGrouped
     property string cfg_widgetTabsPosition: Plasmoid.configuration.widgetTabsPosition
     property string cfg_nationalTeamVisualStyle: Plasmoid.configuration.nationalTeamVisualStyle
     property string cfg_provider: Plasmoid.configuration.provider

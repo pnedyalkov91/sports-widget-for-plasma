@@ -82,6 +82,24 @@ PlasmoidItem {
     // Leagues tab: groups start collapsed, so this only records groups the user
     // has explicitly expanded (value false) or re-collapsed (value true).
     property var leaguesCollapsedGroups: ({})
+    // Live tab "All saved sports" mode (Appearance -> Widget -> Live). When on, the
+    // Live tab also lists live matches from the saved sports other than the active
+    // one. Those rows are fetched and held separately (otherSportsLiveMatches) so
+    // the panel, tooltip, hero and notifications keep following the active sport.
+    function liveAllSportsEnabled() {
+        return Plasmoid.configuration.widgetLiveAllSports === true;
+    }
+
+    function liveGroupedEnabled() {
+        return Plasmoid.configuration.widgetLiveGrouped !== false;
+    }
+
+    property var otherSportsLiveMatches: []
+    property int otherSportsLiveToken: 0
+    // Which live model the widget's featured match (hero) and Simple layout read:
+    // the combined one while "All saved sports" is on, else the plain active-sport
+    // model (so the option being off changes nothing).
+    property bool liveAllSportsActive: Plasmoid.configuration.widgetLiveAllSports === true
     // Re-render the lists when a group is collapsed/expanded so collapsed groups
     // drop their match rows from the model entirely (kept lightweight: in-memory,
     // no refetch). Guarded so the very first assignment during startup doesn't run
@@ -479,6 +497,11 @@ PlasmoidItem {
         if (liveMatchesModel.count > 0)
             return true;
 
+        // Live matches in other saved sports ("All saved sports" mode) also keep
+        // the fast poll running, or their scores would only refresh every idle tick.
+        if (root.liveAllSportsEnabled() && root.otherSportsLiveMatches.length > 0)
+            return true;
+
         const now = Date.now();
         const all = (Array.isArray(root.latestScheduleMatches) ? root.latestScheduleMatches : []).concat(Array.isArray(root.latestLiveMatches) ? root.latestLiveMatches : []);
         return all.some(match => {
@@ -544,6 +567,9 @@ PlasmoidItem {
         // phantom live games, then pull everything fresh once the network is up.
         liveMatchesModel.clear();
         root.latestLiveMatches = [];
+        root.otherSportsLiveToken += 1;
+        root.otherSportsLiveMatches = [];
+        heroLiveMatchesModel.clear();
 
         networkRetryTimer.stop();
         root.networkRetryAttempt = 0;
@@ -689,6 +715,12 @@ PlasmoidItem {
     }
 
     function clearVisibleSportState() {
+        // The previous active sport becomes an "other" sport; drop the cached
+        // cross-sport rows so the new active sport is never listed twice while the
+        // cross-sport fetch for the new set is still in flight.
+        root.otherSportsLiveToken += 1;
+        root.otherSportsLiveMatches = [];
+        heroLiveMatchesModel.clear();
         liveMatchesModel.clear();
         scoresModel.clear();
         leaguesMatchesModel.clear();
@@ -955,6 +987,19 @@ PlasmoidItem {
 
     function tooltipScopeEntries() {
         return root.savedSportsModel.tooltipScopeEntries(root.activeSport);
+    }
+
+    // With "All saved sports" on, the panel and tooltip also list live matches from
+    // the other saved sports. These are the panel/tooltip-scope entries of every
+    // sport except the active one (empty while the option is off). Kept apart from
+    // panelScopeEntries()/tooltipScopeEntries() because those also filter the
+    // active sport's schedule/recent rows, which other sports' entries must not.
+    function otherSportsScopeEntries(flagName) {
+        if (!root.liveAllSportsEnabled())
+            return [];
+
+        const activeEntries = root.savedSportsModel.scopeEntries(flagName, root.activeSport);
+        return root.savedSportsModel.scopeEntries(flagName, "").filter(entry => activeEntries.indexOf(entry) < 0);
     }
 
     function optionValues(options) {
@@ -1830,6 +1875,9 @@ PlasmoidItem {
             liveRefreshWatchdogTimer.stop();
             teamTableWatchdogTimer.stop();
             teamTableSeasonWatchdogTimer.stop();
+            root.otherSportsLiveToken += 1;
+            root.otherSportsLiveMatches = [];
+            heroLiveMatchesModel.clear();
             liveMatchesModel.clear();
             scoresModel.clear();
             leaguesMatchesModel.clear();
@@ -1948,6 +1996,7 @@ PlasmoidItem {
             root.liveLoading = false;
             finishRefresh(manual, message, token);
         }, undefined, entry => liveFetchFailedEntries.push(entry));
+        root.refreshOtherSportsLive(manual);
         const hasCompetitionTableScope = root.tableScopeEntries().some(entry => root.entryType(entry) === "competition");
         if (!hasCompetitionTableScope || String(options.league || "").trim().length === 0) {
             root.tableRequestCompleted = true;
@@ -2161,6 +2210,112 @@ PlasmoidItem {
             "scoreboardDaysBack": 1,
             "scoreboardDaysForward": 1
         }, entry => liveFetchFailedEntries.push(entry));
+        root.refreshOtherSportsLive(manual);
+    }
+
+    // ─── Live tab: all saved sports ──────────────────────────────────────────
+    // Live-scope entries of every saved sport EXCEPT the active one (the active
+    // sport has its own fetch/model), grouped by sport in saved-sports order.
+    // Empty while the "All saved sports" option is off.
+    function otherSportsLiveEntryGroups() {
+        const groups = [];
+        if (!root.liveAllSportsEnabled())
+            return groups;
+
+        const activeEntries = root.savedSportsModel.liveScopeEntries(root.activeSport);
+        const bySport = ({});
+        root.savedSportsModel.liveScopeEntries("").forEach(entry => {
+            if (activeEntries.indexOf(entry) >= 0)
+                return;
+
+            const sport = SportVisuals.normalizedSport(entry && entry.sport);
+            if (sport.length === 0)
+                return;
+
+            if (!bySport[sport]) {
+                bySport[sport] = {
+                    "sport": sport,
+                    "entries": []
+                };
+                groups.push(bySport[sport]);
+            }
+            bySport[sport].entries.push(entry);
+        });
+        return groups;
+    }
+
+    // Rank used to order sports in the Live tab: active sport first (0), then the
+    // other saved sports in the order they were added.
+    function liveSportRank(sport) {
+        const normalized = SportVisuals.normalizedSport(sport);
+        if (normalized === SportVisuals.normalizedSport(root.activeSport))
+            return 0;
+
+        const index = root.savedSportsModel.sports.indexOf(normalized);
+        return (index < 0 ? root.savedSportsModel.sports.length : index) + 1;
+    }
+
+    function setOtherSportsLiveMatches(matches) {
+        root.otherSportsLiveMatches = Array.isArray(matches) ? matches : [];
+        // Rebuilds the Live tab model as well (see prunePerMatchStateFromModels).
+        root.prunePerMatchStateFromModels();
+        // The panel and tooltip list these matches too.
+        root.requestAuxiliaryMatchModelsRefresh();
+    }
+
+    // Fetches the live matches of the saved sports other than the active one,
+    // one sport at a time so a failing provider only affects its own sport.
+    function refreshOtherSportsLive(manual) {
+        const token = root.otherSportsLiveToken + 1;
+        root.otherSportsLiveToken = token;
+        const groups = root.otherSportsLiveEntryGroups();
+        if (groups.length === 0) {
+            if (root.otherSportsLiveMatches.length > 0)
+                root.setOtherSportsLiveMatches([]);
+            return;
+        }
+
+        const previous = root.otherSportsLiveMatches;
+        let pending = groups.length;
+        let collected = [];
+        const settleSport = (group, rows, entryFailed) => {
+            let sportRows = rows;
+            // A failed fetch is not "no live matches": keep what this sport showed
+            // before instead of blanking it on one bad poll.
+            if (entryFailed && sportRows.length === 0)
+                sportRows = previous.filter(match => SportVisuals.normalizedSport(match && match.sport) === group.sport);
+            collected = collected.concat(sportRows);
+            pending -= 1;
+            if (pending > 0 || token !== root.otherSportsLiveToken)
+                return;
+
+            root.setOtherSportsLiveMatches(root.dedupLiveMatches(collected));
+        };
+
+        groups.forEach(group => {
+            let entryFailed = false;
+            root.fetchScopedMatches(group.entries, root.refreshToken, manual, SportsApi.fetchLiveScores, matches => {
+                const rank = root.liveSportRank(group.sport);
+                const rows = (Array.isArray(matches) ? matches : []).map(match => {
+                    const copy = root.liveMatchForModel(match);
+                    if (String(copy.sport || "").trim().length === 0)
+                        copy.sport = group.sport;
+                    // Offset by sport rank so cross-sport ordering is stable and the
+                    // active sport (rank 0, scopeOrder < 1000) always sorts first.
+                    const order = Number(copy.scopeOrder);
+                    copy.scopeOrder = rank * 1000 + (Number.isFinite(order) ? order : 999);
+                    return copy;
+                });
+                settleSport(group, rows, entryFailed);
+            }, () => {
+                settleSport(group, [], true);
+            }, {
+                "scoreboardDaysBack": 1,
+                "scoreboardDaysForward": 1
+            }, () => {
+                entryFailed = true;
+            });
+        });
     }
 
     function refreshSchedulesFromTable(options) {
@@ -3190,11 +3345,15 @@ PlasmoidItem {
         return matches.length;
     }
 
-    function appendScopedDisplayModels(entries, liveTarget, scheduleTarget, recentTarget) {
+    function appendScopedDisplayModels(entries, liveTarget, scheduleTarget, recentTarget, otherSportsEntries) {
         liveTarget.clear();
         scheduleTarget.clear();
 
         let liveMatches = root.filterMatchesByEntries(root.latestLiveMatches, entries);
+        // Live matches of the other saved sports ("All saved sports" mode); they
+        // sort after the active sport via their scopeOrder offset.
+        if (Array.isArray(otherSportsEntries) && otherSportsEntries.length > 0)
+            liveMatches = liveMatches.concat(root.filterMatchesByEntries(root.otherSportsLiveMatches, otherSportsEntries));
         liveMatches = root.sortLiveMatches(root.prioritizeFavorite(liveMatches));
         root.appendRows(liveTarget, liveMatches.map(match => root.matchForModel(root.liveMatchForModel(match))));
 
@@ -3221,8 +3380,8 @@ PlasmoidItem {
     }
 
     function refreshAuxiliaryMatchModels() {
-        root.appendScopedDisplayModels(root.panelScopeEntries(), panelLiveMatchesModel, panelScheduleMatchesModel);
-        root.appendScopedDisplayModels(root.tooltipScopeEntries(), tooltipLiveMatchesModel, tooltipScheduleMatchesModel, tooltipRecentMatchesModel);
+        root.appendScopedDisplayModels(root.panelScopeEntries(), panelLiveMatchesModel, panelScheduleMatchesModel, undefined, root.otherSportsScopeEntries("includePanel"));
+        root.appendScopedDisplayModels(root.tooltipScopeEntries(), tooltipLiveMatchesModel, tooltipScheduleMatchesModel, tooltipRecentMatchesModel, root.otherSportsScopeEntries("includeTooltip"));
         if (root.panelRotationCount <= 1)
             root.panelRotationIndex = 0;
         else
@@ -3946,7 +4105,7 @@ PlasmoidItem {
             }
             return out;
         };
-        root.prunePerMatchState(collect(liveMatchesModel), collect(scoresModel));
+        root.prunePerMatchState(collect(liveMatchesModel).concat(root.otherSportsLiveMatches), collect(scoresModel));
         root.rebuildLeaguesModel();
     }
 
@@ -3972,16 +4131,56 @@ PlasmoidItem {
     // tab on the Live tab - live rows are the tab's whole point.
     function rebuildLeaguesModel() {
         const rows = [];
+        const allSports = root.liveAllSportsEnabled();
+        const grouped = root.liveGroupedEnabled();
+        const flatGroup = i18nc("@title:group", "All live matches");
+
+        // Group header for a row. Without "All saved sports" this is the league
+        // (unchanged). With it, grouped rows get "<sport emoji> <Sport> · <league>"
+        // so identical league names from different sports never merge, and the
+        // ungrouped mode puts everything under one shared run.
+        const groupLabelFor = copy => {
+            const league = root.liveLeagueGroupLabel(copy);
+            if (!allSports)
+                return league;
+            if (!grouped)
+                return flatGroup;
+
+            const sport = String(copy.sport || "").trim() || root.activeSport;
+            const sportLabel = SportVisuals.label(sport);
+            const prefix = SportVisuals.emoji(sport) + " " + sportLabel;
+            return league === sportLabel ? prefix : prefix + " · " + league;
+        };
+
+        const pushRow = (m, rank) => {
+            const copy = matchForModel(m);
+            copy.leagueGroup = groupLabelFor(copy);
+            copy._isLive = true;
+            if (allSports && !Number.isFinite(Number(copy.scopeOrder)))
+                copy.scopeOrder = rank * 1000 + 999;
+            rows.push(copy);
+        };
 
         for (let i = 0; i < liveMatchesModel.count; i += 1) {
             const m = liveMatchesModel.get(i);
             if (!m || m.isPlaceholder === true)
                 continue;
-            const copy = matchForModel(m);
-            copy.leagueGroup = root.liveLeagueGroupLabel(copy);
-            copy._isLive = true;
-            rows.push(copy);
+            pushRow(m, 0);
         }
+
+        if (allSports) {
+            root.otherSportsLiveMatches.forEach(m => {
+                if (m)
+                    pushRow(m, root.liveSportRank(m.sport));
+            });
+        }
+
+        // The ungrouped run is a single header; make sure it starts expanded
+        // (groups otherwise default to collapsed in the Live tab).
+        if (allSports && !grouped && rows.length > 0 && root.leaguesCollapsedGroups[flatGroup] === undefined)
+            root.leaguesCollapsedGroups = Object.assign({}, root.leaguesCollapsedGroups, {
+                [flatGroup]: false
+            });
 
         // Per-league priority = smallest scopeOrder seen for the league.
         let leaguePriority = {};
@@ -4026,6 +4225,36 @@ PlasmoidItem {
 
         leaguesMatchesModel.clear();
         root.appendRows(leaguesMatchesModel, rows);
+        root.rebuildHeroLiveModel();
+    }
+
+    // Live model read by the featured match (hero) and the Simple layout when
+    // "All saved sports" is on: the active sport's live rows first (unchanged
+    // order), then the other saved sports' live rows. The rows keep the plain
+    // league group label (no sport prefix) so the Simple layout still merges a
+    // league's live and scheduled matches. Empty - and unused - while the option
+    // is off, when the host reads liveMatchesModel directly.
+    function rebuildHeroLiveModel() {
+        if (!root.liveAllSportsEnabled()) {
+            if (heroLiveMatchesModel.count > 0)
+                heroLiveMatchesModel.clear();
+            return;
+        }
+
+        const rows = [];
+        for (let i = 0; i < liveMatchesModel.count; i += 1) {
+            const m = liveMatchesModel.get(i);
+            if (m && m.isPlaceholder !== true)
+                rows.push(root.matchForModel(m));
+        }
+        const others = root.sortLiveMatches(root.prioritizeFavorite(root.otherSportsLiveMatches));
+        others.forEach(m => {
+            const copy = root.matchForModel(m);
+            copy.leagueGroup = root.liveLeagueGroupLabel(copy);
+            rows.push(copy);
+        });
+        heroLiveMatchesModel.clear();
+        root.appendRows(heroLiveMatchesModel, rows);
     }
 
     property var leaguesGroupSummaries: ({})
@@ -4621,6 +4850,13 @@ PlasmoidItem {
         dynamicRoles: true
     }
 
+    // Combined live model for the hero / Simple layout in "All saved sports" mode
+    // (see rebuildHeroLiveModel).
+    ListModel {
+        id: heroLiveMatchesModel
+        dynamicRoles: true
+    }
+
     ListModel {
         id: scoresModel
         dynamicRoles: true
@@ -4814,6 +5050,7 @@ PlasmoidItem {
             void liveMatchesModel.count;
             void root.latestScheduleMatches;
             void root.latestLiveMatches;
+            void root.otherSportsLiveMatches;
             return root.liveRefreshIntervalMs();
         }
         repeat: true
@@ -5027,6 +5264,28 @@ PlasmoidItem {
                 root.rebuildRecentModel();
         }
 
+        function onWidgetLiveAllSportsChanged() {
+            if (!root._modelRebuildReady)
+                return;
+
+            if (root.liveAllSportsEnabled() && root.hasSportSelection()) {
+                // Switch the hero / Live tab to the combined models right away
+                // (active sport's rows now); the other sports' rows follow as soon
+                // as the cross-sport fetch returns.
+                root.rebuildLeaguesModel();
+                root.refreshOtherSportsLive(true);
+            } else {
+                root.otherSportsLiveToken += 1;
+                root.setOtherSportsLiveMatches([]);
+            }
+        }
+
+        function onWidgetLiveGroupedChanged() {
+            // Pure presentation: regroup the rows already in memory.
+            if (root._modelRebuildReady)
+                root.rebuildLeaguesModel();
+        }
+
         function onWidgetRecentFilterChanged() {
             // Apply the Teams/Competitions/Both filter immediately.
             if (root._modelRebuildReady)
@@ -5181,7 +5440,7 @@ PlasmoidItem {
     }
 
     fullRepresentation: FullRepresentation {
-        liveModel: liveMatchesModel
+        liveModel: root.liveAllSportsActive ? heroLiveMatchesModel : liveMatchesModel
         scoreModel: scoresModel
         recentResultsModel: recentResultsListModel
         loading: root.loading

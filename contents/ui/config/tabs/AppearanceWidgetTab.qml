@@ -254,10 +254,47 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
+                Kirigami.InlineMessage {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+                    visible: widgetTab.simpleLayout
+                    type: Kirigami.MessageType.Information
+                    text: i18nc("@info", "The Live tab belongs to the Detailed layout. In the Simple layout, \"All saved sports\" adds the other sports' live matches to the list, and grouping has no effect.")
+                }
+
+                Switch {
+                    id: liveAllSports
+
+                    Kirigami.FormData.label: i18nc("@label:checkbox", "All saved sports:")
+                    text: checked ? i18nc("@option:check", "Enabled") : i18nc("@option:check", "Disabled")
+                    checked: widgetTab.configRoot.cfg_widgetLiveAllSports
+                    onToggled: widgetTab.configRoot.cfg_widgetLiveAllSports = checked
+                }
+
                 PlasmaComponents.Label {
-                    Kirigami.FormData.isSection: true
-                    text: i18nc("@info:placeholder", "No options yet.")
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+                    wrapMode: Text.WordWrap
                     opacity: 0.7
+                    text: i18nc("@info", "Show the live matches of every saved sport, not only the sport currently selected, in the Live tab, the featured match, the panel and the tooltip (the panel and tooltip still honour each entry's own scope). Notifications keep following the selected sport.")
+                }
+
+                Switch {
+                    Kirigami.FormData.label: i18nc("@label:checkbox", "Group matches:")
+                    text: checked ? i18nc("@option:check", "Grouped") : i18nc("@option:check", "Not grouped")
+                    enabled: liveAllSports.checked
+                    checked: widgetTab.configRoot.cfg_widgetLiveGrouped
+                    onToggled: widgetTab.configRoot.cfg_widgetLiveGrouped = checked
+                }
+
+                PlasmaComponents.Label {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 25
+                    wrapMode: Text.WordWrap
+                    opacity: 0.7
+                    text: liveAllSports.checked
+                        ? i18nc("@info", "Grouped lists matches under a header per sport and competition. Not grouped lists them in a single run ordered by kickoff.")
+                        : i18nc("@info", "Available when \"All saved sports\" is enabled.")
                 }
             }
 

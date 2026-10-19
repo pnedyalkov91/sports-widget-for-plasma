@@ -179,6 +179,18 @@
     <entry name="showTabTables" type="Bool">
       <default>true</default>
     </entry>
+    <!-- List the live matches of ALL saved sports (not only the active sport) in
+         the widget's Live tab and featured match (hero), the panel and the
+         tooltip. Off by default = the active sport only, as before. -->
+    <entry name="widgetLiveAllSports" type="Bool">
+      <default>false</default>
+    </entry>
+    <!-- Live tab, all-sports mode only: group the live matches under per-sport /
+         per-league headers (true) or list them in one flat run ordered by
+         kickoff (false). -->
+    <entry name="widgetLiveGrouped" type="Bool">
+      <default>true</default>
+    </entry>
     <!-- Show the one-click bell / star / pin action icons on each match row. -->
     <entry name="showMatchRowActions" type="Bool">
       <default>true</default>
