@@ -960,6 +960,9 @@ function fetchEspnLiveMatchDetails(options, onSuccess) {
             // draws for per-set tennis scores.
             if (summary.lineScore)
                 base.tennisSets = summary.lineScore;
+            // Hockey period-by-period score (1 / 2 / 3 / OT / T) for the Information tab.
+            if (summary.periodScore)
+                base.periodScore = summary.periodScore;
         }
         finish(onSuccess, base);
     }
@@ -1077,6 +1080,7 @@ function emptyLiveMatchDetails() {
         statsRows: [],
         leaderRows: [],
         playerBox: null,
+        periodScore: null,
         homeEvents: [],
         awayEvents: [],
         events: [],
@@ -1904,13 +1908,19 @@ function espnCricketStatusText(statusObject) {
 // Record line shown under a team in the hero: overall record plus the record for the
 // side the team played on in this game, e.g. "98-64, 43-38 Away". ESPN's scoreboard
 // competitor carries `records` [{ type: "total"|"home"|"road", summary: "98-64" }].
+function espnRecordSport(sportValue) {
+    const sport = normalizedSport(sportValue);
+    return sport === "baseball" || sport === "hockey";
+}
+
 function espnCompetitorRecordText(competitor, side) {
     const records = arrayValue(competitor && competitor.records);
     function summaryOf(types) {
         const record = records.find(item => types.indexOf(stringValue(item && (item.type || item.name)).toLowerCase()) >= 0);
         return stringValue(record && record.summary);
     }
-    const total = summaryOf(["total", "overall"]);
+    // MLB tags the season record "total"; NHL tags it "ytd" (year to date).
+    const total = summaryOf(["total", "overall", "ytd"]);
     const split = side === "home" ? summaryOf(["home"]) : summaryOf(["road", "away"]);
     const parts = [];
     if (total.length > 0)
@@ -1977,8 +1987,9 @@ function normalizeEspnEvent(event, sportValue, options) {
         // Season record + home/away record, shown under the team names in the hero.
         // Baseball only: MLB's feed carries them on every game, other sports keep the
         // hero exactly as it was.
-        homeRecordText: normalizedSport(sportValue) === "baseball" ? espnCompetitorRecordText(home, "home") : "",
-        awayRecordText: normalizedSport(sportValue) === "baseball" ? espnCompetitorRecordText(away, "away") : "",
+        // Record line under each team ("7-2-1, 5-1-0 Away") - baseball and hockey only.
+        homeRecordText: espnRecordSport(sportValue) ? espnCompetitorRecordText(home, "home") : "",
+        awayRecordText: espnRecordSport(sportValue) ? espnCompetitorRecordText(away, "away") : "",
         poster: "",
         popular: false,
         matchPath: "",
@@ -2986,7 +2997,7 @@ function espnStatRecordPair(stats, winNames, lossNames) {
         + "-" + String(numberValue(losses.value !== undefined ? losses.value : losses.displayValue));
 }
 
-function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows) {
+function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows, conference) {
     arrayValue(entries).forEach(entry => {
         // Racing driver standings hang an `athlete` (not a `team`) off each entry; the
         // constructors table (F1) uses `team`. The flag stands in for the crest.
@@ -2998,6 +3009,9 @@ function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows)
             team: stringValue(team.displayName || team.name || team.shortDisplayName || team.shortName),
             group: group,
             groupIndex: groupIndex,
+            // Parent group of a division (NHL "Eastern Conference"); "" when the division
+            // has no named parent. Drives the NHL Wild Card view.
+            conference: stringValue(conference),
             // Cricket stat names: matchesPlayed/matchesWon/matchesLost/matchesTied/
             // matchesDrawn/noResult/matchPoints/netRR (abbreviations M/W/L/N/R/PT/NRR).
             played: espnStatValue(stats, ["gamesplayed", "games played", "gp", "matchesplayed"]),
@@ -3029,7 +3043,23 @@ function normalizeEspnStandingsEntries(entries, group, groupIndex, league, rows)
             homeRecord: espnStatSummary(stats, ["home"], espnStatRecordPair(stats, ["homewins"], ["homelosses"])),
             awayRecord: espnStatSummary(stats, ["road", "away"], espnStatRecordPair(stats, ["roadwins"], ["roadlosses"])),
             lastTen: espnStatSummary(stats, ["last ten games", "lasttengames", "l10"], ""),
-            divisionRecord: espnStatSummary(stats, ["intradivision"], ""),
+            // NHL ships its own-division record as "vs. Div." (type vsdiv).
+            divisionRecord: espnStatSummary(stats, ["intradivision", "vs. div."], ""),
+            // NHL tiebreakers: RW = regulation wins, ROW = regulation + overtime wins.
+            regWins: espnStatValue(stats, ["regwins"]),
+            rowWins: espnStatValue(stats, ["rotwins"]),
+            // Shootout record as "wins-losses" (NHL S/O column).
+            shootoutRecord: espnStatRecordPair(stats, ["shootoutwins"], ["shootoutlosses"]),
+            // Points percentage ".668": points won / points available (2 per game played).
+            pointsPct: (function () {
+                const played = espnStatValue(stats, ["gamesplayed", "games played", "gp"]);
+                const hasOtl = espnStatEntry(stats, ["otlosses", "otl"]) !== null;
+                const pts = espnStatValue(stats, ["points", "pts"]);
+                if (!hasOtl || played <= 0)
+                    return "";
+                const pct = pts / (2 * played);
+                return pct >= 1 ? "1.000" : pct.toFixed(3).replace(/^0/, "");
+            })(),
             // Record against the team's own league ("intraleague") and ESPN's playoff
             // probability ("100.0%", "4.8%") - the LG / POFF columns of the MLB table.
             leagueRecord: espnStatSummary(stats, ["intraleague"], ""),
@@ -3071,19 +3101,21 @@ function espnAddPointsGap(rows) {
 // where only the division carries entries. We want the innermost groups that
 // actually hold teams, so a division-organized league shows each division as its
 // own section rather than a single flat table.
-function espnStandingsLeafGroups(node, out) {
+function espnStandingsLeafGroups(node, out, parentName) {
     if (!node)
         return;
     const children = arrayValue(node.children);
     const entries = arrayValue(node.standings && node.standings.entries);
+    const ownName = stringValue(node.name || node.abbreviation);
     // A node with child groups delegates to them (its own entries, if any, are the
     // roll-up we don't want); only a node with entries and no children is a leaf.
+    // A leaf remembers its direct parent (NHL: division -> conference).
     if (children.length > 0) {
-        children.forEach(child => espnStandingsLeafGroups(child, out));
+        children.forEach(child => espnStandingsLeafGroups(child, out, ownName));
         return;
     }
     if (entries.length > 0)
-        out.push({ name: stringValue(node.name || node.abbreviation), entries: entries });
+        out.push({ name: ownName, parent: stringValue(parentName), entries: entries });
 }
 
 function normalizeEspnStandings(payload, leagueLabel) {
@@ -3101,7 +3133,7 @@ function normalizeEspnStandings(payload, leagueLabel) {
     // soccer division) must stay header-less, not gain a stray section title.
     const labelled = groups.length > 1;
     groups.forEach((group, index) => {
-        normalizeEspnStandingsEntries(group.entries, labelled ? group.name : "", index, league, rows);
+        normalizeEspnStandingsEntries(group.entries, labelled ? group.name : "", index, league, rows, labelled ? group.parent : "");
     });
     espnAddPointsGap(rows);
 
@@ -4392,6 +4424,57 @@ function espnBaseballInfoRows(payload, sides, options) {
     return rows;
 }
 
+// Period-by-period score of a hockey game (the "1 2 3 T" line score of ESPN's NHL game
+// page): { periods: ["1","2","3","OT",...,"T"], rows: [{ team, values: [...] }] }, away
+// side first like ESPN. Period labels: 1-3, then OT (2OT, 3OT in the playoffs) and, when the
+// game ended in a shootout, SO. The last column is the final score. Built from the header
+// competitors' linescores; null when ESPN sent none (e.g. a game that has not started).
+function espnHockeyPeriodScore(payload, sides, options) {
+    const homeComp = sides && sides.homeCompetitor;
+    const awayComp = sides && sides.awayCompetitor;
+    const homeLines = arrayValue(homeComp && homeComp.linescores);
+    const awayLines = arrayValue(awayComp && awayComp.linescores);
+    const count = Math.max(homeLines.length, awayLines.length);
+    if (count === 0)
+        return null;
+    const status = arrayValue(payload && payload.header && payload.header.competitions)[0];
+    const statusText = stringValue(status && status.status && status.status.type
+        && (status.status.type.shortDetail || status.status.type.detail)).toUpperCase();
+    const shootout = /\bSO\b|SHOOTOUT/.test(statusText);
+    const labels = [];
+    for (let i = 1; i <= count; i += 1) {
+        if (i <= 3)
+            labels.push(String(i));
+        else if (shootout && i === count)
+            labels.push("SO");
+        else
+            labels.push(i === 4 ? "OT" : (i - 3) + "OT");
+    }
+    const cell = item => stringValue(item && (item.displayValue !== undefined ? item.displayValue : item.value));
+    function row(comp, team, fallbackName, lines, isHome) {
+        const info = (comp && comp.team) || (team && team.team) || {};
+        const name = stringValue(info.abbreviation || info.shortDisplayName || info.displayName || fallbackName);
+        const values = [];
+        for (let i = 0; i < count; i += 1)
+            values.push(i < lines.length ? cell(lines[i]) : "");
+        // Final score: the header competitor's own, else the score the match row carries.
+        const total = stringValue(comp && comp.score);
+        values.push(total.length > 0 ? total : stringValue(options && (isHome ? options.homeScore : options.awayScore)));
+        return { team: name, values };
+    }
+    // A table of blank cells (feed without per-period numbers) is worse than none.
+    const hasNumbers = homeLines.concat(awayLines).some(item => cell(item).length > 0);
+    if (!hasNumbers)
+        return null;
+    return {
+        periods: labels.concat(["T"]),
+        rows: [
+            row(awayComp, sides && sides.away, stringValue(options && options.awayTeam) || "Away", awayLines, false),
+            row(homeComp, sides && sides.home, stringValue(options && options.homeTeam) || "Home", homeLines, true)
+        ]
+    };
+}
+
 // Fetches ESPN's rich match summary (boxscore team stats, gameInfo, linescores) and
 // builds the statsRows / matchInfoRows / halfTimeScore the details panel renders -
 // the same fields the SportScore path fills. Best-effort: any failure yields an
@@ -4437,6 +4520,7 @@ function fetchEspnMatchSummary(espnSport, espnLeague, eventId, sportValue, optio
                 leaderRows: espnSummaryLeaders(payload && payload.leaders, homeId, awayId),
                 playerBox: espnSummaryPlayerBox(payload && payload.boxscore && payload.boxscore.players, sportValue, homeId, awayId),
                 lineScore: isBaseball ? espnBaseballLineScore(sides) : null,
+                periodScore: normalizedSport(sportValue) === "hockey" ? espnHockeyPeriodScore(payload, sides, options) : null,
                 eventRows: espnKeyEventsRows(payload && payload.keyEvents, homeId, awayId, homeName, awayName)
             };
         } catch (error) {

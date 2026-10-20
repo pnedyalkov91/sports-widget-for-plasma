@@ -34,7 +34,10 @@ QtObject {
     // wrong cached details for already-finished matches. Increment to invalidate.
     // 5: standings rows gained homeRecord/awayRecord/lastTen/streak/clincher/... (MLB table).
     // 6: standings rows gained leagueRecord/playoffPercent; matches gained home/awayRecordText (MLB hero).
-    readonly property int cacheVersion: 7
+    // 8: standings rows gained conference/regWins/rowWins/shootoutRecord/pointsPct (NHL views);
+    //    match details gained periodScore (NHL period line score).
+    // 9: hockey match rows gained home/awayRecordText (NHL record line under team names).
+    readonly property int cacheVersion: 9
 
     function _database() {
         if (cache._db)

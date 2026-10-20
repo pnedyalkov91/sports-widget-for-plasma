@@ -178,6 +178,9 @@ Item {
                     espnLeague: recentRow.model.espnLeague || ""
                     // Owned by the list (see LiveTab) so the chosen details tab
                     // survives the delegate being recreated on scroll.
+                    // NHL results: the Details and Players tabs are hidden (their content
+                    // is folded into Information). Other sports are unchanged.
+                    compactHockeyTabs: true
                     activeDetailsTab: resultsList.expandedDetailsTab
                     onActiveDetailsTabChanged: resultsList.expandedDetailsTab = activeDetailsTab
                     onClicked: {

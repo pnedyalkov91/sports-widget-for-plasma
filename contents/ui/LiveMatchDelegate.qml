@@ -101,6 +101,8 @@ Item {
     // detailsLoader being torn down and rebuilt (e.g. when the row is scrolled out
     // of and back into view), instead of snapping back to the first tab.
     property int activeDetailsTab: 0
+    // Recent results: hide the Details and Players tabs of hockey (NHL) matches.
+    property bool compactHockeyTabs: false
 
     onDetailsChanged: {
         const fresh = root.details && root.details.trackerUrl ? String(root.details.trackerUrl) : "";
@@ -300,6 +302,7 @@ Item {
                 awayTeam: root.awayTeam
                 visitUrl: root.espnMatchUrl
                 sport: root.sport
+                compactHockeyTabs: root.compactHockeyTabs
                 // Restore the selected tab on (re)creation and write user changes
                 // back to the delegate, so it persists across loader teardown.
                 activeDetailsTab: root.activeDetailsTab

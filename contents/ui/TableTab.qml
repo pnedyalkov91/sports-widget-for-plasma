@@ -64,7 +64,7 @@ Item {
     // Baseball (MLB) mirrors ESPN's standings page: record, win %, games behind, home /
     // away records, runs scored / allowed / differential, streak and last ten. Columns are
     // ranked by `priority` (lower = more important); the ones that do not fit the current
-    // popup width are dropped from the least important end, see visibleBaseballColumns().
+    // popup width are dropped from the least important end, see visibleViewColumns().
     readonly property bool isBaseball: String(root.sport || "").toLowerCase() === "baseball"
     // Standings views (ESPN's MLB page tabs):
     //   "division" - AL East, AL Central ... (ESPN's own groups)
@@ -92,12 +92,50 @@ Item {
         { "key": "divisionRecord", "label": i18nc("@title:column baseball record in own division short", "DIV"), "tooltip": i18nc("@info:tooltip", "Record against the team's own division"), "width": 2.8, "emphasized": false, "priority": 8, "expandedOnly": true },
         { "key": "leagueRecord", "label": i18nc("@title:column baseball record in own league short", "LG"), "tooltip": i18nc("@info:tooltip", "Record against the team's own league"), "width": 3.0, "emphasized": false, "priority": 8, "expandedOnly": true }
     ]
+    // Hockey (NHL) mirrors ESPN's NHL standings page the same way baseball does: a view
+    // switch (Standings / League / Wild Card / Expanded) over one set of columns ranked by
+    // `priority`. The views only switch on when the rows carry a conference (ESPN's NHL
+    // standings do); any other hockey table keeps the generic columns.
+    //   "standings" - the four divisions (Atlantic, Metropolitan, Central, Pacific)
+    //   "league"    - all teams in one table, ESPN's /standings/_/group/league
+    //   "wildcard"  - per conference: top 3 of each division, then the wild-card race
+    //   "expanded"  - division tables with every column (scrolls sideways when wide)
+    readonly property bool isHockey: String(root.sport || "").toLowerCase() === "hockey"
+    readonly property bool hockeyViewsActive: root.isHockey && root.rowCount > 0
+        && String(root.tableRows[0].conference || "").length > 0
+    property string selectedHockeyView: "standings"
+    readonly property bool showHockeyTabs: root.hockeyViewsActive
+    readonly property bool hockeyExpanded: root.hockeyViewsActive && root.selectedHockeyView === "expanded"
+    readonly property var hockeyViews: ["standings", "league", "wildcard", "expanded"]
+    readonly property var hockeyColumns: [
+        { "key": "played", "label": i18nc("@title:column hockey games played short", "GP"), "tooltip": i18nc("@info:tooltip", "Games played"), "width": 1.9, "emphasized": false, "priority": 1 },
+        { "key": "won", "label": i18nc("@title:column hockey wins short", "W"), "tooltip": i18nc("@info:tooltip", "Wins"), "width": 1.7, "emphasized": false, "priority": 1 },
+        { "key": "lost", "label": i18nc("@title:column hockey losses short", "L"), "tooltip": i18nc("@info:tooltip", "Losses"), "width": 1.7, "emphasized": false, "priority": 1 },
+        { "key": "otLosses", "label": i18nc("@title:column hockey overtime losses short", "OTL"), "tooltip": i18nc("@info:tooltip", "Overtime / shootout losses"), "width": 2.0, "emphasized": false, "priority": 1 },
+        { "key": "points", "label": i18nc("@title:column hockey points short", "PTS"), "tooltip": i18nc("@info:tooltip", "Points"), "width": 2.1, "emphasized": true, "priority": 1 },
+        { "key": "pointsPct", "label": i18nc("@title:column hockey points percentage short", "P%"), "tooltip": i18nc("@info:tooltip", "Points percentage (points won out of points available)"), "width": 2.5, "emphasized": false, "priority": 7 },
+        { "key": "regWins", "label": i18nc("@title:column hockey regulation wins short", "RW"), "tooltip": i18nc("@info:tooltip", "Regulation wins"), "width": 2.0, "emphasized": false, "priority": 8, "expandedOnly": true },
+        { "key": "rowWins", "label": i18nc("@title:column hockey regulation plus overtime wins short", "ROW"), "tooltip": i18nc("@info:tooltip", "Regulation plus overtime wins (first tiebreaker after points)"), "width": 2.3, "emphasized": false, "priority": 2 },
+        { "key": "goalsFor", "label": i18nc("@title:column hockey goals for short", "GF"), "tooltip": i18nc("@info:tooltip", "Goals for"), "width": 2.1, "emphasized": false, "priority": 5 },
+        { "key": "goalsAgainst", "label": i18nc("@title:column hockey goals against short", "GA"), "tooltip": i18nc("@info:tooltip", "Goals against"), "width": 2.1, "emphasized": false, "priority": 5 },
+        { "key": "goalDifference", "label": i18nc("@title:column hockey goal differential short", "DIFF"), "tooltip": i18nc("@info:tooltip", "Goal differential"), "width": 2.5, "emphasized": false, "priority": 3 },
+        { "key": "homeRecord", "label": i18nc("@title:column hockey home record short", "HOME"), "tooltip": i18nc("@info:tooltip", "Home record (W-L-OTL)"), "width": 3.0, "emphasized": false, "priority": 6 },
+        { "key": "awayRecord", "label": i18nc("@title:column hockey away record short", "AWAY"), "tooltip": i18nc("@info:tooltip", "Away record (W-L-OTL)"), "width": 3.0, "emphasized": false, "priority": 6 },
+        { "key": "shootoutRecord", "label": i18nc("@title:column hockey shootout record short", "S/O"), "tooltip": i18nc("@info:tooltip", "Shootout record (wins-losses)"), "width": 2.3, "emphasized": false, "priority": 7 },
+        { "key": "lastTen", "label": i18nc("@title:column hockey last ten games short", "L10"), "tooltip": i18nc("@info:tooltip", "Record in the last ten games (W-L-OTL)"), "width": 2.8, "emphasized": false, "priority": 4 },
+        { "key": "streak", "label": i18nc("@title:column hockey streak short", "STRK"), "tooltip": i18nc("@info:tooltip", "Current winning / losing streak"), "width": 2.6, "emphasized": false, "priority": 2 },
+        { "key": "divisionRecord", "label": i18nc("@title:column hockey record in own division short", "DIV"), "tooltip": i18nc("@info:tooltip", "Record against the team's own division (W-L-OTL)"), "width": 2.9, "emphasized": false, "priority": 8, "expandedOnly": true }
+    ]
+    // Either of the two view-switched standings (MLB or NHL) is showing.
+    readonly property bool viewsActive: root.isBaseball || root.hockeyViewsActive
+    readonly property string activeView: root.isBaseball ? root.selectedBaseballView : root.selectedHockeyView
+    readonly property bool viewsExpanded: root.baseballExpanded || root.hockeyExpanded
     readonly property var tableColumns: root.isRacing ? root.racingColumns
-        : (root.isBaseball ? root.visibleBaseballColumns(root.width) : SportScoreSports.standingsColumns(root.sport, i18nc))
+        : (root.viewsActive ? root.visibleViewColumns(root.width) : SportScoreSports.standingsColumns(root.sport, i18nc))
     // Total row width (px) of the Expanded view, which scrolls sideways instead of
     // dropping columns; 0 for every other view/sport.
     readonly property real expandedContentWidth: {
-        if (!root.baseballExpanded)
+        if (!root.viewsExpanded)
             return 0;
         const unit = Kirigami.Units.gridUnit;
         const gap = Kirigami.Units.smallSpacing / unit;
@@ -105,7 +143,7 @@ Item {
         root.tableColumns.forEach(column => { units += column.width + gap; });
         return units * unit + 4 * Kirigami.Units.smallSpacing;
     }
-    readonly property bool tableHasForm: (root.isRacing || root.isBaseball) ? false : SportScoreSports.standingsHasForm(root.sport)
+    readonly property bool tableHasForm: (root.isRacing || root.viewsActive) ? false : SportScoreSports.standingsHasForm(root.sport)
     readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
     readonly property color tableSecondaryTextColor: Kirigami.Theme.disabledTextColor
     readonly property color tableHighlightTextColor: Kirigami.Theme.linkColor
@@ -157,10 +195,10 @@ Item {
     // W / L / PCT / GB (+ streak ...) and a wide one shows the whole ESPN column set.
     // Columns of the selected baseball view. The expanded-only ones (DIV / LG) appear only
     // in the Expanded view; the Wild Card view calls its games-behind column WCGB.
-    function baseballColumnsForView() {
-        const expanded = root.selectedBaseballView === "expanded";
-        const wildCard = root.selectedBaseballView === "wildcard";
-        return root.baseballColumns
+    function viewColumnsForView() {
+        const expanded = root.activeView === "expanded";
+        const wildCard = root.isBaseball && root.activeView === "wildcard";
+        return (root.isBaseball ? root.baseballColumns : root.hockeyColumns)
             .filter(column => expanded || column.expandedOnly !== true)
             .map(column => (wildCard && column.key === "gamesBehind")
                 ? Object.assign({}, column, {
@@ -171,11 +209,11 @@ Item {
                 : column);
     }
 
-    function visibleBaseballColumns(widthPx) {
-        const all = root.baseballColumnsForView();
+    function visibleViewColumns(widthPx) {
+        const all = root.viewColumnsForView();
         const unit = Kirigami.Units.gridUnit;
         // The Expanded view never drops columns - it scrolls sideways instead.
-        if (!(widthPx > 0) || unit <= 0 || root.selectedBaseballView === "expanded")
+        if (!(widthPx > 0) || unit <= 0 || root.activeView === "expanded")
             return all;
 
         const gap = Kirigami.Units.smallSpacing / unit;
@@ -335,10 +373,101 @@ Item {
         return result;
     }
 
+    // NHL ranking: points, then fewer games played, then regulation wins, regulation +
+    // overtime wins and goal differential (the league's own tiebreak order).
+    function hockeySorted(list) {
+        return list.slice().sort((left, right) => Number(right.points || 0) - Number(left.points || 0)
+            || Number(left.played || 0) - Number(right.played || 0)
+            || Number(right.regWins || 0) - Number(left.regWins || 0)
+            || Number(right.rowWins || 0) - Number(left.rowWins || 0)
+            || Number(right.goalDifference || 0) - Number(left.goalDifference || 0));
+    }
+
+    function hockeyNumbered(list) {
+        return list.map((row, index) => Object.assign({}, row, { "position": index + 1 }));
+    }
+
+    // Wild Card view: for each conference the top three of every division, then the rest of
+    // the conference ranked as the wild-card race (the first two get the wild cards).
+    // Derived from the standings rows - ESPN's feed has no separate wild-card table.
+    function hockeyWildCardGroups(rows) {
+        const conferences = [];
+        const byConference = {};
+        rows.forEach(row => {
+            const conference = String(row.conference || "").trim();
+            const division = String(row.group || "").trim();
+            if (byConference[conference] === undefined) {
+                byConference[conference] = conferences.length;
+                conferences.push({ "name": conference, "divisions": {}, "order": [] });
+            }
+            const entry = conferences[byConference[conference]];
+            if (entry.divisions[division] === undefined) {
+                entry.divisions[division] = [];
+                entry.order.push(division);
+            }
+            entry.divisions[division].push(row);
+        });
+
+        let result = [];
+        conferences.forEach(conference => {
+            let rest = [];
+            conference.order.forEach(division => {
+                const ranked = root.hockeySorted(conference.divisions[division]);
+                result.push({ "isGroupHeader": true, "group": i18nc("@title:group hockey division of a conference", "%1 · %2", conference.name, division) });
+                result = result.concat(root.hockeyNumbered(ranked.slice(0, 3)));
+                rest = rest.concat(ranked.slice(3));
+            });
+            result.push({ "isGroupHeader": true, "group": i18nc("@title:group hockey wild card race of a conference", "%1 · Wild Card", conference.name) });
+            result = result.concat(root.hockeyNumbered(root.hockeySorted(rest)));
+        });
+        return result;
+    }
+
+    // Hockey rows for the selected view. Standings / Expanded: each division ranked 1..n;
+    // League: every team ranked together; Wild Card: hockeyWildCardGroups().
+    function hockeyGroups() {
+        const rows = root.tableRows || [];
+        const view = root.selectedHockeyView;
+        if (view === "wildcard")
+            return root.hockeyWildCardGroups(rows);
+        if (view === "league")
+            return root.hockeyNumbered(root.hockeySorted(rows));
+
+        const groups = [];
+        const byName = {};
+        rows.forEach(row => {
+            const name = String(row.group || "").trim();
+            if (byName[name] === undefined) {
+                byName[name] = groups.length;
+                groups.push({ "name": name, "rows": [] });
+            }
+            groups[byName[name]].rows.push(row);
+        });
+        let result = [];
+        groups.forEach(group => {
+            if (group.name.length > 0)
+                result.push({ "isGroupHeader": true, "group": group.name });
+            result = result.concat(root.hockeyNumbered(root.hockeySorted(group.rows)));
+        });
+        return result;
+    }
+
+    function hockeyViewLabel(view) {
+        if (view === "league")
+            return i18nc("@title:tab hockey standings of all teams", "League");
+        if (view === "wildcard")
+            return i18nc("@title:tab hockey wild card race", "Wild Card");
+        if (view === "expanded")
+            return i18nc("@title:tab hockey standings with all columns", "Expanded");
+        return i18nc("@title:tab hockey standings by division", "Standings");
+    }
+
     function groupedRows() {
         const rows = root.tableRows || [];
         if (root.isBaseball && rows.length > 0)
             return root.baseballGroups();
+        if (root.hockeyViewsActive)
+            return root.hockeyGroups();
         // Racing with several tables: show only the selected one, no inner header.
         if (root.showRacingTabs) {
             const wanted = root.effectiveRacingGroup;
@@ -377,7 +506,7 @@ Item {
             return label.length > 0 ? i18nc("@label", "%1 Rankings", label) : i18nc("@label", "Rankings");
         if (root.isRacing)
             return label.length > 0 ? i18nc("@label", "%1 Standings", label) : i18nc("@label", "Championship Standings");
-        if (root.isBaseball)
+        if (root.viewsActive)
             return label.length > 0 ? i18nc("@label", "%1 Standings", label) : i18nc("@label", "Standings");
         return label.length > 0 ? i18nc("@label", "%1 Table", label) : i18nc("@label", "League Table");
     }
@@ -500,6 +629,27 @@ Item {
                     text: root.baseballViewLabel(String(modelData))
                     active: String(modelData) === root.selectedBaseballView
                     onClicked: root.selectedBaseballView = String(modelData)
+                }
+            }
+        }
+
+        // Hockey: Standings / League / Wild Card / Expanded view switch.
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+            visible: root.showHockeyTabs
+
+            Repeater {
+                model: root.showHockeyTabs ? root.hockeyViews : []
+
+                TourTab {
+                    required property var modelData
+
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    text: root.hockeyViewLabel(String(modelData))
+                    active: String(modelData) === root.selectedHockeyView
+                    onClicked: root.selectedHockeyView = String(modelData)
                 }
             }
         }
@@ -861,8 +1011,8 @@ Item {
         function valueForColumn(column) {
             const key = String(column && column.key || "");
             const value = rowData && rowData[key] !== undefined && rowData[key] !== null ? rowData[key] : 0;
-            if (root.isBaseball) {
-                // ESPN-style baseball cells: a signed run differential and "-" for
+            if (root.viewsActive) {
+                // ESPN-style cells: a signed run differential and "-" for
                 // anything the API did not provide (streak before a first game ...).
                 if (key === "goalDifference") {
                     const diff = Number(value) || 0;
@@ -880,7 +1030,7 @@ Item {
         // Baseball colouring: winning streak / positive run differential in green, losing
         // streak / negative differential in red; everything else keeps the theme colour.
         function colorForColumn(column) {
-            if (!root.isBaseball)
+            if (!root.viewsActive)
                 return root.tablePrimaryTextColor;
             const key = String(column && column.key || "");
             if (key === "streak") {
@@ -935,7 +1085,7 @@ Item {
             PlasmaComponents.Label {
                 id: clinchMarker
 
-                visible: root.isBaseball
+                visible: root.viewsActive
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 0.9
                 text: tableRow.clincher
                 horizontalAlignment: Text.AlignHCenter

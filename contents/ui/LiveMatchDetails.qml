@@ -30,6 +30,16 @@ Item {
     property string awayTeam: ""
     property string sport: ""
     property int activeDetailsTab: 0
+    // Recent results: for hockey the Details and Players tabs are not offered; the period
+    // score and the player box score are shown in the Information tab instead.
+    property bool compactHockeyTabs: false
+    readonly property bool compactTabs: root.compactHockeyTabs && String(root.sport || "").toLowerCase() === "hockey"
+    readonly property bool showDetailsTab: !root.compactTabs
+    readonly property bool showPlayersTab: root.hasPlayersTab && !root.compactTabs
+    // Stack page actually shown: a hidden tab's page falls back to Information.
+    readonly property int shownTab: (root.compactTabs && root.activeDetailsTab === 1)
+        || (root.compactTabs && root.hasPlayersTab && root.activeDetailsTab === root.tabIndex("players"))
+        ? 0 : root.activeDetailsTab
     // Public ESPN gamecast URL for this match (empty for non-ESPN matches); when
     // set, a "Visit on ESPN" link is offered in the Information tab.
     property string visitUrl: ""
@@ -66,7 +76,9 @@ Item {
     readonly property bool hasLeaders: leaderRows.some(row => String(row.homeName || "").length > 0 || String(row.awayName || "").length > 0)
     readonly property bool hasEvents: eventsRows.length > 0
     readonly property bool hasLineups: homeStarting.length > 0 || awayStarting.length > 0 || homeSubstitutes.length > 0 || awaySubstitutes.length > 0
-    readonly property bool hasInformation: matchInfoRows.length > 0 || competitionLogo.length > 0 || competitionName.length > 0 || homeFormation.length > 0 || awayFormation.length > 0 || hasLineups || root.visitUrl.length > 0
+    readonly property var periodScore: details && details.periodScore ? details.periodScore : null
+    readonly property bool hasPeriodScore: periodScore !== null && Array.isArray(periodScore.rows) && periodScore.rows.length > 0
+    readonly property bool hasInformation: hasPeriodScore || matchInfoRows.length > 0 || competitionLogo.length > 0 || competitionName.length > 0 || homeFormation.length > 0 || awayFormation.length > 0 || hasLineups || root.visitUrl.length > 0
     readonly property var tennisSets: details && details.tennisSets ? details.tennisSets : null
     readonly property var tennisPlayerComparison: details && details.tennisPlayerComparison ? details.tennisPlayerComparison : null
     readonly property bool hasTennisSets: tennisSets !== null && Array.isArray(tennisSets.rows) && tennisSets.rows.length > 0
@@ -131,6 +143,14 @@ Item {
         }
     }
 
+    // Nested arrays inside a delegate's modelData (box-score rows, period cells ...) are
+    // Qt list wrappers: Array.isArray() is false for them although they index and iterate
+    // like arrays. Returns such a list unchanged, or [] for anything that is not one.
+    function listOf(value) {
+        return value !== undefined && value !== null && typeof value !== "string"
+            && typeof value.length === "number" ? value : [];
+    }
+
     function withAlpha(color, alpha) {
         return Qt.rgba(color.r, color.g, color.b, alpha);
     }
@@ -139,6 +159,26 @@ Item {
     // present, in declaration order: Information, Details, [Statistics], [Players],
     // [Tracker]. Used so a tab click sets activeDetailsTab to the right value
     // without depending on the TabBar's own (churning) index bookkeeping.
+    // Position of stack page `page` among the tab buttons actually shown (the Details and
+    // Players buttons are not created when hidden, but their pages keep their index).
+    function visibleTabPosition(page) {
+        let position = 0;
+        const pages = ["information"];
+        if (root.showDetailsTab)
+            pages.push("details");
+        if (root.hasStatisticsTab)
+            pages.push("statistics");
+        if (root.showPlayersTab)
+            pages.push("players");
+        if (root.hasFootballTracker)
+            pages.push("tracker");
+        for (let i = 0; i < pages.length; i += 1) {
+            if (root.tabIndex(pages[i]) === page)
+                position = i;
+        }
+        return position;
+    }
+
     function tabIndex(name) {
         if (name === "information")
             return 0;
@@ -313,7 +353,7 @@ Item {
                 // currentIndex to 0 and would otherwise clobber the user's selection,
                 // snapping them back to Information. Selection changes only via an
                 // explicit TabButton click (onClicked below).
-                currentIndex: Math.min(root.activeDetailsTab, count - 1)
+                currentIndex: Math.max(0, Math.min(root.visibleTabPosition(root.shownTab), count - 1))
 
                 // A Qt Quick TabBar also cycles tabs on wheel/scroll events; swallow
                 // them so scrolling the panel can't change the tab either.
@@ -327,9 +367,13 @@ Item {
                     onClicked: root.activeDetailsTab = 0
                 }
 
-                PlasmaComponents.TabButton {
-                    text: i18nc("@tab:match details", "Details")
-                    onClicked: root.activeDetailsTab = 1
+                Repeater {
+                    model: root.showDetailsTab ? 1 : 0
+
+                    PlasmaComponents.TabButton {
+                        text: i18nc("@tab:match details", "Details")
+                        onClicked: root.activeDetailsTab = 1
+                    }
                 }
 
                 Repeater {
@@ -342,7 +386,7 @@ Item {
                 }
 
                 Repeater {
-                    model: root.hasPlayersTab ? 1 : 0
+                    model: root.showPlayersTab ? 1 : 0
 
                     PlasmaComponents.TabButton {
                         text: i18nc("@tab:match details", "Players")
@@ -372,7 +416,7 @@ Item {
                 // BREAKING this binding - and the clamped value would stick even after
                 // the page returns. Keeping the expression in-range means the binding
                 // stays live and the view snaps back to the right tab when it returns.
-                currentIndex: Math.max(0, Math.min(root.activeDetailsTab, count - 1))
+                currentIndex: Math.max(0, Math.min(root.shownTab, count - 1))
 
                 // A StackLayout's implicitHeight is the MAX of every page, so the
                 // expanded card would always be as tall as the tallest tab (e.g. the
@@ -430,6 +474,14 @@ Item {
                         onClicked: Qt.openUrlExternally(root.visitUrl)
                     }
 
+                    // Hockey: period-by-period score (1 / 2 / 3 / OT / T).
+                    PeriodScoreTable {
+                        Layout.fillWidth: true
+                        visible: root.hasPeriodScore
+                        periods: root.periodScore ? root.periodScore.periods : []
+                        scoreRows: root.periodScore ? root.periodScore.rows : []
+                    }
+
                     Repeater {
                         model: root.matchInfoRows
 
@@ -456,6 +508,35 @@ Item {
                         title: i18nc("@label:football lineups", "Substitutes")
                         homePlayers: root.homeSubstitutes
                         awayPlayers: root.awaySubstitutes
+                    }
+
+                    // Hockey results: the Players tab is hidden, so its box score
+                    // (skaters / goalies of both teams) is listed here instead.
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: root.compactTabs && root.hasPlayersTab
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PlasmaComponents.Label {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Kirigami.Units.smallSpacing
+                            text: i18nc("@title:group match details", "Players")
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            font.bold: true
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+
+                        PlayerBoxTeam {
+                            Layout.fillWidth: true
+                            teamName: root.homeTeam
+                            sections: root.homePlayerSections
+                        }
+
+                        PlayerBoxTeam {
+                            Layout.fillWidth: true
+                            teamName: root.awayTeam
+                            sections: root.awayPlayerSections
+                        }
                     }
 
                     EmptyTabPlaceholder {
@@ -716,6 +797,93 @@ Item {
                 Layout.fillWidth: true
                 visible: !root.loading && root.errorText.length === 0 && !root.hasAnyDetails
                 text: i18nc("@info:placeholder", "No match details available")
+            }
+        }
+    }
+
+    // "1 2 3 T" line score in ESPN's game-header style: a header row of period labels over
+    // a thin rule, then one row per team (abbreviation, goals per period, bold total).
+    // A single centred block; every column has a fixed width so the rows line up.
+    component PeriodScoreTable: Item {
+        id: periodTable
+
+        property var periods: []
+        property var scoreRows: []
+        readonly property real cellWidth: Kirigami.Units.gridUnit * 2.2
+        readonly property real teamWidth: Kirigami.Units.gridUnit * 3.5
+
+        implicitHeight: tableColumn.implicitHeight
+
+        ColumnLayout {
+            id: tableColumn
+
+            anchors.horizontalCenter: parent.horizontalCenter
+            spacing: 2
+
+            RowLayout {
+                spacing: 0
+
+                Item {
+                    Layout.preferredWidth: periodTable.teamWidth
+                }
+
+                Repeater {
+                    model: periodTable.periods
+
+                    PlasmaComponents.Label {
+                        required property var modelData
+
+                        Layout.preferredWidth: periodTable.cellWidth
+                        text: String(modelData)
+                        color: Kirigami.Theme.disabledTextColor
+                        font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 1
+                color: Kirigami.Theme.disabledTextColor
+                opacity: 0.4
+            }
+
+            Repeater {
+                model: periodTable.scoreRows
+
+                delegate: RowLayout {
+                    id: periodTeamRow
+
+                    required property var modelData
+                    // Nested arrays reach a delegate as Qt list wrappers (Array.isArray is
+                    // false for them), so take the list through root.listOf().
+                    readonly property var cells: root.listOf(periodTeamRow.modelData.values)
+
+                    spacing: 0
+
+                    PlasmaComponents.Label {
+                        Layout.preferredWidth: periodTable.teamWidth
+                        text: String(periodTeamRow.modelData.team || "")
+                        font.bold: true
+                        elide: Text.ElideRight
+                    }
+
+                    Repeater {
+                        model: periodTeamRow.cells
+
+                        PlasmaComponents.Label {
+                            required property var modelData
+                            required property int index
+
+                            Layout.preferredWidth: periodTable.cellWidth
+                            text: String(modelData)
+                            // The last column is the final score (T).
+                            font.bold: index === periodTeamRow.cells.length - 1
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+                }
             }
         }
     }
@@ -1392,11 +1560,11 @@ Item {
                     Layout.fillWidth: true
                     header: true
                     name: ""
-                    values: Array.isArray(modelData.columns) ? modelData.columns : []
+                    values: root.listOf(modelData.columns)
                 }
 
                 Repeater {
-                    model: Array.isArray(modelData.rows) ? modelData.rows : []
+                    model: root.listOf(modelData.rows)
 
                     delegate: PlayerBoxRow {
                         required property var modelData
@@ -1405,7 +1573,7 @@ Item {
                         name: String(modelData.number || "").length > 0
                             ? String(modelData.number) + "  " + String(modelData.name || "")
                             : String(modelData.name || "")
-                        values: Array.isArray(modelData.values) ? modelData.values : []
+                        values: root.listOf(modelData.values)
                         highlight: modelData.starter === true
                     }
                 }
