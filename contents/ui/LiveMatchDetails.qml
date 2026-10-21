@@ -34,10 +34,14 @@ Item {
     // score and the player box score are shown in the Information tab instead.
     property bool compactHockeyTabs: false
     readonly property bool compactTabs: root.compactHockeyTabs && String(root.sport || "").toLowerCase() === "hockey"
-    readonly property bool showDetailsTab: !root.compactTabs
+    // Baseball has no per-event feed for the Details tab (its line score and scoring plays
+    // are in the Information tab), so the tab is only offered when it has real content.
+    readonly property bool detailsTabEmpty: String(root.sport || "").toLowerCase() === "baseball"
+        && !root.hasEvents && !root.hasTennisSets
+    readonly property bool showDetailsTab: !root.compactTabs && !root.detailsTabEmpty
     readonly property bool showPlayersTab: root.hasPlayersTab && !root.compactTabs
     // Stack page actually shown: a hidden tab's page falls back to Information.
-    readonly property int shownTab: (root.compactTabs && root.activeDetailsTab === 1)
+    readonly property int shownTab: (!root.showDetailsTab && root.activeDetailsTab === 1)
         || (root.compactTabs && root.hasPlayersTab && root.activeDetailsTab === root.tabIndex("players"))
         ? 0 : root.activeDetailsTab
     // Public ESPN gamecast URL for this match (empty for non-ESPN matches); when
@@ -475,11 +479,13 @@ Item {
                     }
 
                     // Hockey: period-by-period score (1 / 2 / 3 / OT / T).
+                    // Baseball: runs per inning plus the R / H / E totals.
                     PeriodScoreTable {
                         Layout.fillWidth: true
                         visible: root.hasPeriodScore
                         periods: root.periodScore ? root.periodScore.periods : []
                         scoreRows: root.periodScore ? root.periodScore.rows : []
+                        totalColumns: root.periodScore && Number(root.periodScore.totalColumns) > 0 ? Number(root.periodScore.totalColumns) : 1
                     }
 
                     Repeater {
@@ -803,14 +809,20 @@ Item {
 
     // "1 2 3 T" line score in ESPN's game-header style: a header row of period labels over
     // a thin rule, then one row per team (abbreviation, goals per period, bold total).
-    // A single centred block; every column has a fixed width so the rows line up.
+    // A single centred block; every column has the same width so the rows line up. The
+    // width shrinks for long lines (a baseball line score has 12+ columns) so the block
+    // still fits the panel; a short hockey line keeps the full width.
     component PeriodScoreTable: Item {
         id: periodTable
 
         property var periods: []
         property var scoreRows: []
-        readonly property real cellWidth: Kirigami.Units.gridUnit * 2.2
+        // How many trailing columns are totals (bold): T for hockey, R / H / E for baseball.
+        property int totalColumns: 1
         readonly property real teamWidth: Kirigami.Units.gridUnit * 3.5
+        readonly property real cellWidth: Math.max(Kirigami.Units.gridUnit * 1.2,
+            Math.min(Kirigami.Units.gridUnit * 2.2,
+                (periodTable.width - periodTable.teamWidth) / Math.max(1, periodTable.periods.length)))
 
         implicitHeight: tableColumn.implicitHeight
 
@@ -878,8 +890,8 @@ Item {
 
                             Layout.preferredWidth: periodTable.cellWidth
                             text: String(modelData)
-                            // The last column is the final score (T).
-                            font.bold: index === periodTeamRow.cells.length - 1
+                            // The trailing column(s) are the totals (T, or R / H / E).
+                            font.bold: index >= periodTeamRow.cells.length - periodTable.totalColumns
                             horizontalAlignment: Text.AlignHCenter
                         }
                     }

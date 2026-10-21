@@ -37,7 +37,9 @@ QtObject {
     // 8: standings rows gained conference/regWins/rowWins/shootoutRecord/pointsPct (NHL views);
     //    match details gained periodScore (NHL period line score).
     // 9: hockey match rows gained home/awayRecordText (NHL record line under team names).
-    readonly property int cacheVersion: 9
+    // 10: baseball match details moved the line score from tennisSets (rendered as bare dots in
+    //     the Details tab) to periodScore (innings + R/H/E table in the Information tab).
+    readonly property int cacheVersion: 10
 
     function _database() {
         if (cache._db)

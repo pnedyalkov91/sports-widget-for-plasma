@@ -956,11 +956,8 @@ function fetchEspnLiveMatchDetails(options, onSuccess) {
                 base.lineups = summary.lineups;
             if (summary.playerBox)
                 base.playerBox = summary.playerBox;
-            // Baseball line score (innings + R/H/E) rides the table the panel already
-            // draws for per-set tennis scores.
-            if (summary.lineScore)
-                base.tennisSets = summary.lineScore;
-            // Hockey period-by-period score (1 / 2 / 3 / OT / T) for the Information tab.
+            // Period table for the Information tab: hockey (1 / 2 / 3 / OT / T) or
+            // baseball (innings + R / H / E).
             if (summary.periodScore)
                 base.periodScore = summary.periodScore;
         }
@@ -4274,17 +4271,25 @@ function espnBaseballGroupTotals(teamPlayers, groupType) {
     return result;
 }
 
+// The boxscore.players entry of each side, matched by team id (array order as fallback).
+function espnBaseballSidePlayers(payload, sides) {
+    const players = arrayValue(payload && payload.boxscore && payload.boxscore.players);
+    const homeId = stringValue(sides && sides.home && sides.home.team && sides.home.team.id);
+    const awayId = stringValue(sides && sides.away && sides.away.team && sides.away.team.id);
+    const byId = id => players.find(team => stringValue(team && team.team && team.team.id) === id);
+    const home = byId(homeId) || players[0] || null;
+    const away = byId(awayId) || (players[1] === home ? players[0] : players[1]) || null;
+    return { home, away };
+}
+
 // Statistics tab rows for a baseball game: { kind, label, homeValue, awayValue, ... } in
 // the same shape as espnSummaryStatsRows. Game numbers first (hits, errors, home runs,
 // RBI, walks, strikeouts, stolen bases + pitching), then a few season team stats so the
 // tab is never empty while a box score is still being filled in.
 function espnBaseballStatsRows(payload, sides) {
-    const players = arrayValue(payload && payload.boxscore && payload.boxscore.players);
-    const homeId = stringValue(sides.home && sides.home.team && sides.home.team.id);
-    const awayId = stringValue(sides.away && sides.away.team && sides.away.team.id);
-    const byId = id => players.find(team => stringValue(team && team.team && team.team.id) === id);
-    const homePlayers = byId(homeId) || players[0] || null;
-    const awayPlayers = byId(awayId) || (players[1] === homePlayers ? players[0] : players[1]) || null;
+    const sidePlayers = espnBaseballSidePlayers(payload, sides);
+    const homePlayers = sidePlayers.home;
+    const awayPlayers = sidePlayers.away;
     const homeBat = espnBaseballGroupTotals(homePlayers, "batting");
     const awayBat = espnBaseballGroupTotals(awayPlayers, "batting");
     const homePitch = espnBaseballGroupTotals(homePlayers, "pitching");
@@ -4343,11 +4348,14 @@ function espnBaseballStatsRows(payload, sides) {
     return rows;
 }
 
-// Line score for a baseball game as a table: one row per inning plus the R / H / E
-// totals, one value column per side. Uses the same { title, rows:[{ label, homeValue,
-// awayValue }] } shape as the tennis set-by-set table (details.tennisSets), which the
-// details panel already renders as a two-column grid under the team names.
-function espnBaseballLineScore(sides) {
+// Line score of a baseball game for the Information tab's period table (the same
+// PeriodScoreTable hockey uses): { periods: ["1".."9", "R", "H", "E"], totalColumns: 3,
+// rows: [{ team, values }] }, away side first like ESPN. Runs per inning come from the
+// header competitors' linescores. R / H / E are only listed when ESPN supplied them for
+// at least one side (the box score's batting totals stand in for hits), so a column
+// the feed does not support is left out instead of being shown blank. null when ESPN
+// sent no inning numbers at all (e.g. a game that has not started).
+function espnBaseballPeriodScore(payload, sides, options) {
     const homeComp = sides && sides.homeCompetitor;
     const awayComp = sides && sides.awayCompetitor;
     const cell = item => stringValue(item && (item.displayValue !== undefined ? item.displayValue : item.value));
@@ -4356,21 +4364,55 @@ function espnBaseballLineScore(sides) {
     const innings = Math.max(homeLines.length, awayLines.length);
     if (innings === 0)
         return null;
-    const rows = [];
-    for (let i = 0; i < innings; i += 1) {
-        // A side with no cell for an inning (home yet to bat, or not needing the 9th) stays blank.
-        const homeCell = i < homeLines.length ? cell(homeLines[i]) : "";
-        const awayCell = i < awayLines.length ? cell(awayLines[i]) : "";
-        rows.push({ label: String(i + 1), homeValue: homeCell, awayValue: awayCell });
+    if (!homeLines.concat(awayLines).some(item => cell(item).length > 0))
+        return null;
+
+    const status = arrayValue(payload && payload.header && payload.header.competitions)[0];
+    const completed = !!(status && status.status && status.status.type && status.status.type.completed === true);
+    const sidePlayers = espnBaseballSidePlayers(payload, sides);
+    const homeBat = espnBaseballGroupTotals(sidePlayers.home, "batting");
+    const awayBat = espnBaseballGroupTotals(sidePlayers.away, "batting");
+    const total = (comp, key, fallback) => comp && comp[key] !== undefined && comp[key] !== null
+        ? stringValue(comp[key]) : stringValue(fallback);
+    const homeTotals = {
+        R: total(homeComp, "score", options && options.homeScore),
+        H: total(homeComp, "hits", homeBat.H),
+        E: total(homeComp, "errors", "")
+    };
+    const awayTotals = {
+        R: total(awayComp, "score", options && options.awayScore),
+        H: total(awayComp, "hits", awayBat.H),
+        E: total(awayComp, "errors", "")
+    };
+    const totalKeys = ["R", "H", "E"].filter(key => homeTotals[key].length > 0 || awayTotals[key].length > 0);
+
+    function row(comp, team, fallbackName, lines, totals, isHome) {
+        const info = (comp && comp.team) || (team && team.team) || {};
+        const name = stringValue(info.abbreviation || info.shortDisplayName || info.displayName || fallbackName);
+        const values = [];
+        for (let i = 0; i < innings; i += 1) {
+            let text = i < lines.length ? cell(lines[i]) : "";
+            // A home side that led after the top of the last inning does not bat; the
+            // scoreboard convention for that unplayed half-inning is an X.
+            if (text.length === 0 && i >= lines.length && isHome && completed)
+                text = "X";
+            values.push(text);
+        }
+        totalKeys.forEach(key => values.push(totals[key]));
+        return { team: name, values };
     }
-    const total = (comp, key) => comp && comp[key] !== undefined && comp[key] !== null ? stringValue(comp[key]) : "";
-    [["R", "score"], ["H", "hits"], ["E", "errors"]].forEach(pair => {
-        const homeValue = total(homeComp, pair[1]);
-        const awayValue = total(awayComp, pair[1]);
-        if (homeValue.length > 0 || awayValue.length > 0)
-            rows.push({ label: pair[0], homeValue, awayValue });
-    });
-    return { title: "Line score", rows };
+
+    const periods = [];
+    for (let i = 1; i <= innings; i += 1)
+        periods.push(String(i));
+    return {
+        periods: periods.concat(totalKeys),
+        totalColumns: totalKeys.length,
+        rows: [
+            row(awayComp, sides && sides.away, stringValue(options && options.awayTeam) || "Away", awayLines, awayTotals, false),
+            row(homeComp, sides && sides.home, stringValue(options && options.homeTeam) || "Home", homeLines, homeTotals, true)
+        ]
+    };
 }
 
 // "Top 3rd" / "Bottom 7th" for a scoring play's period.
@@ -4386,32 +4428,11 @@ function espnBaseballInningLabel(period) {
     return (half.length > 0 ? half + " " : "") + number + suffix;
 }
 
-// Information-tab rows for a baseball game: the line score per team (runs by inning,
-// then R / H / E) and every scoring play with the score after it. Rows are the generic
-// { label, value } pairs the Information tab already renders.
-function espnBaseballInfoRows(payload, sides, options) {
+// Information-tab rows for a baseball game: every scoring play with the score after it
+// (the line score itself is the period table, see espnBaseballPeriodScore). Rows are the
+// generic { label, value } pairs the Information tab already renders.
+function espnBaseballInfoRows(payload) {
     const rows = [];
-    function line(competitor, team, fallbackName) {
-        const name = stringValue((team && team.team && (team.team.abbreviation || team.team.displayName))
-            || (competitor && competitor.team && (competitor.team.abbreviation || competitor.team.displayName)) || fallbackName);
-        const innings = arrayValue(competitor && competitor.linescores)
-            .map(item => stringValue(item && (item.displayValue !== undefined ? item.displayValue : item.value)))
-            .filter(text => text.length > 0);
-        if (innings.length === 0)
-            return;
-        const totals = [];
-        const score = stringValue(competitor && competitor.score);
-        if (score.length > 0)
-            totals.push("R " + score);
-        if (competitor && competitor.hits !== undefined && competitor.hits !== null)
-            totals.push("H " + stringValue(competitor.hits));
-        if (competitor && competitor.errors !== undefined && competitor.errors !== null)
-            totals.push("E " + stringValue(competitor.errors));
-        rows.push({ label: name.length > 0 ? name : fallbackName, value: innings.join(" ") + (totals.length > 0 ? "  |  " + totals.join("  ") : "") });
-    }
-    line(sides.awayCompetitor, sides.away, stringValue(options && options.awayTeam) || "Away");
-    line(sides.homeCompetitor, sides.home, stringValue(options && options.homeTeam) || "Home");
-
     arrayValue(payload && payload.scoringPlays).forEach(play => {
         const text = stringValue(play && (play.text || play.shortText));
         if (text.length === 0)
@@ -4514,13 +4535,14 @@ function fetchEspnMatchSummary(espnSport, espnLeague, eventId, sportValue, optio
             const infoRows = espnSummaryInfoRows(payload && payload.gameInfo, halfTime, extras, options);
             result = {
                 statsRows: isBaseball ? espnBaseballStatsRows(payload, sides) : espnSummaryStatsRows(home, away, sportValue),
-                matchInfoRows: isBaseball ? infoRows.concat(espnBaseballInfoRows(payload, sides, options)) : infoRows,
+                matchInfoRows: isBaseball ? infoRows.concat(espnBaseballInfoRows(payload)) : infoRows,
                 halfTimeScore: halfTime,
                 lineups: espnSummaryLineups(payload && payload.rosters),
                 leaderRows: espnSummaryLeaders(payload && payload.leaders, homeId, awayId),
                 playerBox: espnSummaryPlayerBox(payload && payload.boxscore && payload.boxscore.players, sportValue, homeId, awayId),
-                lineScore: isBaseball ? espnBaseballLineScore(sides) : null,
-                periodScore: normalizedSport(sportValue) === "hockey" ? espnHockeyPeriodScore(payload, sides, options) : null,
+                // Period table of the Information tab: hockey periods or baseball innings.
+                periodScore: isBaseball ? espnBaseballPeriodScore(payload, sides, options)
+                    : (normalizedSport(sportValue) === "hockey" ? espnHockeyPeriodScore(payload, sides, options) : null),
                 eventRows: espnKeyEventsRows(payload && payload.keyEvents, homeId, awayId, homeName, awayName)
             };
         } catch (error) {
