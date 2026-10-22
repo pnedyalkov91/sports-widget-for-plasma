@@ -1,3 +1,10 @@
+## Project Discontinuation
+
+> I've decided to step away from this project due to the lack of interest and the criticism I've received for using AI as a development aid. I've invested a huge amount of time and effort into this project, and unfortunately, it has become difficult to justify continuing to maintain it under these circumstances.
+>If anyone is interested in taking over, feel free to fork the project and continue its development. As for me, this is where I step away.
+> I'd like to thank the few users who appreciated the project and gave it high ratings. Your support meant a lot to me.
+> Thank you.
+
 # Sports Widget for KDE Plasma 6
 
 Sports widget for KDE Plasma desktop environment. Provides live scores, results, schedules and tables for various sports.
@@ -307,16 +314,6 @@ If you encounter any issues or have suggestions, please open a [GitHub Issue](ht
 
 - All sports (Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Racing, MMA, Rugby, Australian Football, Lacrosse and Volleyball) are sourced from ESPN's public (unofficial, undocumented) endpoints, in the same way as the [Public-ESPN-API](https://github.com/pseudo-r/Public-ESPN-API) reference project.
 - [SportScore](https://sportscore.com/) is used for **Football only**, as a supplementary source for the leagues that ESPN's unofficial API doesn't support.
-
-## ❤️ Support the project
-
-Sports Widget for Plasma is developed in my free time.
-
-If you enjoy using it, you can support the project:
-
-- Liberapay: https://liberapay.com/pnedyalkov
-- PayPal: https://paypal.me/pnedyalkov91
-- Revolut: https://revolut.me/petarnedyalkov91
 
 ---
 
