@@ -3,7 +3,7 @@
 Sports widget for KDE Plasma desktop environment. Provides live scores, results, schedules and tables for various sports.
 
 ### Why this widget?
-*   **Multi-Sport:** Follow 16 sports at the same time - Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball and Water Polo.
+*   **Multi-Sport:** Follow 13 sports at the same time - Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Racing, MMA, Rugby, Australian Football, Lacrosse and Volleyball.
 *   **Multi-Competition:** Track several leagues, cups, national teams and favorite clubs together.
 *   **Modern UX:** A clean, native-feeling interface with a guided setup wizard, live score panel and informative tooltip.
 *   **Stay Notified:** Optional desktop notifications and Plasma calendar sync for the matches you care about.
@@ -90,21 +90,21 @@ To update an existing installation, replace `--install` with `--upgrade`.
 
 <p align="center">
   <b>Multiple Sports</b><br>
-  <img src="screenshots/football.png" width="260" alt="Tennis">
-  <img src="screenshots/NBA.png" width="260" alt="Tennis">
+  <img src="screenshots/football.png" width="260" alt="Football">
+  <img src="screenshots/NBA.png" width="260" alt="Basketball (NBA)">
   <img src="screenshots/MLB.png" width="260" alt="MLB">
   <img src="screenshots/NHL.png" width="260" alt="NHL">
   <img src="screenshots/F1.png" width="260" alt="Formula 1">
   <img src="screenshots/ATP.png" width="260" alt="Tennis">
   <img src="screenshots/rugby.png" width="260" alt="Rugby">
   <img src="screenshots/AFL.png" width="260" alt="Australian Football">
-  <img src="screenshots/volleyball.png" width="260" alt="Voleyball">
+  <img src="screenshots/volleyball.png" width="260" alt="Volleyball">
   <img src="screenshots/lacrosse.png" width="260" alt="Lacrosse">
   <img src="screenshots/MMA.png" width="260" alt="MMA">
   <img src="screenshots/cricket.png" width="260" alt="cricket">
 
   <br>
-  (Football (Soccer), Basketball, Cricket and Tennis are supported alongside Football, plus 12 more sports via ESPN)
+  (Football, Basketball, Cricket and Tennis are supported alongside 9 more sports.)
 </p>
 
 <p align="center">
@@ -117,7 +117,7 @@ To update an existing installation, replace `--install` with `--upgrade`.
 # ✨ Detailed Features
 
 ### 🏆 Sports & Competitions
-- **Supported sports:** Football (FIFA, UEFA, CONMEBOL, Concacaf, CAF and AFC tournaments plus domestic leagues and cups from dozens of countries), Basketball (NBA, WNBA, NCAA, NBL, FIBA World Cup, Olympics), Cricket (ICC World Cup, T20 World Cup, IPL, Big Bash, PSL, SA20, The Hundred and more), Tennis (ATP, WTA), American Football (NFL, NCAA, CFL, UFL, XFL), Baseball (MLB, College Baseball, World Baseball Classic and more), Ice Hockey (NHL, NCAA, World Cup of Hockey, Olympics), Golf, Racing (Formula 1, NASCAR, IndyCar), MMA (UFC, PFL, Bellator), Rugby (Premiership, URC, Six Nations, Rugby World Cup, Super Rugby Pacific, MLR, Rugby League), Australian Football (AFL), Field Hockey, Lacrosse (PLL, NCAA, NLL), Volleyball (NCAA) and Water Polo. See [Supported Sports & Competitions](#-supported-sports--competitions) for the full list.
+- **Supported sports:** Football (FIFA, UEFA, CONMEBOL, Concacaf, CAF and AFC tournaments plus domestic leagues and cups from dozens of countries), Basketball (NBA, WNBA, NCAA, NBL, FIBA World Cup, Olympics), Cricket (ICC World Cup, T20 World Cup, IPL, Big Bash, PSL, SA20, The Hundred and more), Tennis (ATP, WTA), American Football (NFL, NCAA, CFL, UFL, XFL), Baseball (MLB, College Baseball, World Baseball Classic and more), Ice Hockey (NHL, NCAA, World Cup of Hockey, Olympics), Racing (Formula 1, NASCAR, IndyCar), MMA (UFC, PFL, Bellator), Rugby (Premiership, URC, Six Nations, Rugby World Cup, Super Rugby Pacific, MLR, Rugby League), Australian Football (AFL), Lacrosse (PLL, NCAA, NLL) and Volleyball (NCAA). See [Supported Sports & Competitions](#-supported-sports--competitions) for the full list.
 - **Guided setup wizard:** Add a sport, then pick a country/competition or an international tournament, and optionally a favorite club, national team or player.
 - **Multiple selections:** Add as many sports, competitions, national teams and favorite teams as you like - they're all combined into one view, with duplicate detection so you don't add the same thing twice.
 - **International tournaments:** Follow World Cups, continental championships and other international competitions without picking a specific country.
@@ -305,7 +305,7 @@ If you encounter any issues or have suggestions, please open a [GitHub Issue](ht
 
 ## External resources
 
-- All sports (Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball and Water Polo) are sourced from ESPN's public (unofficial, undocumented) endpoints, in the same way as the [Public-ESPN-API](https://github.com/pseudo-r/Public-ESPN-API) reference project.
+- All sports (Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Racing, MMA, Rugby, Australian Football, Lacrosse and Volleyball) are sourced from ESPN's public (unofficial, undocumented) endpoints, in the same way as the [Public-ESPN-API](https://github.com/pseudo-r/Public-ESPN-API) reference project.
 - [SportScore](https://sportscore.com/) is used for **Football only**, as a supplementary source for the leagues that ESPN's unofficial API doesn't support.
 
 ## ❤️ Support the project

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Sports Widget for Plasma\n"
 "Report-Msgid-Bugs-To: https://github.com/pnedyalkov91/sports-widget-for-plasma/issues\n"
-"POT-Creation-Date: 2026-10-11 15:56+0300\n"
+"POT-Creation-Date: 2026-10-22 13:16+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -39,7 +39,17 @@ msgctxt "@info"
 msgid "\"All future matches\" is still limited by the Scheduled tab options: at most \"Matches per team/competition\" fixtures are listed per competition, within \"Schedules days ahead\". Raise those to list more."
 msgstr ""
 
-#: contents/ui/TableTab.qml:88
+#: contents/ui/TableTab.qml:603
+msgctxt "@label"
+msgid "%1 Rankings"
+msgstr ""
+
+#: contents/ui/TableTab.qml:605 contents/ui/TableTab.qml:607
+msgctxt "@label"
+msgid "%1 Standings"
+msgstr ""
+
+#: contents/ui/TableTab.qml:608
 msgctxt "@label"
 msgid "%1 Table"
 msgstr ""
@@ -49,7 +59,7 @@ msgctxt "@info two data providers joined"
 msgid "%1 and %2"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:255
+#: contents/ui/LiveMatchDetails.qml:299
 msgctxt "@info:placeholder"
 msgid "%1 does not provide detailed match statistics for this match."
 msgstr ""
@@ -66,7 +76,7 @@ msgctxt "@info:font preview; %1 is point size, %2 is family"
 msgid "%1 pt %2"
 msgstr ""
 
-#: contents/ui/main.qml:935
+#: contents/ui/main.qml:1092
 msgctxt "@label"
 msgid "%1 saved team"
 msgid_plural "%1 saved teams"
@@ -84,7 +94,32 @@ msgctxt "@label %1 and %2 are team names"
 msgid "%1 vs %2"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:118
+#: contents/ui/TableTab.qml:431
+msgctxt "@title:group hockey division of a conference"
+msgid "%1 · %2"
+msgstr ""
+
+#: contents/ui/TableTab.qml:332
+msgctxt "@title:group baseball division leaders of a league"
+msgid "%1 · Division Leaders"
+msgstr ""
+
+#: contents/ui/TableTab.qml:339
+msgctxt "@title:group baseball wild card race of a league"
+msgid "%1 · Wild Card"
+msgstr ""
+
+#: contents/ui/TableTab.qml:435
+msgctxt "@title:group hockey wild card race of a conference"
+msgid "%1 · Wild Card"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:124
+msgctxt "Abbreviation for 'change since the previous ranking' in a tennis rankings table, keep very short"
+msgid "+/-"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:115
 msgctxt "Abbreviation for 'point differential' in a basketball standings table, keep very short"
 msgid "+/-"
 msgstr ""
@@ -134,14 +169,29 @@ msgctxt "@item:inlistbox"
 msgid "8:30:05 PM"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1527
+#: contents/ui/FullRepresentation.qml:1797
 msgctxt "@label:abbreviation goals against"
 msgid "A"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:179
+#: contents/code/providers/SportScoreSports.js:187
 msgctxt "Abbreviation for 'goals against' in a football/soccer standings table, keep very short"
 msgid "A"
+msgstr ""
+
+#: contents/ui/TableTab.qml:626
+msgctxt "@title:tab tennis tour: men's ranking"
+msgid "ATP · Men"
+msgstr ""
+
+#: contents/ui/TableTab.qml:85
+msgctxt "@title:column baseball away record short"
+msgid "AWAY"
+msgstr ""
+
+#: contents/ui/TableTab.qml:123
+msgctxt "@title:column hockey away record short"
+msgid "AWAY"
 msgstr ""
 
 #: contents/ui/config/SavedLeaguesList.qml:349
@@ -165,22 +215,22 @@ msgctxt "@title:group"
 msgid "Add Sport"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:616
+#: contents/ui/FullRepresentation.qml:617
 msgctxt "@action:button"
 msgid "Add a Sport"
 msgstr ""
 
-#: contents/ui/main.qml:216
+#: contents/ui/main.qml:234
 msgctxt "@action:button"
 msgid "Add a sport"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:607
+#: contents/ui/FullRepresentation.qml:608
 msgctxt "@info"
 msgid "Add a sport and league to show schedules, tables and fixtures."
 msgstr ""
 
-#: contents/ui/main.qml:1735
+#: contents/ui/main.qml:1926
 msgctxt "@info:status"
 msgid "Add a sport in the widget settings."
 msgstr ""
@@ -205,11 +255,11 @@ msgctxt "@item:inlistbox"
 msgid "Akonadi (unstable, not recommended)"
 msgstr ""
 
-#: contents/ui/config/ConfigSport.qml:379
-#: contents/ui/config/ConfigSport.qml:399
-#: contents/ui/config/ConfigSport.qml:430
-#: contents/ui/config/SportWizardPage.qml:414 contents/ui/main.qml:112
-#: contents/ui/main.qml:604 contents/ui/main.qml:953 contents/ui/main.qml:2199
+#: contents/ui/config/ConfigSport.qml:381
+#: contents/ui/config/ConfigSport.qml:401
+#: contents/ui/config/ConfigSport.qml:432
+#: contents/ui/config/SportWizardPage.qml:414 contents/ui/main.qml:130
+#: contents/ui/main.qml:748 contents/ui/main.qml:1110 contents/ui/main.qml:2498
 msgctxt "@label"
 msgid "All competitions"
 msgstr ""
@@ -224,6 +274,16 @@ msgstr ""
 #: contents/ui/config/tabs/AppearanceWidgetTab.qml:115
 msgctxt "@item:inlistbox scheduled matches window"
 msgid "All future matches"
+msgstr ""
+
+#: contents/ui/main.qml:4145
+msgctxt "@title:group"
+msgid "All live matches"
+msgstr ""
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:268
+msgctxt "@label:checkbox"
+msgid "All saved sports:"
 msgstr ""
 
 #: contents/ui/config/tabs/NotificationsCalendarTab.qml:167
@@ -263,7 +323,22 @@ msgctxt "@info"
 msgid "Automatically checks for upcoming matches every 30 minutes, and live scores every 60 seconds while a match is in progress, to limit network requests. Turn off to set your own refresh times."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:752
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:297
+msgctxt "@info"
+msgid "Available when \"All saved sports\" is enabled."
+msgstr ""
+
+#: contents/ui/TableTab.qml:85
+msgctxt "@info:tooltip"
+msgid "Away record"
+msgstr ""
+
+#: contents/ui/TableTab.qml:123
+msgctxt "@info:tooltip"
+msgid "Away record (W-L-OTL)"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:753
 msgctxt "@info:placeholder"
 msgid "Away team"
 msgstr ""
@@ -291,7 +366,7 @@ msgctxt "@item:inlistbox tabs position"
 msgid "Bottom"
 msgstr ""
 
-#: contents/ui/config/PopularSelectPage.qml:149
+#: contents/ui/config/PopularSelectPage.qml:156
 msgctxt "@action:button"
 msgid "Browse all leagues & countries…"
 msgstr ""
@@ -323,6 +398,21 @@ msgctxt "@action:button"
 msgid "Cancel"
 msgstr ""
 
+#: contents/ui/TableTab.qml:605
+msgctxt "@label"
+msgid "Championship Standings"
+msgstr ""
+
+#: contents/ui/TableTab.qml:61
+msgctxt "@info:tooltip"
+msgid "Championship points"
+msgstr ""
+
+#: contents/ui/TableTab.qml:91
+msgctxt "@info:tooltip"
+msgid "Chance of making the playoffs"
+msgstr ""
+
 #: contents/ui/config/LeagueSubPage.qml:336
 msgctxt "@info"
 msgid "Changes here are not applied immediately. Click Apply (or OK) at the bottom of the window to save them."
@@ -333,7 +423,7 @@ msgctxt "@title:window"
 msgid "Choose Panel Font"
 msgstr ""
 
-#: contents/ui/main.qml:2638
+#: contents/ui/main.qml:2961
 msgctxt "@info:status"
 msgid "Choose a competition to show a table."
 msgstr ""
@@ -369,7 +459,7 @@ msgctxt "@action:button"
 msgid "Close"
 msgstr ""
 
-#: contents/ui/main.qml:953
+#: contents/ui/main.qml:1110
 msgctxt "@label"
 msgid "Combined scope"
 msgstr ""
@@ -404,14 +494,24 @@ msgctxt "@title:tab"
 msgid "Competitions & teams"
 msgstr ""
 
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:338
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:375
 msgctxt "@item:inlistbox"
 msgid "Competitions only"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:735
+#: contents/ui/FullRepresentation.qml:736
 msgctxt "@action:button"
 msgid "Configure"
+msgstr ""
+
+#: contents/ui/TableTab.qml:204
+msgctxt "@label"
+msgid "Constructor"
+msgstr ""
+
+#: contents/ui/TableTab.qml:195
+msgctxt "@title:tab racing constructors' championship"
+msgid "Constructors"
 msgstr ""
 
 #: contents/ui/config/tabs/AppearancePanelTab.qml:111
@@ -424,35 +524,65 @@ msgctxt "@title:group"
 msgid "Country"
 msgstr ""
 
+#: contents/ui/TableTab.qml:89 contents/ui/TableTab.qml:126
+msgctxt "@info:tooltip"
+msgid "Current winning / losing streak"
+msgstr ""
+
 #: contents/ui/config/tabs/AppearanceMiscTab.qml:106
 #: contents/ui/config/tabs/AppearanceMiscTab.qml:162
 msgctxt "@item:inlistbox"
 msgid "Custom..."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1509
+#: contents/ui/FullRepresentation.qml:1779
 msgctxt "@label:abbreviation games drawn"
 msgid "D"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:176
+#: contents/code/providers/SportScoreSports.js:184
 msgctxt "Abbreviation for 'drawn' in a football/soccer standings table, keep very short"
 msgid "D"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:155
+#: contents/ui/TableTab.qml:88
+msgctxt "@title:column baseball run differential short"
+msgid "DIFF"
+msgstr ""
+
+#: contents/ui/TableTab.qml:121
+msgctxt "@title:column hockey goal differential short"
+msgid "DIFF"
+msgstr ""
+
+#: contents/ui/TableTab.qml:141
+msgctxt "@title:column lacrosse point differential short"
+msgid "DIFF"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:163
 msgctxt "Abbreviation for 'goal differential' in a hockey standings table, keep very short"
 msgid "DIFF"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:169
+#: contents/code/providers/SportScoreSports.js:177
 msgctxt "Abbreviation for 'point differential' in an American football standings table, keep very short"
 msgid "DIFF"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:142
+#: contents/code/providers/SportScoreSports.js:150
 msgctxt "Abbreviation for 'run differential' in a baseball standings table, keep very short"
 msgid "DIFF"
+msgstr ""
+
+#: contents/ui/TableTab.qml:92
+msgctxt "@title:column baseball record in own division short"
+msgid "DIV"
+msgstr ""
+
+#: contents/ui/TableTab.qml:127
+msgctxt "@title:column hockey record in own division short"
+msgid "DIV"
 msgstr ""
 
 #: contents/ui/config/tabs/AppearancePanelTab.qml:244
@@ -495,7 +625,7 @@ msgctxt "@option:check"
 msgid "Detailed events (scorer, cards, substitutions, extra time, penalties) - football only"
 msgstr ""
 
-#: contents/ui/LiveMatchDelegate.qml:134
+#: contents/ui/LiveMatchDelegate.qml:156
 msgctxt "@info:status"
 msgid "Detailed match information is not available for this match."
 msgstr ""
@@ -505,15 +635,21 @@ msgctxt "@info"
 msgid "Detailed shows a featured match, tabs, standings and recent results. Simple shows only live and scheduled matches in a single scrolling list."
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:331
+#: contents/ui/LiveMatchDetails.qml:378
 msgctxt "@tab:match details"
 msgid "Details"
 msgstr ""
 
 #: contents/ui/config/tabs/AppearancePanelTab.qml:171
 #: contents/ui/config/tabs/AppearanceWidgetTab.qml:224
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:269
 msgctxt "@option:check"
 msgid "Disabled"
+msgstr ""
+
+#: contents/ui/TableTab.qml:620
+msgctxt "@title:tab baseball standings by division"
+msgid "Division"
 msgstr ""
 
 #: contents/ui/config/SportWizardPage.qml:696
@@ -531,14 +667,24 @@ msgctxt "@action:button"
 msgid "Download plugin"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:176
+#: contents/code/providers/SportScoreSports.js:184
 msgctxt "@info:tooltip"
 msgid "Drawn"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1510
+#: contents/ui/FullRepresentation.qml:1780
 msgctxt "@label"
 msgid "Drawn"
+msgstr ""
+
+#: contents/ui/TableTab.qml:204
+msgctxt "@label"
+msgid "Driver"
+msgstr ""
+
+#: contents/ui/TableTab.qml:197
+msgctxt "@title:tab racing drivers' championship"
+msgid "Drivers"
 msgstr ""
 
 #: contents/ui/config/SportWizardPage.qml:489
@@ -593,27 +739,38 @@ msgstr ""
 
 #: contents/ui/config/tabs/AppearancePanelTab.qml:171
 #: contents/ui/config/tabs/AppearanceWidgetTab.qml:224
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:269
 #: contents/ui/config/tabs/NotificationsAlertsTab.qml:32
 msgctxt "@option:check"
 msgid "Enabled"
 msgstr ""
 
-#: contents/ui/main.qml:3264
+#: contents/ui/TableTab.qml:619
+msgctxt "@title:tab baseball standings with all columns"
+msgid "Expanded"
+msgstr ""
+
+#: contents/ui/TableTab.qml:476
+msgctxt "@title:tab hockey standings with all columns"
+msgid "Expanded"
+msgstr ""
+
+#: contents/ui/main.qml:3628
 msgctxt "@title:notification"
 msgid "Extra time"
 msgstr ""
 
-#: contents/ui/main.qml:3267
+#: contents/ui/main.qml:3631
 msgctxt "@title:notification"
 msgid "Extra time: second half"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1521
+#: contents/ui/FullRepresentation.qml:1791
 msgctxt "@label:abbreviation goals for"
 msgid "F"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:178
+#: contents/code/providers/SportScoreSports.js:186
 msgctxt "Abbreviation for 'goals for' in a football/soccer standings table, keep very short"
 msgid "F"
 msgstr ""
@@ -623,7 +780,7 @@ msgctxt "@option:check"
 msgid "Favorite teams only"
 msgstr ""
 
-#: contents/ui/ScoreDelegate.qml:617
+#: contents/ui/ScoreDelegate.qml:596
 msgctxt "@info:tooltip"
 msgid "Favourite %1"
 msgstr ""
@@ -636,6 +793,21 @@ msgstr ""
 #: contents/ui/config/tabs/AppearancePanelTab.qml:268
 msgctxt "@item:inlistbox"
 msgid "Fill panel"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:1140
+msgctxt "@info:status"
+msgid "Final"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:152
+msgctxt "@info:status racing session is finished"
+msgid "Final"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:1140
+msgctxt "@info:status finished race with date"
+msgid "Final · %1"
 msgstr ""
 
 #: contents/ui/config/ConfigGeneral.qml:220
@@ -658,7 +830,7 @@ msgctxt "@info"
 msgid "Following the whole competition."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1545 contents/ui/TableTab.qml:351
+#: contents/ui/FullRepresentation.qml:1815 contents/ui/TableTab.qml:1039
 msgctxt "@label"
 msgid "Form"
 msgstr ""
@@ -668,7 +840,7 @@ msgctxt "@label:spinbox"
 msgid "Full refresh:"
 msgstr ""
 
-#: contents/ui/main.qml:3261
+#: contents/ui/main.qml:3625
 msgctxt "@title:notification"
 msgid "Full-time"
 msgstr ""
@@ -678,55 +850,90 @@ msgctxt "@option:check"
 msgid "Full-time result"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:154
+#: contents/ui/TableTab.qml:120
+msgctxt "@title:column hockey goals against short"
+msgid "GA"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:162
 msgctxt "Abbreviation for 'goals against' in a hockey standings table, keep very short"
 msgid "GA"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:139
+#: contents/ui/TableTab.qml:83
+msgctxt "@title:column baseball games behind short"
+msgid "GB"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:147
 msgctxt "Abbreviation for 'games behind' in a baseball standings table, keep very short"
 msgid "GB"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1533
+#: contents/ui/FullRepresentation.qml:1803
 msgctxt "@label"
 msgid "GD"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:180
+#: contents/code/providers/SportScoreSports.js:188
 msgctxt "Abbreviation for 'goal difference' in a football/soccer standings table, keep very short"
 msgid "GD"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:153
+#: contents/ui/TableTab.qml:119
+msgctxt "@title:column hockey goals for short"
+msgid "GF"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:161
 msgctxt "Abbreviation for 'goals for' in a hockey standings table, keep very short"
 msgid "GF"
 msgstr ""
 
-#: contents/ui/main.qml:3252 contents/ui/main.qml:3284
+#: contents/ui/main.qml:3616 contents/ui/main.qml:3648
 msgctxt "@title:notification"
 msgid "GOAL"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:113
+#: contents/ui/TableTab.qml:111
+msgctxt "@title:column hockey games played short"
+msgid "GP"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:110
 msgctxt "Abbreviation for 'games played' in a basketball standings table, keep very short"
 msgid "GP"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:149
+#: contents/code/providers/SportScoreSports.js:157
 msgctxt "Abbreviation for 'games played' in a hockey standings table, keep very short"
 msgid "GP"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:139
+#: contents/code/providers/SportScoreSports.js:147
 msgctxt "@info:tooltip"
 msgid "Games behind"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:113
-#: contents/code/providers/SportScoreSports.js:149
+#: contents/ui/TableTab.qml:221
+msgctxt "@info:tooltip"
+msgid "Games behind the last wild card spot (+ = games ahead of it)"
+msgstr ""
+
+#: contents/ui/TableTab.qml:83
+msgctxt "@info:tooltip"
+msgid "Games behind the leader"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:110
+#: contents/code/providers/SportScoreSports.js:157 contents/ui/TableTab.qml:111
 msgctxt "@info:tooltip"
 msgid "Games played"
+msgstr ""
+
+#: contents/ui/TableTab.qml:62
+msgctxt "@title:column points gap short"
+msgid "Gap"
 msgstr ""
 
 #: contents/config/config.qml:28
@@ -748,33 +955,33 @@ msgctxt "@action:button"
 msgid "Go Back"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1534
+#: contents/ui/FullRepresentation.qml:1804
 msgctxt "@label"
 msgid "Goal Difference"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:180
+#: contents/code/providers/SportScoreSports.js:188
 msgctxt "@info:tooltip"
 msgid "Goal difference"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:155
+#: contents/code/providers/SportScoreSports.js:163 contents/ui/TableTab.qml:121
 msgctxt "@info:tooltip"
 msgid "Goal differential"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1528
+#: contents/ui/FullRepresentation.qml:1798
 msgctxt "@label"
 msgid "Goals Against"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1522
+#: contents/ui/FullRepresentation.qml:1792
 msgctxt "@label"
 msgid "Goals For"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:154
-#: contents/code/providers/SportScoreSports.js:179
+#: contents/code/providers/SportScoreSports.js:162
+#: contents/code/providers/SportScoreSports.js:187 contents/ui/TableTab.qml:120
 msgctxt "@info:tooltip"
 msgid "Goals against"
 msgstr ""
@@ -784,13 +991,38 @@ msgctxt "@option:check"
 msgid "Goals and score changes"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:153
-#: contents/code/providers/SportScoreSports.js:178
+#: contents/code/providers/SportScoreSports.js:161
+#: contents/code/providers/SportScoreSports.js:186 contents/ui/TableTab.qml:119
 msgctxt "@info:tooltip"
 msgid "Goals for"
 msgstr ""
 
-#: contents/ui/main.qml:3255
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:283
+msgctxt "@label:checkbox"
+msgid "Group matches:"
+msgstr ""
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:284
+msgctxt "@option:check"
+msgid "Grouped"
+msgstr ""
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:296
+msgctxt "@info"
+msgid "Grouped lists matches under a header per sport and competition. Not grouped lists them in a single run ordered by kickoff."
+msgstr ""
+
+#: contents/ui/TableTab.qml:84
+msgctxt "@title:column baseball home record short"
+msgid "HOME"
+msgstr ""
+
+#: contents/ui/TableTab.qml:122
+msgctxt "@title:column hockey home record short"
+msgid "HOME"
+msgstr ""
+
+#: contents/ui/main.qml:3619
 msgctxt "@title:notification"
 msgid "Half-time"
 msgstr ""
@@ -815,12 +1047,22 @@ msgctxt "@label"
 msgid "Highlight: %1"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:751
+#: contents/ui/TableTab.qml:84
+msgctxt "@info:tooltip"
+msgid "Home record"
+msgstr ""
+
+#: contents/ui/TableTab.qml:122
+msgctxt "@info:tooltip"
+msgid "Home record (W-L-OTL)"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:752
 msgctxt "@info:placeholder"
 msgid "Home team"
 msgstr ""
 
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:315
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:352
 msgctxt "@info"
 msgid "How far ahead to look for fixtures, and how many upcoming matches to show under each team or competition group."
 msgstr ""
@@ -830,7 +1072,7 @@ msgctxt "@info"
 msgid "How many live matches to list, how many days ahead to look for upcoming fixtures, and how many days back to look for finished matches in the panel's hover tooltip."
 msgstr ""
 
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:371
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:408
 msgctxt "@info"
 msgid "How many recent matches to show under each team or competition group."
 msgstr ""
@@ -845,12 +1087,12 @@ msgctxt "@action:button"
 msgid "Information"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:326
+#: contents/ui/LiveMatchDetails.qml:370
 msgctxt "@tab:match details"
 msgid "Information"
 msgstr ""
 
-#: contents/ui/main.qml:3249
+#: contents/ui/main.qml:3613
 msgctxt "@title:notification"
 msgid "Kick-off"
 msgstr ""
@@ -860,19 +1102,59 @@ msgctxt "@option:check"
 msgid "Kickoff (match goes live)"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1515
+#: contents/ui/FullRepresentation.qml:1785
 msgctxt "@label:abbreviation games lost"
 msgid "L"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:115
-#: contents/code/providers/SportScoreSports.js:126
-#: contents/code/providers/SportScoreSports.js:137
-#: contents/code/providers/SportScoreSports.js:151
-#: contents/code/providers/SportScoreSports.js:164
-#: contents/code/providers/SportScoreSports.js:177
+#: contents/ui/TableTab.qml:81
+msgctxt "@title:column baseball losses short"
+msgid "L"
+msgstr ""
+
+#: contents/ui/TableTab.qml:113
+msgctxt "@title:column hockey losses short"
+msgid "L"
+msgstr ""
+
+#: contents/ui/TableTab.qml:137
+msgctxt "@title:column lacrosse losses short"
+msgid "L"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:112
+#: contents/code/providers/SportScoreSports.js:133
+#: contents/code/providers/SportScoreSports.js:145
+#: contents/code/providers/SportScoreSports.js:159
+#: contents/code/providers/SportScoreSports.js:172
+#: contents/code/providers/SportScoreSports.js:185
 msgctxt "Abbreviation for 'lost' in a standings table, keep very short"
 msgid "L"
+msgstr ""
+
+#: contents/ui/TableTab.qml:90
+msgctxt "@title:column baseball last ten games short"
+msgid "L10"
+msgstr ""
+
+#: contents/ui/TableTab.qml:125
+msgctxt "@title:column hockey last ten games short"
+msgid "L10"
+msgstr ""
+
+#: contents/ui/TableTab.qml:93
+msgctxt "@title:column baseball record in own league short"
+msgid "LG"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:150
+msgctxt "@info:status racing session is live"
+msgid "LIVE"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:277
+msgctxt "@info:status racing weekend is live"
+msgid "LIVE"
 msgstr ""
 
 #: contents/ui/config/tabs/AppearanceWidgetTab.qml:85
@@ -880,7 +1162,17 @@ msgctxt "@label:listbox"
 msgid "Layout:"
 msgstr ""
 
-#: contents/ui/TableTab.qml:88
+#: contents/ui/TableTab.qml:613
+msgctxt "@title:tab baseball standings by league"
+msgid "League"
+msgstr ""
+
+#: contents/ui/TableTab.qml:472
+msgctxt "@title:tab hockey standings of all teams"
+msgid "League"
+msgstr ""
+
+#: contents/ui/TableTab.qml:608
 msgctxt "@label"
 msgid "League Table"
 msgstr ""
@@ -905,21 +1197,23 @@ msgctxt "@label:chooser"
 msgid "Limit to:"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1037
+#: contents/ui/FullRepresentation.qml:1047
 msgid "Live"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:115
-#: contents/ui/CompactRepresentation.qml:675
-#: contents/ui/FullRepresentation.qml:1147 contents/ui/main.qml:1137
-#: contents/ui/main.qml:1141 contents/ui/main.qml:1158
-#: contents/ui/MatchesToolTip.qml:121 contents/ui/MatchesToolTip.qml:126
-#: contents/ui/MatchesToolTip.qml:130 contents/ui/ScoreDelegate.qml:187
+#: contents/ui/CompactRepresentation.qml:113
+#: contents/ui/CompactRepresentation.qml:554
+#: contents/ui/FullRepresentation.qml:1137
+#: contents/ui/FullRepresentation.qml:1217 contents/ui/main.qml:1294
+#: contents/ui/main.qml:1298 contents/ui/main.qml:1315
+#: contents/ui/MatchesToolTip.qml:122 contents/ui/MatchesToolTip.qml:127
+#: contents/ui/MatchesToolTip.qml:132 contents/ui/MatchesToolTip.qml:136
+#: contents/ui/ScoreDelegate.qml:185
 msgctxt "@info:live match status"
 msgid "Live"
 msgstr ""
 
-#: contents/ui/MatchesToolTip.qml:150
+#: contents/ui/MatchesToolTip.qml:156
 msgctxt "@title:group"
 msgid "Live"
 msgstr ""
@@ -929,8 +1223,8 @@ msgctxt "@title:tab"
 msgid "Live"
 msgstr ""
 
-#: contents/ui/main.qml:1141 contents/ui/MatchesToolTip.qml:121
-#: contents/ui/MatchesToolTip.qml:130
+#: contents/ui/main.qml:1298 contents/ui/MatchesToolTip.qml:127
+#: contents/ui/MatchesToolTip.qml:136
 msgctxt "@info:live match status"
 msgid "Live %1"
 msgstr ""
@@ -980,12 +1274,12 @@ msgctxt "@info"
 msgid "Loading countries from provider..."
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:291
+#: contents/ui/LiveMatchDetails.qml:335
 msgctxt "@info:status"
 msgid "Loading match statistics"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:990 contents/ui/LeaguesTab.qml:202
+#: contents/ui/FullRepresentation.qml:1000 contents/ui/LeaguesTab.qml:266
 msgctxt "@info:status"
 msgid "Loading matches"
 msgstr ""
@@ -1005,7 +1299,7 @@ msgctxt "@info"
 msgid "Loading players…"
 msgstr ""
 
-#: contents/ui/RecentResultsTab.qml:208
+#: contents/ui/RecentResultsTab.qml:260
 msgctxt "@info:status"
 msgid "Loading recent results"
 msgstr ""
@@ -1031,22 +1325,28 @@ msgctxt "@info"
 msgid "Loading teams…"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:115
-#: contents/code/providers/SportScoreSports.js:126
-#: contents/code/providers/SportScoreSports.js:137
-#: contents/code/providers/SportScoreSports.js:151
-#: contents/code/providers/SportScoreSports.js:164
-#: contents/code/providers/SportScoreSports.js:177
+#: contents/ui/TableTab.qml:81 contents/ui/TableTab.qml:113
+#: contents/ui/TableTab.qml:137
+msgctxt "@info:tooltip"
+msgid "Losses"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:112
+#: contents/code/providers/SportScoreSports.js:133
+#: contents/code/providers/SportScoreSports.js:145
+#: contents/code/providers/SportScoreSports.js:159
+#: contents/code/providers/SportScoreSports.js:172
+#: contents/code/providers/SportScoreSports.js:185
 msgctxt "@info:tooltip"
 msgid "Lost"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1516
+#: contents/ui/FullRepresentation.qml:1786
 msgctxt "@label"
 msgid "Lost"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:124
+#: contents/code/providers/SportScoreSports.js:131
 msgctxt "Abbreviation for 'matches played' in a cricket standings table, keep very short"
 msgid "M"
 msgstr ""
@@ -1078,13 +1378,13 @@ msgctxt "@option:check"
 msgid "Match starts soon"
 msgstr ""
 
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:290
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:346
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:327
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:383
 msgctxt "@label:spinbox"
 msgid "Matches per team/competition:"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:124
+#: contents/code/providers/SportScoreSports.js:131
 msgctxt "@info:tooltip"
 msgid "Matches played"
 msgstr ""
@@ -1099,7 +1399,7 @@ msgctxt "@label:spinbox"
 msgid "Max matches shown:"
 msgstr ""
 
-#: contents/ui/config/ConfigAppearance.qml:106
+#: contents/ui/config/ConfigAppearance.qml:108
 msgctxt "@title:tab"
 msgid "Misc"
 msgstr ""
@@ -1109,9 +1409,14 @@ msgctxt "@label:listbox"
 msgid "Multiple matches:"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:128
+#: contents/code/providers/SportScoreSports.js:135
 msgctxt "Abbreviation for 'no result' in a cricket standings table, keep very short"
 msgid "NR"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:137
+msgctxt "Abbreviation for 'net run rate' in a cricket standings table, keep very short"
+msgid "NRR"
 msgstr ""
 
 #: contents/ui/config/ConfigGeneral.qml:219
@@ -1129,6 +1434,11 @@ msgctxt "@item:inlistbox"
 msgid "Native plugin + export .ics file"
 msgstr ""
 
+#: contents/code/providers/SportScoreSports.js:137
+msgctxt "@info:tooltip"
+msgid "Net run rate"
+msgstr ""
+
 #: contents/ui/config/SportWizardPage.qml:696
 msgctxt "@action:button"
 msgid "Next"
@@ -1140,9 +1450,14 @@ msgctxt "@item:inlistbox scheduled matches window"
 msgid "Next 24 hours"
 msgstr ""
 
-#: contents/ui/main.qml:127
+#: contents/ui/main.qml:145
 msgctxt "@info:status"
 msgid "No API key required"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:480
+msgctxt "@info:placeholder"
+msgid "No classification available for this session."
 msgstr ""
 
 #: contents/ui/config/CombinedSelectPage.qml:982
@@ -1200,38 +1515,37 @@ msgctxt "@info:placeholder"
 msgid "No live matches"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:494
+#: contents/ui/FullRepresentation.qml:495
 msgctxt "@info:status"
 msgid "No live matches"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:972
+#: contents/ui/FullRepresentation.qml:982
 msgctxt "@info:placeholder"
 msgid "No live or scheduled matches"
 msgstr ""
 
-#: contents/ui/MatchesToolTip.qml:214
+#: contents/ui/MatchesToolTip.qml:220
 msgctxt "@info:tooltip"
 msgid "No live, upcoming or recent matches"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:718
+#: contents/ui/LiveMatchDetails.qml:805
 msgctxt "@info:placeholder"
 msgid "No match details available"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:558
+#: contents/ui/LiveMatchDetails.qml:645
 msgctxt "@info:placeholder"
 msgid "No match events available"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:464
+#: contents/ui/LiveMatchDetails.qml:551
 msgctxt "@info:placeholder"
 msgid "No match information available"
 msgstr ""
 
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:259
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:382
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:419
 msgctxt "@info:placeholder"
 msgid "No options yet."
 msgstr ""
@@ -1246,62 +1560,62 @@ msgctxt "@info"
 msgid "No players followed"
 msgstr ""
 
-#: contents/ui/RecentResultsTab.qml:133
+#: contents/ui/RecentResultsTab.qml:138
 msgctxt "@info:placeholder"
 msgid "No recent matches"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:851 contents/ui/RecentResultsTab.qml:31
+#: contents/ui/FullRepresentation.qml:861 contents/ui/RecentResultsTab.qml:31
 msgctxt "@info:placeholder"
 msgid "No recent results"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:497
+#: contents/ui/FullRepresentation.qml:498
 msgctxt "@info:status"
 msgid "No recent results"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:851
+#: contents/ui/FullRepresentation.qml:861
 msgctxt "@info:placeholder"
 msgid "No recent results for %1"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:128
+#: contents/code/providers/SportScoreSports.js:135
 msgctxt "@info:tooltip"
 msgid "No result"
 msgstr ""
 
-#: contents/ui/main.qml:1907 contents/ui/main.qml:1924
+#: contents/ui/main.qml:2100 contents/ui/main.qml:2117
 msgctxt "@info:status"
 msgid "No saved items are enabled for Schedules."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:827 contents/ui/ScheduleTab.qml:31
+#: contents/ui/FullRepresentation.qml:837 contents/ui/ScheduleTab.qml:31
 msgctxt "@info:placeholder"
 msgid "No scheduled matches"
 msgstr ""
 
-#: contents/ui/main.qml:219
+#: contents/ui/main.qml:237
 msgctxt "@info:status"
 msgid "No scheduled matches"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:827
+#: contents/ui/FullRepresentation.qml:837
 msgctxt "@info:placeholder"
 msgid "No scheduled matches for %1"
 msgstr ""
 
-#: contents/ui/main.qml:1218
+#: contents/ui/main.qml:1389
 msgctxt "@info:status"
 msgid "No scheduled matches for %1."
 msgstr ""
 
-#: contents/ui/main.qml:1220
+#: contents/ui/main.qml:1391
 msgctxt "@info:status"
 msgid "No scheduled matches for your saved sports."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:499
+#: contents/ui/FullRepresentation.qml:500
 msgctxt "@info:status"
 msgid "No schedules"
 msgstr ""
@@ -1311,7 +1625,7 @@ msgctxt "@label"
 msgid "No sport selected"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:598
+#: contents/ui/FullRepresentation.qml:599
 msgctxt "@info:status"
 msgid "No sports added"
 msgstr ""
@@ -1321,18 +1635,18 @@ msgctxt "@info:placeholder"
 msgid "No sports added yet"
 msgstr ""
 
-#: contents/ui/TableTab.qml:258
+#: contents/ui/TableTab.qml:911
 msgctxt "@info:placeholder"
 msgid "No table data"
 msgstr ""
 
-#: contents/ui/main.qml:1848 contents/ui/main.qml:2653
-#: contents/ui/main.qml:2684
+#: contents/ui/main.qml:2041 contents/ui/main.qml:2976
+#: contents/ui/main.qml:3007
 msgctxt "@info:status"
 msgid "No table rows returned for %1."
 msgstr ""
 
-#: contents/ui/main.qml:1821
+#: contents/ui/main.qml:2014
 msgctxt "@info:status"
 msgid "No table scope enabled."
 msgstr ""
@@ -1358,7 +1672,7 @@ msgctxt "@info"
 msgid "No tennis players were found by the provider."
 msgstr ""
 
-#: contents/ui/ScheduleTab.qml:158
+#: contents/ui/ScheduleTab.qml:166
 msgctxt "@info:placeholder"
 msgid "No upcoming matches"
 msgstr ""
@@ -1366,6 +1680,11 @@ msgstr ""
 #: contents/ui/config/tabs/AppearancePanelTab.qml:247
 msgctxt "@item:inlistbox stack separator"
 msgid "None"
+msgstr ""
+
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:284
+msgctxt "@option:check"
+msgid "Not grouped"
 msgstr ""
 
 #: contents/config/config.qml:34
@@ -1382,9 +1701,14 @@ msgctxt "@info"
 msgid "Notifications are off by default for each saved competition/team to avoid spam. Enable them per entry in the \"Competitions & teams\" tab."
 msgstr ""
 
-#: contents/ui/ScoreDelegate.qml:517
+#: contents/ui/ScoreDelegate.qml:496
 msgctxt "@info:tooltip"
 msgid "Notifications on for this match - click to mute"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:382
+msgctxt "@info:tooltip"
+msgid "Notifications on for this race - click to mute"
 msgstr ""
 
 #: contents/ui/config/tabs/NotificationsCompetitionsTab.qml:150
@@ -1393,9 +1717,14 @@ msgctxt "@option:check"
 msgid "Notify"
 msgstr ""
 
-#: contents/ui/ScoreDelegate.qml:518
+#: contents/ui/ScoreDelegate.qml:497
 msgctxt "@info:tooltip"
 msgid "Notify me about this match"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:383
+msgctxt "@info:tooltip"
+msgid "Notify me about this race"
 msgstr ""
 
 #: contents/ui/config/tabs/NotificationsAlertsTab.qml:58
@@ -1403,7 +1732,12 @@ msgctxt "@label:chooser"
 msgid "Notify on:"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:152
+#: contents/ui/TableTab.qml:114
+msgctxt "@title:column hockey overtime losses short"
+msgid "OTL"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:160
 msgctxt "Abbreviation for 'overtime/shootout losses' in a hockey standings table, keep very short"
 msgid "OTL"
 msgstr ""
@@ -1416,7 +1750,7 @@ msgstr ""
 #: contents/ui/config/CombinedSelectPage.qml:1003
 #: contents/ui/config/CountrySelectPage.qml:221
 #: contents/ui/config/CountrySubPage.qml:363
-#: contents/ui/config/PopularSelectPage.qml:179
+#: contents/ui/config/PopularSelectPage.qml:186
 msgctxt "@info:tooltip"
 msgid "Open %1"
 msgstr ""
@@ -1456,49 +1790,94 @@ msgctxt "@info"
 msgid "Open a region to follow its tennis competitions and players."
 msgstr ""
 
-#: contents/ui/main.qml:3113
+#: contents/ui/main.qml:3470
 msgctxt "@action:button"
 msgid "Open match"
 msgstr ""
 
-#: contents/ui/main.qml:143
+#: contents/ui/main.qml:161
 msgctxt "@info:status"
 msgid "Open settings to add a league"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:152
+#: contents/ui/TableTab.qml:615
+msgctxt "@title:tab baseball standings of all teams"
+msgid "Overall"
+msgstr ""
+
+#: contents/ui/TableTab.qml:114
+msgctxt "@info:tooltip"
+msgid "Overtime / shootout losses"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:160
 msgctxt "@info:tooltip"
 msgid "Overtime/shootout losses"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:117
+#: contents/ui/TableTab.qml:116
+msgctxt "@title:column hockey points percentage short"
+msgid "P%"
+msgstr ""
+
+#: contents/ui/TableTab.qml:140
+msgctxt "@title:column lacrosse points against short"
+msgid "PA"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:114
 msgctxt "Abbreviation for 'points against' in a basketball standings table, keep very short"
 msgid "PA"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:168
+#: contents/code/providers/SportScoreSports.js:176
 msgctxt "Abbreviation for 'points against' in an American football standings table, keep very short"
 msgid "PA"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:138
+#: contents/ui/TableTab.qml:82
+msgctxt "@title:column baseball win percentage short"
+msgid "PCT"
+msgstr ""
+
+#: contents/ui/TableTab.qml:138
+msgctxt "@title:column lacrosse win percentage short"
+msgid "PCT"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:146
 msgctxt "Abbreviation for 'win percentage' in a baseball standings table, keep very short"
 msgid "PCT"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:166
+#: contents/code/providers/SportScoreSports.js:174
 msgctxt "Abbreviation for 'win percentage' in an American football standings table, keep very short"
 msgid "PCT"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:116
+#: contents/ui/TableTab.qml:139
+msgctxt "@title:column lacrosse points for short"
+msgid "PF"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:113
 msgctxt "Abbreviation for 'points for' in a basketball standings table, keep very short"
 msgid "PF"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:167
+#: contents/code/providers/SportScoreSports.js:175
 msgctxt "Abbreviation for 'points for' in an American football standings table, keep very short"
 msgid "PF"
+msgstr ""
+
+#: contents/ui/TableTab.qml:91
+msgctxt "@title:column baseball playoff probability short"
+msgid "POFF"
+msgstr ""
+
+#: contents/ui/TableTab.qml:115
+msgctxt "@title:column hockey points short"
+msgid "PTS"
 msgstr ""
 
 #: contents/ui/config/SavedLeaguesList.qml:572
@@ -1511,7 +1890,7 @@ msgctxt "@title:group"
 msgid "Panel"
 msgstr ""
 
-#: contents/ui/config/ConfigAppearance.qml:91
+#: contents/ui/config/ConfigAppearance.qml:93
 msgctxt "@title:tab"
 msgid "Panel"
 msgstr ""
@@ -1531,17 +1910,17 @@ msgctxt "@label:listbox"
 msgid "Panel mode:"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:119
+#: contents/code/providers/SportScoreSports.js:116
 msgctxt "Abbreviation for 'win percentage' in a basketball standings table, keep very short"
 msgid "Pct"
 msgstr ""
 
-#: contents/ui/main.qml:3270
+#: contents/ui/main.qml:3634
 msgctxt "@title:notification"
 msgid "Penalty shootout"
 msgstr ""
 
-#: contents/ui/ScoreDelegate.qml:95
+#: contents/ui/ScoreDelegate.qml:93
 msgctxt "@label:penalty shoot-out short"
 msgid "Pens"
 msgstr ""
@@ -1551,44 +1930,49 @@ msgctxt "@info"
 msgid "Pick a sport to start. Next you can follow the most popular competitions worldwide, or browse every country and league."
 msgstr ""
 
-#: contents/ui/main.qml:1420
+#: contents/ui/main.qml:1591
 msgctxt "@info %2 and %3 are team names"
 msgid "Pinned %2 vs %3 to the panel - the previously pinned match was unpinned."
 msgid_plural "Pinned %2 vs %3 to the panel - %1 previously pinned matches were unpinned."
 msgstr[0] ""
 msgstr[1] ""
 
-#: contents/ui/ScoreDelegate.qml:527
+#: contents/ui/RaceDelegate.qml:392 contents/ui/ScoreDelegate.qml:506
 msgctxt "@info:tooltip"
 msgid "Pinned to the panel - click to unpin"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1497
+#: contents/ui/FullRepresentation.qml:1767
 msgctxt "@label:abbreviation games played"
 msgid "Pl"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:174
+#: contents/code/providers/SportScoreSports.js:182
 msgctxt "Abbreviation for 'played' in a football/soccer standings table, keep very short"
 msgid "Pl"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:174
+#: contents/code/providers/SportScoreSports.js:124
+msgctxt "@info:tooltip"
+msgid "Places gained or lost since the previous ranking"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:182
 msgctxt "@info:tooltip"
 msgid "Played"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1498
+#: contents/ui/FullRepresentation.qml:1768
 msgctxt "@label"
 msgid "Played"
 msgstr ""
 
-#: contents/ui/config/SavedLeaguesList.qml:95
+#: contents/ui/config/SavedLeaguesList.qml:95 contents/ui/TableTab.qml:1022
 msgctxt "@label"
 msgid "Player"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:348
+#: contents/ui/LiveMatchDetails.qml:396
 msgctxt "@tab:match details"
 msgid "Players"
 msgstr ""
@@ -1598,39 +1982,54 @@ msgctxt "@title:group"
 msgid "Players"
 msgstr ""
 
+#: contents/ui/LiveMatchDetails.qml:529
+msgctxt "@title:group match details"
+msgid "Players"
+msgstr ""
+
 #: contents/ui/config/CombinedSelectPage.qml:1023
 msgctxt "@title:section"
 msgid "Players"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:118
-#: contents/code/providers/SportScoreSports.js:169
+#: contents/code/providers/SportScoreSports.js:115
+#: contents/code/providers/SportScoreSports.js:177 contents/ui/TableTab.qml:141
 msgctxt "@info:tooltip"
 msgid "Point differential"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:129
-#: contents/code/providers/SportScoreSports.js:156
-#: contents/code/providers/SportScoreSports.js:181
+#: contents/code/providers/SportScoreSports.js:136
+#: contents/code/providers/SportScoreSports.js:164
+#: contents/code/providers/SportScoreSports.js:189 contents/ui/TableTab.qml:115
 msgctxt "@info:tooltip"
 msgid "Points"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1540
+#: contents/ui/FullRepresentation.qml:1810
 msgctxt "@label"
 msgid "Points"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:117
-#: contents/code/providers/SportScoreSports.js:168
+#: contents/code/providers/SportScoreSports.js:114
+#: contents/code/providers/SportScoreSports.js:176
 msgctxt "@info:tooltip"
 msgid "Points against"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:116
-#: contents/code/providers/SportScoreSports.js:167
+#: contents/ui/TableTab.qml:62
+msgctxt "@info:tooltip"
+msgid "Points behind the leader"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:113
+#: contents/code/providers/SportScoreSports.js:175
 msgctxt "@info:tooltip"
 msgid "Points for"
+msgstr ""
+
+#: contents/ui/TableTab.qml:116
+msgctxt "@info:tooltip"
+msgid "Points percentage (points won out of points available)"
 msgstr ""
 
 #: contents/ui/config/tabs/NotificationsAlertsTab.qml:107
@@ -1648,29 +2047,69 @@ msgctxt "@label"
 msgid "Preview:"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1539
+#: contents/ui/FullRepresentation.qml:1809
 msgctxt "@label:abbreviation points"
 msgid "Pts"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:129
-#: contents/code/providers/SportScoreSports.js:156
-#: contents/code/providers/SportScoreSports.js:181
+#: contents/ui/TableTab.qml:61
+msgctxt "@title:column championship points short"
+msgid "Pts"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:136
+#: contents/code/providers/SportScoreSports.js:164
+#: contents/code/providers/SportScoreSports.js:189
 msgctxt "Abbreviation for 'points' in a standings table, keep very short"
 msgid "Pts"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:141
+#: contents/code/providers/SportScoreSports.js:123
+msgctxt "Abbreviation for 'ranking points' in a tennis rankings table, keep very short"
+msgid "Pts"
+msgstr ""
+
+#: contents/ui/TableTab.qml:87
+msgctxt "@title:column baseball runs allowed short"
+msgid "RA"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:149
 msgctxt "Abbreviation for 'runs against' in a baseball standings table, keep very short"
 msgid "RA"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:140
+#: contents/ui/TableTab.qml:118
+msgctxt "@title:column hockey regulation plus overtime wins short"
+msgid "ROW"
+msgstr ""
+
+#: contents/ui/TableTab.qml:86
+msgctxt "@title:column baseball runs scored short"
+msgid "RS"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:148
 msgctxt "Abbreviation for 'runs scored' in a baseball standings table, keep very short"
 msgid "RS"
 msgstr ""
 
-#: contents/ui/MatchesToolTip.qml:194
+#: contents/ui/TableTab.qml:117
+msgctxt "@title:column hockey regulation wins short"
+msgid "RW"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:123
+msgctxt "@info:tooltip"
+msgid "Ranking points"
+msgstr ""
+
+#: contents/ui/TableTab.qml:603
+msgctxt "@label"
+msgid "Rankings"
+msgstr ""
+
+#: contents/ui/MatchesToolTip.qml:200
 msgctxt "@title:group"
 msgid "Recent"
 msgstr ""
@@ -1680,7 +2119,7 @@ msgctxt "@title:tab"
 msgid "Recent"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1051
+#: contents/ui/FullRepresentation.qml:1061
 msgid "Recent Results"
 msgstr ""
 
@@ -1699,17 +2138,42 @@ msgctxt "@label:spinbox"
 msgid "Recent results days back:"
 msgstr ""
 
-#: contents/ui/main.qml:3291
+#: contents/ui/TableTab.qml:92
+msgctxt "@info:tooltip"
+msgid "Record against the team's own division"
+msgstr ""
+
+#: contents/ui/TableTab.qml:127
+msgctxt "@info:tooltip"
+msgid "Record against the team's own division (W-L-OTL)"
+msgstr ""
+
+#: contents/ui/TableTab.qml:93
+msgctxt "@info:tooltip"
+msgid "Record against the team's own league"
+msgstr ""
+
+#: contents/ui/TableTab.qml:90
+msgctxt "@info:tooltip"
+msgid "Record in the last ten games"
+msgstr ""
+
+#: contents/ui/TableTab.qml:125
+msgctxt "@info:tooltip"
+msgid "Record in the last ten games (W-L-OTL)"
+msgstr ""
+
+#: contents/ui/main.qml:3655
 msgctxt "@title:notification"
 msgid "Red card"
 msgstr ""
 
-#: contents/ui/main.qml:4412
+#: contents/ui/main.qml:4850
 msgctxt "@action"
 msgid "Refresh"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:724
+#: contents/ui/FullRepresentation.qml:725
 msgctxt "@action:button"
 msgid "Refresh"
 msgstr ""
@@ -1734,6 +2198,16 @@ msgctxt "@item:inlistbox"
 msgid "Region default (short)"
 msgstr ""
 
+#: contents/ui/TableTab.qml:118
+msgctxt "@info:tooltip"
+msgid "Regulation plus overtime wins (first tiebreaker after points)"
+msgstr ""
+
+#: contents/ui/TableTab.qml:117
+msgctxt "@info:tooltip"
+msgid "Regulation wins"
+msgstr ""
+
 #: contents/ui/config/tabs/AppearancePanelTab.qml:101
 msgctxt "@item:inlistbox"
 msgid "Remaining only (e.g. 11)"
@@ -1749,7 +2223,7 @@ msgctxt "@action:button"
 msgid "Remove"
 msgstr ""
 
-#: contents/ui/ScoreDelegate.qml:616
+#: contents/ui/ScoreDelegate.qml:595
 msgctxt "@info:tooltip"
 msgid "Remove %1 from favourites"
 msgstr ""
@@ -1780,19 +2254,39 @@ msgctxt "@label:spinbox"
 msgid "Rotation interval:"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:142
+#: contents/code/providers/SportScoreSports.js:150 contents/ui/TableTab.qml:88
 msgctxt "@info:tooltip"
 msgid "Run differential"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:141
+#: contents/code/providers/SportScoreSports.js:149
 msgctxt "@info:tooltip"
 msgid "Runs against"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:140
+#: contents/ui/TableTab.qml:87
+msgctxt "@info:tooltip"
+msgid "Runs allowed"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:148 contents/ui/TableTab.qml:86
 msgctxt "@info:tooltip"
 msgid "Runs scored"
+msgstr ""
+
+#: contents/ui/TableTab.qml:124
+msgctxt "@title:column hockey shootout record short"
+msgid "S/O"
+msgstr ""
+
+#: contents/ui/TableTab.qml:89
+msgctxt "@title:column baseball streak short"
+msgid "STRK"
+msgstr ""
+
+#: contents/ui/TableTab.qml:126
+msgctxt "@title:column hockey streak short"
+msgid "STRK"
 msgstr ""
 
 #: contents/ui/config/SportWizardPage.qml:860
@@ -1800,9 +2294,14 @@ msgctxt "@action:button"
 msgid "Save"
 msgstr ""
 
-#: contents/ui/main.qml:947
+#: contents/ui/main.qml:1104
 msgctxt "@label"
 msgid "Saved Teams"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:153
+msgctxt "@info:status racing session has not started"
+msgid "Scheduled"
 msgstr ""
 
 #: contents/ui/config/tabs/AppearanceWidgetTab.qml:57
@@ -1815,7 +2314,7 @@ msgctxt "@label:listbox"
 msgid "Scheduled matches:"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1044
+#: contents/ui/FullRepresentation.qml:1054
 msgid "Schedules"
 msgstr ""
 
@@ -1825,7 +2324,7 @@ msgid "Schedules"
 msgstr ""
 
 #: contents/ui/config/tabs/AppearanceTooltipTab.qml:55
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:270
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:307
 msgctxt "@label:spinbox"
 msgid "Schedules days ahead:"
 msgstr ""
@@ -1833,11 +2332,6 @@ msgstr ""
 #: contents/ui/config/tabs/AppearanceWidgetTab.qml:175
 msgctxt "@label:checkbox"
 msgid "Schedules:"
-msgstr ""
-
-#: contents/ui/ScoreDelegate.qml:295
-msgctxt "@info:tooltip"
-msgid "Score may be inaccurate. Click to view match details."
 msgstr ""
 
 #: contents/ui/config/CountrySubPage.qml:311
@@ -1860,12 +2354,12 @@ msgctxt "@info:placeholder"
 msgid "Search countries"
 msgstr ""
 
-#: contents/ui/TableTab.qml:174
+#: contents/ui/TableTab.qml:801
 msgctxt "@label"
 msgid "Season:"
 msgstr ""
 
-#: contents/ui/main.qml:3258
+#: contents/ui/main.qml:3622
 msgctxt "@title:notification"
 msgid "Second half"
 msgstr ""
@@ -1878,6 +2372,16 @@ msgstr ""
 #: contents/ui/config/tabs/AppearancePanelTab.qml:237
 msgctxt "@label:listbox"
 msgid "Separator between matches:"
+msgstr ""
+
+#: contents/ui/TableTab.qml:760
+msgctxt "@label racing series selector"
+msgid "Series:"
+msgstr ""
+
+#: contents/ui/TableTab.qml:124
+msgctxt "@info:tooltip"
+msgid "Shootout record (wins-losses)"
 msgstr ""
 
 #: contents/ui/config/tabs/NotificationsAlertsTab.qml:43
@@ -1900,14 +2404,24 @@ msgctxt "@action:button"
 msgid "Show teams"
 msgstr ""
 
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:279
+msgctxt "@info"
+msgid "Show the live matches of every saved sport, not only the sport currently selected, in the Live tab, the featured match, the panel and the tooltip (the panel and tooltip still honour each entry's own scope). Notifications keep following the selected sport."
+msgstr ""
+
 #: contents/ui/config/CompetitionTeamSelector.qml:239
 msgctxt "@info:tooltip"
 msgid "Show the teams in this competition"
 msgstr ""
 
-#: contents/ui/ScoreDelegate.qml:528
+#: contents/ui/ScoreDelegate.qml:507
 msgctxt "@info:tooltip"
 msgid "Show this match in the panel"
+msgstr ""
+
+#: contents/ui/RaceDelegate.qml:393
+msgctxt "@info:tooltip"
+msgid "Show this race in the panel"
 msgstr ""
 
 #: contents/ui/config/SportChoiceCard.qml:133
@@ -1916,7 +2430,7 @@ msgid "Show tournaments"
 msgstr ""
 
 #: contents/ui/config/tabs/AppearancePanelTab.qml:92
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:327
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:364
 msgctxt "@label:listbox"
 msgid "Show:"
 msgstr ""
@@ -1980,28 +2494,38 @@ msgctxt "@info"
 msgid "SportScore is not responding right now, so this country's competitions could not be loaded. Please try again later."
 msgstr ""
 
-#: contents/ui/main.qml:4210
+#: contents/ui/main.qml:4644
 msgid "Sports Widget for Plasma"
 msgstr ""
 
-#: contents/ui/main.qml:3483
+#: contents/ui/main.qml:3847
 msgctxt "@title calendar name"
 msgid "Sports Widget for Plasma upcoming matches"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:446
+#: contents/ui/TableTab.qml:607
+msgctxt "@label"
+msgid "Standings"
+msgstr ""
+
+#: contents/ui/TableTab.qml:477
+msgctxt "@title:tab hockey standings by division"
+msgid "Standings"
+msgstr ""
+
+#: contents/ui/LiveMatchDetails.qml:504
 msgctxt "@label:football lineups"
 msgid "Starting lineups"
 msgstr ""
 
-#: contents/ui/main.qml:3273
+#: contents/ui/main.qml:3637
 msgctxt "@title:notification"
 msgid "Starts in %1 minute"
 msgid_plural "Starts in %1 minutes"
 msgstr[0] ""
 msgstr[1] ""
 
-#: contents/ui/LiveMatchDetails.qml:339
+#: contents/ui/LiveMatchDetails.qml:387
 msgctxt "@tab:match details"
 msgid "Statistics"
 msgstr ""
@@ -2011,17 +2535,17 @@ msgctxt "@action:button"
 msgid "Stop notifying about this match"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:456
+#: contents/ui/LiveMatchDetails.qml:514
 msgctxt "@label:football lineups"
 msgid "Substitutes"
 msgstr ""
 
-#: contents/ui/main.qml:3294
+#: contents/ui/main.qml:3658
 msgctxt "@title:notification"
 msgid "Substitution"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:662
+#: contents/ui/FullRepresentation.qml:663
 msgctxt "@action:button"
 msgid "Switch sport"
 msgstr ""
@@ -2031,28 +2555,28 @@ msgctxt "@info:font preview"
 msgid "System font"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:127
+#: contents/code/providers/SportScoreSports.js:134
 msgctxt "Abbreviation for 'tied or drawn' in a cricket standings table, keep very short"
 msgid "T"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:165
+#: contents/code/providers/SportScoreSports.js:173
 msgctxt "Abbreviation for 'tied' in an American football standings table, keep very short"
 msgid "T"
 msgstr ""
 
-#: contents/ui/main.qml:4697 contents/ui/main.qml:4698
-#: contents/ui/main.qml:4725 contents/ui/main.qml:4756
+#: contents/ui/main.qml:5150 contents/ui/main.qml:5151
+#: contents/ui/main.qml:5178 contents/ui/main.qml:5209
 msgctxt "@info:status"
 msgid "Table request timed out."
 msgstr ""
 
-#: contents/ui/TableTab.qml:133
+#: contents/ui/TableTab.qml:760
 msgctxt "@label"
 msgid "Table:"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1058
+#: contents/ui/FullRepresentation.qml:1068
 msgid "Tables"
 msgstr ""
 
@@ -2071,18 +2595,18 @@ msgctxt "@label:listbox"
 msgid "Tabs position:"
 msgstr ""
 
-#: contents/ui/config/PopularSelectPage.qml:142
+#: contents/ui/config/PopularSelectPage.qml:149
 msgctxt "@info"
 msgid "Tap a competition to open it, then enable the whole competition or follow individual teams."
 msgstr ""
 
-#: contents/ui/config/PopularSelectPage.qml:142
+#: contents/ui/config/PopularSelectPage.qml:149
 msgctxt "@info"
 msgid "Tap a competition to open it, then enable the whole competition or follow individual teams. Use Browse all for every country and international competition."
 msgstr ""
 
 #: contents/ui/config/SavedLeaguesList.qml:95
-#: contents/ui/FullRepresentation.qml:1492 contents/ui/TableTab.qml:334
+#: contents/ui/FullRepresentation.qml:1762 contents/ui/TableTab.qml:1022
 msgctxt "@label"
 msgid "Team"
 msgstr ""
@@ -2097,7 +2621,7 @@ msgctxt "@title:section"
 msgid "Teams"
 msgstr ""
 
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:332
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:369
 msgctxt "@item:inlistbox"
 msgid "Teams and competitions"
 msgstr ""
@@ -2107,12 +2631,17 @@ msgctxt "@item:inlistbox"
 msgid "Teams and score"
 msgstr ""
 
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:335
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:372
 msgctxt "@item:inlistbox"
 msgid "Teams only"
 msgstr ""
 
-#: contents/ui/config/PopularSelectPage.qml:120
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:262
+msgctxt "@info"
+msgid "The Live tab belongs to the Detailed layout. In the Simple layout, \"All saved sports\" adds the other sports' live matches to the list, and grouping has no effect."
+msgstr ""
+
+#: contents/ui/config/PopularSelectPage.qml:127
 msgctxt "@info"
 msgid "The most popular competitions. Open one to follow the competition or pick teams inside it."
 msgstr ""
@@ -2124,7 +2653,7 @@ msgid ""
 "%1"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:256
+#: contents/ui/LiveMatchDetails.qml:300
 msgctxt "@info:placeholder"
 msgid "The provider does not provide detailed match statistics for this match."
 msgstr ""
@@ -2134,7 +2663,7 @@ msgctxt "@info"
 msgid "The provider is not responding right now, so this competition's players could not be loaded. Please try again later."
 msgstr ""
 
-#: contents/ui/config/PopularSelectPage.qml:191
+#: contents/ui/config/PopularSelectPage.qml:198
 msgctxt "@info"
 msgid "There is no curated top list for this sport yet - use Browse all to pick competitions and teams."
 msgstr ""
@@ -2149,12 +2678,17 @@ msgctxt "@item:inlistbox stack separator"
 msgid "Thin line"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:165
+#: contents/ui/RaceDelegate.qml:479
+msgctxt "@info:placeholder"
+msgid "This session has not started yet."
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:173
 msgctxt "@info:tooltip"
 msgid "Tied"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:127
+#: contents/code/providers/SportScoreSports.js:134
 msgctxt "@info:tooltip"
 msgid "Tied or drawn"
 msgstr ""
@@ -2174,7 +2708,7 @@ msgctxt "@title:group"
 msgid "Tooltip"
 msgstr ""
 
-#: contents/ui/config/ConfigAppearance.qml:101
+#: contents/ui/config/ConfigAppearance.qml:103
 msgctxt "@title:tab"
 msgid "Tooltip"
 msgstr ""
@@ -2184,22 +2718,32 @@ msgctxt "@item:inlistbox tabs position"
 msgid "Top"
 msgstr ""
 
-#: contents/ui/config/PopularSelectPage.qml:160
+#: contents/ui/config/PopularSelectPage.qml:167
 msgctxt "@title:group"
 msgid "Top competitions"
 msgstr ""
 
-#: contents/ui/config/PopularSelectPage.qml:112
+#: contents/ui/config/PopularSelectPage.qml:119
 msgctxt "@title:group"
 msgid "Top in the World"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:625
+#: contents/ui/LiveMatchDetails.qml:712
 msgctxt "@title:group match details"
 msgid "Top performers"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:357
+#: contents/ui/TableTab.qml:140
+msgctxt "@info:tooltip"
+msgid "Total points against"
+msgstr ""
+
+#: contents/ui/TableTab.qml:139
+msgctxt "@info:tooltip"
+msgid "Total points for"
+msgstr ""
+
+#: contents/ui/LiveMatchDetails.qml:405
 msgctxt "@tab:match details"
 msgid "Tracker"
 msgstr ""
@@ -2217,7 +2761,7 @@ msgctxt "@info"
 msgid "Unstable - not recommended. This registers the .ics as a live Akonadi (KDE PIM) calendar. On some systems Akonadi re-indexes every match on each update and can freeze Plasma for several seconds. Prefer the native calendar plugin above; only enable this if you specifically need an Akonadi calendar and accept the risk."
 msgstr ""
 
-#: contents/ui/MatchesToolTip.qml:172
+#: contents/ui/MatchesToolTip.qml:178
 msgctxt "@title:group"
 msgid "Upcoming"
 msgstr ""
@@ -2232,27 +2776,28 @@ msgctxt "@option:check"
 msgid "Update separately"
 msgstr ""
 
-#: contents/ui/main.qml:1123
+#: contents/ui/main.qml:1280
 msgctxt "@info:status"
 msgid "Updated"
 msgstr ""
 
-#: contents/ui/main.qml:1123
+#: contents/ui/main.qml:1280
 msgctxt "@info:status"
 msgid "Updated %1"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1099
+#: contents/ui/FullRepresentation.qml:1135
+#: contents/ui/FullRepresentation.qml:1169
 msgctxt "@info:status"
 msgid "Updating"
 msgstr ""
 
-#: contents/ui/TableTab.qml:276
+#: contents/ui/TableTab.qml:929
 msgctxt "@info:status"
 msgid "Updating table"
 msgstr ""
 
-#: contents/ui/main.qml:218 contents/ui/MatchesToolTip.qml:214
+#: contents/ui/main.qml:236 contents/ui/MatchesToolTip.qml:220
 msgctxt "@info:status"
 msgid "Updating…"
 msgstr ""
@@ -2267,32 +2812,67 @@ msgctxt "@title:group"
 msgid "Visible tabs"
 msgstr ""
 
-#: contents/ui/LiveMatchDetails.qml:429
+#: contents/ui/LiveMatchDetails.qml:477
 msgctxt "@action:button open match on ESPN website"
 msgid "Visit on ESPN"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1503
+#: contents/ui/RaceDelegate.qml:513
+msgctxt "@action:button open race on ESPN website"
+msgid "Visit on ESPN"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:1773
 msgctxt "@label:abbreviation games won"
 msgid "W"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:114
-#: contents/code/providers/SportScoreSports.js:125
-#: contents/code/providers/SportScoreSports.js:136
-#: contents/code/providers/SportScoreSports.js:150
-#: contents/code/providers/SportScoreSports.js:163
-#: contents/code/providers/SportScoreSports.js:175
+#: contents/ui/TableTab.qml:80
+msgctxt "@title:column baseball wins short"
+msgid "W"
+msgstr ""
+
+#: contents/ui/TableTab.qml:112
+msgctxt "@title:column hockey wins short"
+msgid "W"
+msgstr ""
+
+#: contents/ui/TableTab.qml:136
+msgctxt "@title:column lacrosse wins short"
+msgid "W"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:111
+#: contents/code/providers/SportScoreSports.js:132
+#: contents/code/providers/SportScoreSports.js:144
+#: contents/code/providers/SportScoreSports.js:158
+#: contents/code/providers/SportScoreSports.js:171
+#: contents/code/providers/SportScoreSports.js:183
 msgctxt "Abbreviation for 'won' in a standings table, keep very short"
 msgid "W"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1006
+#: contents/ui/TableTab.qml:887
+msgctxt "@info column glossary of the lacrosse standings"
+msgid "W: Wins · L: Losses · PCT: Winning percentage · PF: Total points for · PA: Total points against · DIFF: Point differential"
+msgstr ""
+
+#: contents/ui/TableTab.qml:220
+msgctxt "@title:column baseball wild card games behind short"
+msgid "WCGB"
+msgstr ""
+
+#: contents/ui/TableTab.qml:628
+msgctxt "@title:tab tennis tour: women's ranking"
+msgid "WTA · Women"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:1016
 msgctxt "@info:status"
 msgid "Waiting for update"
 msgstr ""
 
-#: contents/ui/config/ConfigAppearance.qml:96
+#: contents/ui/config/ConfigAppearance.qml:98
 msgctxt "@title:tab"
 msgid "Widget"
 msgstr ""
@@ -2302,29 +2882,50 @@ msgctxt "@label:listbox"
 msgid "Widget panel area:"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:119
-#: contents/code/providers/SportScoreSports.js:138
-#: contents/code/providers/SportScoreSports.js:166
+#: contents/ui/TableTab.qml:617
+msgctxt "@title:tab baseball wild card race"
+msgid "Wild Card"
+msgstr ""
+
+#: contents/ui/TableTab.qml:474
+msgctxt "@title:tab hockey wild card race"
+msgid "Wild Card"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:116
+#: contents/code/providers/SportScoreSports.js:146
+#: contents/code/providers/SportScoreSports.js:174
 msgctxt "@info:tooltip"
 msgid "Win percentage"
 msgstr ""
 
-#: contents/code/providers/SportScoreSports.js:114
-#: contents/code/providers/SportScoreSports.js:125
-#: contents/code/providers/SportScoreSports.js:136
-#: contents/code/providers/SportScoreSports.js:150
-#: contents/code/providers/SportScoreSports.js:163
-#: contents/code/providers/SportScoreSports.js:175
+#: contents/ui/TableTab.qml:82 contents/ui/TableTab.qml:138
+msgctxt "@info:tooltip"
+msgid "Winning percentage"
+msgstr ""
+
+#: contents/ui/TableTab.qml:80 contents/ui/TableTab.qml:112
+#: contents/ui/TableTab.qml:136
+msgctxt "@info:tooltip"
+msgid "Wins"
+msgstr ""
+
+#: contents/code/providers/SportScoreSports.js:111
+#: contents/code/providers/SportScoreSports.js:132
+#: contents/code/providers/SportScoreSports.js:144
+#: contents/code/providers/SportScoreSports.js:158
+#: contents/code/providers/SportScoreSports.js:171
+#: contents/code/providers/SportScoreSports.js:183
 msgctxt "@info:tooltip"
 msgid "Won"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:1504
+#: contents/ui/FullRepresentation.qml:1774
 msgctxt "@label"
 msgid "Won"
 msgstr ""
 
-#: contents/ui/main.qml:3288
+#: contents/ui/main.qml:3652
 msgctxt "@title:notification"
 msgid "Yellow card"
 msgstr ""
@@ -2346,7 +2947,7 @@ msgstr ""
 
 #: contents/ui/config/tabs/AppearanceTooltipTab.qml:70
 #: contents/ui/config/tabs/AppearanceTooltipTab.qml:90
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:285
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:322
 msgctxt "@label:spinbox"
 msgid "day"
 msgid_plural "days"
@@ -2355,8 +2956,8 @@ msgstr[1] ""
 
 #: contents/ui/config/tabs/AppearancePanelTab.qml:230
 #: contents/ui/config/tabs/AppearanceTooltipTab.qml:50
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:305
-#: contents/ui/config/tabs/AppearanceWidgetTab.qml:361
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:342
+#: contents/ui/config/tabs/AppearanceWidgetTab.qml:398
 msgctxt "@label:spinbox"
 msgid "match"
 msgid_plural "matches"
