@@ -1,8 +1,14 @@
 ## Project Discontinuation
 
+>
 > I've decided to step away from this project due to the lack of interest and the criticism I've received for using AI as a development aid. I've invested a huge amount of time and effort into this project, and unfortunately, it has become difficult to justify continuing to maintain it under these circumstances.
->If anyone is interested in taking over, feel free to fork the project and continue its development. As for me, this is where I step away.
+>
+> The latest released version is **1.1.0**, which fixes several issues. I hope all sports will now display correctly. However, if any of the sports APIs change in the future, I will no longer be releasing updates to address those changes.
+>
+> If anyone is interested in taking over, feel free to fork the project and continue its development. As for me, this is where I step away.
+>
 > I'd like to thank the few users who appreciated the project and gave it high ratings. Your support meant a lot to me.
+>
 > Thank you.
 
 # Sports Widget for KDE Plasma 6
