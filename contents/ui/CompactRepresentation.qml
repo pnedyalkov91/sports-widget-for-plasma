@@ -47,8 +47,6 @@ Control {
     property string homeBadge: ""
     property string awayBadge: ""
     property string favoriteTeam: ""
-    property int favoriteRotationInterval: 4000
-    property bool favoriteDetailsVisible: false
     property bool panelUseSystemFont: true
     property string panelFontFamily: ""
     property int panelFontSize: 0
@@ -139,9 +137,7 @@ Control {
     }
 
     function scoreText() {
-        if (compact.favoritePanelMode)
-            return "-";
-
+        // Not started yet: show the date/time (status text) between the teams.
         if (!compact.showScore)
             return compact.statusText.trim();
 
@@ -152,18 +148,6 @@ Control {
 
     function useCustomFont() {
         return !compact.panelUseSystemFont && compact.panelFontFamily.trim().length > 0;
-    }
-
-    function favoriteDetailsText() {
-        const parts = [];
-        const status = compact.statusText.trim();
-        const stadium = compact.stadium.trim();
-        if (status.length > 0)
-            parts.push(status);
-        if (stadium.length > 0)
-            parts.push(stadium);
-
-        return parts.join(" · ");
     }
 
     function normalizedPanelAreaMode() {
@@ -177,7 +161,6 @@ Control {
     readonly property int matchColumnSpacing: Kirigami.Units.smallSpacing
     readonly property int teamContentSpacing: Math.max(2, Math.round(Kirigami.Units.smallSpacing / 2))
     readonly property bool favoritePanelMode: compact.favoriteTeam.trim().length > 0 && compact.hasMatchDetails() && !compact.isLive
-    readonly property bool favoriteRotationEnabled: compact.favoritePanelMode && compact.favoriteDetailsText().length > 0
     readonly property int estimatedLogoSize: compact.panelEmblemSize > 0
         ? Math.max(8, Math.min(64, compact.panelEmblemSize))
         : Math.max(8, Math.min(Math.max(8, compact.height - Math.max(2, Kirigami.Units.smallSpacing)), Kirigami.Units.iconSizes.large))
@@ -189,9 +172,7 @@ Control {
     readonly property int centerNaturalWidth: Math.max(scoreNaturalWidth, liveStatusNaturalWidth)
     readonly property int homeSideNaturalWidth: (compact.showBadges() ? compact.estimatedLogoSize : 0) + (compact.showBadges() && compact.showTeamNames() ? compact.teamContentSpacing : 0) + homeTeamNaturalWidth
     readonly property int awaySideNaturalWidth: (compact.showBadges() ? compact.estimatedLogoSize : 0) + (compact.showBadges() && compact.showTeamNames() ? compact.teamContentSpacing : 0) + awayTeamNaturalWidth
-    readonly property int favoriteMatchNaturalWidth: homeSideNaturalWidth + Math.ceil(favoriteSeparatorMetrics.advanceWidth) + awaySideNaturalWidth + compact.matchColumnSpacing * 2 + compact.contentMargin * 2
-    readonly property int favoriteDetailsNaturalWidth: Math.ceil(favoriteDetailsMetrics.advanceWidth) + compact.contentMargin * 2
-    readonly property int matchNaturalWidth: compact.favoritePanelMode ? Math.max(favoriteMatchNaturalWidth, favoriteDetailsNaturalWidth) : homeSideNaturalWidth + centerNaturalWidth + awaySideNaturalWidth + compact.matchColumnSpacing * 2 + compact.contentMargin * 2
+    readonly property int matchNaturalWidth: homeSideNaturalWidth + centerNaturalWidth + awaySideNaturalWidth + compact.matchColumnSpacing * 2 + compact.contentMargin * 2
     readonly property int fallbackNaturalWidth: Math.ceil(fallbackTextMetrics.advanceWidth) + Kirigami.Units.iconSizes.medium + compact.matchColumnSpacing * 2 + (compact.liveCount > 0 ? Kirigami.Units.iconSizes.smallMedium + compact.matchColumnSpacing : 0)
     readonly property int stackNaturalWidth: compact.contentMargin * 2 + (stackRow ? Math.ceil(stackRow.implicitWidth) : 0)
     readonly property int naturalPanelWidth: compact.stackModeActive ? Math.max(compact.minimumPanelWidth, stackNaturalWidth) : compact.hasMatchDetails() ? matchNaturalWidth : fallbackNaturalWidth
@@ -231,20 +212,6 @@ Control {
     }
 
     TextMetrics {
-        id: favoriteSeparatorMetrics
-
-        font: compact.effectivePanelFont
-        text: "-"
-    }
-
-    TextMetrics {
-        id: favoriteDetailsMetrics
-
-        font: compact.effectivePanelFont
-        text: compact.favoriteDetailsText()
-    }
-
-    TextMetrics {
         id: fallbackTextMetrics
 
         font: compact.effectivePanelFont
@@ -259,22 +226,6 @@ Control {
     implicitWidth: compact.effectivePanelAreaMode === "fill" ? Math.max(compact.minimumPanelWidth, compact.naturalPanelWidth) : compact.requestedPanelWidth
     implicitHeight: Layout.preferredHeight
     padding: 0
-
-    onFavoriteRotationEnabledChanged: {
-        if (!compact.favoriteRotationEnabled)
-            compact.favoriteDetailsVisible = false;
-    }
-    onHomeTeamChanged: compact.favoriteDetailsVisible = false
-    onAwayTeamChanged: compact.favoriteDetailsVisible = false
-    onStatusTextChanged: compact.favoriteDetailsVisible = false
-    onStadiumChanged: compact.favoriteDetailsVisible = false
-
-    Timer {
-        interval: compact.favoriteRotationInterval
-        repeat: true
-        running: compact.favoriteRotationEnabled
-        onTriggered: compact.favoriteDetailsVisible = !compact.favoriteDetailsVisible
-    }
 
     Timer {
         interval: Math.max(5, compact.matchRotationInterval || 30) * 1000
@@ -329,7 +280,7 @@ Control {
             width: Math.min(implicitWidth, Math.max(0, parent.width - compact.contentMargin * 2))
             height: implicitHeight
             spacing: compact.matchColumnSpacing
-            visible: !compact.simpleMode && compact.hasMatchDetails() && !compact.favoritePanelMode && !compact.stackModeActive
+            visible: !compact.simpleMode && compact.hasMatchDetails() && !compact.stackModeActive
 
             RowLayout {
                 Layout.fillWidth: compact.showTeamNames()
@@ -452,78 +403,6 @@ Control {
                     }
                 }
             }
-        }
-
-        RowLayout {
-            id: favoriteMatchRow
-
-            anchors.centerIn: parent
-            width: Math.min(implicitWidth, Math.max(0, parent.width - compact.contentMargin * 2))
-            height: implicitHeight
-            spacing: compact.matchColumnSpacing
-            visible: !compact.simpleMode && compact.favoritePanelMode && !compact.favoriteDetailsVisible
-
-            RowLayout {
-                Layout.fillWidth: compact.showTeamNames()
-                Layout.minimumWidth: compact.homeSideNaturalWidth
-                Layout.alignment: Qt.AlignVCenter
-                spacing: compact.teamContentSpacing
-
-                TeamLogo {
-                    sourceUrl: compact.homeBadge
-                    visible: compact.showBadges()
-                }
-
-                PanelLabel {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: compact.homeTeamNaturalWidth
-                    Layout.preferredWidth: compact.homeTeamNaturalWidth
-                    Layout.alignment: Qt.AlignVCenter
-                    text: compact.homeTeam
-                    horizontalAlignment: Text.AlignLeft
-                    elide: Text.ElideRight
-                    visible: compact.showTeamNames()
-                }
-            }
-
-            PanelLabel {
-                Layout.alignment: Qt.AlignVCenter
-                text: "-"
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            RowLayout {
-                Layout.fillWidth: compact.showTeamNames()
-                Layout.minimumWidth: compact.awaySideNaturalWidth
-                Layout.alignment: Qt.AlignVCenter
-                spacing: compact.teamContentSpacing
-
-                PanelLabel {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: compact.awayTeamNaturalWidth
-                    Layout.preferredWidth: compact.awayTeamNaturalWidth
-                    Layout.alignment: Qt.AlignVCenter
-                    text: compact.awayTeam
-                    horizontalAlignment: Text.AlignRight
-                    elide: Text.ElideRight
-                    visible: compact.showTeamNames()
-                }
-
-                TeamLogo {
-                    sourceUrl: compact.awayBadge
-                    visible: compact.showBadges()
-                }
-            }
-        }
-
-        PanelLabel {
-            anchors.centerIn: parent
-            width: Math.max(0, parent.width - compact.contentMargin * 2)
-            text: compact.favoriteDetailsText()
-            visible: !compact.simpleMode && compact.favoritePanelMode && compact.favoriteDetailsVisible && text.length > 0
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
         }
 
         RowLayout {
