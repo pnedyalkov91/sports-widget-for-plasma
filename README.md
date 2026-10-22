@@ -15,6 +15,7 @@ Sports widget for KDE Plasma desktop environment. Provides live scores, results,
   - [🛠 Manual Installation](#-manual-installation-development)
 - [🖼️ Screenshots](#-screenshots)
 - [✨ Detailed Features](#-detailed-features)
+- [🏅 Supported Sports & Competitions](#-supported-sports--competitions)
 - [🌐 Translation](#-translation)
 - [📚 External Resources](#external-resources)
 - [🐛 Bug Reports & Feedback](#-bug-reports--feedback)
@@ -89,11 +90,21 @@ To update an existing installation, replace `--install` with `--upgrade`.
 
 <p align="center">
   <b>Multiple Sports</b><br>
-  <img src="screenshots/basketball.png" width="260" alt="Basketball live match">
-  <img src="screenshots/cricket.png" width="260" alt="Cricket live match">
-  <img src="screenshots/tennis.png" width="260" alt="Tennis live match">
+  <img src="screenshots/football.png" width="260" alt="Tennis">
+  <img src="screenshots/NBA.png" width="260" alt="Tennis">
+  <img src="screenshots/MLB.png" width="260" alt="MLB">
+  <img src="screenshots/NHL.png" width="260" alt="NHL">
+  <img src="screenshots/F1.png" width="260" alt="Formula 1">
+  <img src="screenshots/ATP.png" width="260" alt="Tennis">
+  <img src="screenshots/rugby.png" width="260" alt="Rugby">
+  <img src="screenshots/AFL.png" width="260" alt="Australian Football">
+  <img src="screenshots/volleyball.png" width="260" alt="Voleyball">
+  <img src="screenshots/lacrosse.png" width="260" alt="Lacrosse">
+  <img src="screenshots/MMA.png" width="260" alt="MMA">
+  <img src="screenshots/cricket.png" width="260" alt="cricket">
+
   <br>
-  (Basketball, Cricket and Tennis are supported alongside Football, plus 12 more sports via ESPN.)
+  (Football (Soccer), Basketball, Cricket and Tennis are supported alongside Football, plus 12 more sports via ESPN)
 </p>
 
 <p align="center">
@@ -106,7 +117,7 @@ To update an existing installation, replace `--install` with `--upgrade`.
 # ✨ Detailed Features
 
 ### 🏆 Sports & Competitions
-- **Supported sports:** Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball and Water Polo.
+- **Supported sports:** Football (FIFA, UEFA, CONMEBOL, Concacaf, CAF and AFC tournaments plus domestic leagues and cups from dozens of countries), Basketball (NBA, WNBA, NCAA, NBL, FIBA World Cup, Olympics), Cricket (ICC World Cup, T20 World Cup, IPL, Big Bash, PSL, SA20, The Hundred and more), Tennis (ATP, WTA), American Football (NFL, NCAA, CFL, UFL, XFL), Baseball (MLB, College Baseball, World Baseball Classic and more), Ice Hockey (NHL, NCAA, World Cup of Hockey, Olympics), Golf, Racing (Formula 1, NASCAR, IndyCar), MMA (UFC, PFL, Bellator), Rugby (Premiership, URC, Six Nations, Rugby World Cup, Super Rugby Pacific, MLR, Rugby League), Australian Football (AFL), Field Hockey, Lacrosse (PLL, NCAA, NLL), Volleyball (NCAA) and Water Polo. See [Supported Sports & Competitions](#-supported-sports--competitions) for the full list.
 - **Guided setup wizard:** Add a sport, then pick a country/competition or an international tournament, and optionally a favorite club, national team or player.
 - **Multiple selections:** Add as many sports, competitions, national teams and favorite teams as you like - they're all combined into one view, with duplicate detection so you don't add the same thing twice.
 - **International tournaments:** Follow World Cups, continental championships and other international competitions without picking a specific country.
@@ -152,17 +163,150 @@ To update an existing installation, replace `--install` with `--upgrade`.
 
 ---
 
+# 🏅 Supported Sports & Competitions
+
+Click a sport to expand its list of competitions. Additional competitions that are not listed here may be offered by the widget when they are currently running (for example, new cricket series and tours are added live).
+
+<details>
+<summary><b>⚽ Football</b></summary>
+
+**International & qualifying**
+- **FIFA:** FIFA World Cup, FIFA Women's World Cup, FIFA Under-20 World Cup, FIFA Under-17 World Cup, FIFA Under-17 Women's World Cup, FIFA Club World Cup, FIFA Intercontinental Cup, FIFA Women's Champions Cup, Olympics Men's Football, Olympics Women's Football
+- **Friendlies:** International Friendly, Women's International Friendly, U21 International Friendly, U20 International Friendly, SheBelieves Cup
+- **World Cup qualifying:** World Cup Qualifying, World Cup Qualifying - UEFA / CAF / AFC / Concacaf / CONMEBOL / OFC, Women's World Cup Qualifying - Playoff, Women's World Cup Qualifying - UEFA
+- **UEFA:** UEFA Champions League, UEFA Champions League Qualifying, UEFA Europa League, UEFA Europa League Qualifying, UEFA Conference League, UEFA Conference League Qualifying, UEFA Super Cup, UEFA Women's Champions League, UEFA European Championship, UEFA European Championship Qualifying, UEFA Women's European Championship, UEFA European Under-21 Championship, UEFA European Under-21 Championship Qualifying, UEFA European Under-19 Championship, UEFA Nations League, UEFA Women's Nations League
+- **Concacaf:** Concacaf Champions Cup, Leagues Cup, Concacaf Gold Cup, Concacaf Nations League, Concacaf W Gold Cup, Concacaf W Champions Cup
+- **CONMEBOL:** CONMEBOL Libertadores, CONMEBOL Sudamericana, CONMEBOL Recopa, Copa America, Copa America Qualifying, Copa America Femenina
+- **CAF:** Africa Cup of Nations, Africa Cup of Nations Qualifying, CAF Champions League, CAF Confederation Cup
+- **AFC:** AFC Champions League Elite, AFC Champions League Two, AFC Asian Cup
+
+**Europe**
+- **England:** Premier League, EFL Championship, EFL League One, EFL League Two, National League, FA Cup, EFL Cup (Carabao Cup), EFL Trophy, FA Community Shield, Premier League Asia Trophy, Women's Super League, Women's FA Cup, Women's FA Community Shield
+- **Spain:** La Liga, La Liga 2, Copa del Rey, Supercopa de Espana, Trofeo Joan Gamper, Liga F, Copa de la Reina
+- **Germany:** Bundesliga, 2. Bundesliga, DFB-Pokal, DFL-Supercup, Bundesliga Relegation Playoff, 2. Bundesliga Relegation Playoff
+- **Italy:** Serie A, Serie B, Coppa Italia, Supercoppa Italiana
+- **France:** Ligue 1, Ligue 2, Coupe de France, Trophee des Champions, Premiere Ligue (Women)
+- **Netherlands:** Eredivisie, Eerste Divisie, Tweede Divisie, KNVB Beker, Johan Cruyff Shield, Vrouwen Eredivisie, KNVB Beker Vrouwen
+- **Portugal:** Primeira Liga, Taca de Portugal
+- **Scotland:** Scottish Premiership, Scottish Championship, Scottish League One, Scottish League Two, Scottish Cup, Scottish League Cup, Scottish Challenge Cup
+- **Other European leagues:** Belgian Pro League, Austrian Bundesliga, Greek Super League, Turkish Super Lig, Danish Superliga, Norwegian Eliteserien, Swedish Allsvenskan, Cypriot First Division, League of Ireland Premier Division, Russian Premier League
+
+**North & Central America**
+- **USA:** Major League Soccer, U.S. Open Cup, NWSL, NWSL Challenge Cup, NWSL x Liga MX Femenil Summer Cup, USL Championship, USL League One, USL Super League, NCAA Men's Soccer, NCAA Women's Soccer
+- **Canada:** Northern Super League
+- **Mexico:** Liga MX, Liga de Expansion MX, Campeon de Campeones, Supercopa MX
+
+**South America**
+- Liga Profesional Argentina, Copa Argentina, Brasileirao Serie A, Brasileirao Serie B, Copa do Brasil, Primera Division Chile, Primera A Colombia, Primera Division Paraguay, Liga 1 Peru, Primera Division Uruguay, Liga Profesional Bolivia, LigaPro Ecuador, Primera Division Venezuela
+
+**Africa**
+- South African Premiership, Nigerian Professional League, Ghanaian Premier League
+
+**Asia & Oceania**
+- Saudi Pro League, Saudi King's Cup, J.League, Chinese Super League, Indian Super League, Thai League 1, Malaysian Super League, Indonesian Super League, Singapore Premier League, A-League Men, A-League Women
+
+</details>
+
+<details>
+<summary><b>🏀 Basketball</b></summary>
+
+NBA, WNBA, NBA G League, NCAA Men's, NCAA Women's, NBL, FIBA World Cup, Olympics Men's Basketball, Olympics Women's Basketball, NBA California Classic Summer League, Golden State Summer League, Las Vegas Summer League, Orlando Summer League, Sacramento Summer League, Salt Lake City Summer League
+
+</details>
+
+<details>
+<summary><b>🏏 Cricket</b></summary>
+
+- **International tournaments:** ICC Cricket World Cup, ICC Men's T20 World Cup, Africa Continental Cup, European T20 Premier League
+- **Franchise T20 leagues:** Indian Premier League, Women's Premier League, Big Bash League, Women's Big Bash League, Pakistan Super League, SA20, International League T20, Caribbean Premier League, Women's Caribbean Premier League, Bangladesh Premier League, The Hundred Men's Competition, Major League Cricket
+- **Domestic competitions:** County Championship Division One, Marsh Sheffield Shield, Syed Mushtaq Ali Trophy, CSA 4-Day Series Division 1, SLC T20 League, ECB Women's One-Day Cup
+- Bilateral tours and one-off series that are currently running are added automatically.
+
+</details>
+
+<details>
+<summary><b>🎾 Tennis</b></summary>
+
+ATP, WTA
+
+</details>
+
+<details>
+<summary><b>🏈 American Football</b></summary>
+
+NFL, NCAA Football, CFL, UFL, XFL
+
+</details>
+
+<details>
+<summary><b>⚾ Baseball</b></summary>
+
+MLB, College Baseball, World Baseball Classic, Caribbean Series, NCAA Softball, Dominican Winter League, Little League Baseball, Little League Softball, Mexican League, Olympics Men's Baseball, Puerto Rican Winter League, Venezuelan Winter League
+
+</details>
+
+<details>
+<summary><b>🏒 Ice Hockey</b></summary>
+
+NHL, NCAA Men's Hockey, NCAA Women's Hockey, World Cup of Hockey, Olympics Men's Ice Hockey, Olympics Women's Ice Hockey
+
+</details>
+
+<details>
+<summary><b>🏎 Racing</b></summary>
+
+Formula 1, NASCAR Cup Series, NASCAR O'Reilly Auto Parts Series, NASCAR Truck Series, IndyCar
+
+</details>
+
+<details>
+<summary><b>🥊 MMA</b></summary>
+
+UFC, PFL, Bellator MMA
+
+</details>
+
+<details>
+<summary><b>🏉 Rugby</b></summary>
+
+Premiership Rugby, United Rugby Championship, Six Nations, Rugby World Cup, Super Rugby Pacific, Major League Rugby, Rugby League
+
+</details>
+
+<details>
+<summary><b>🏉 Australian Football</b></summary>
+
+AFL
+
+</details>
+
+<details>
+<summary><b>🥍 Lacrosse</b></summary>
+
+PLL, NCAA Men's, NCAA Women's, NLL
+
+</details>
+
+<details>
+<summary><b>🏐 Volleyball</b></summary>
+
+NCAA Women's, NCAA Men's
+
+</details>
+
+---
+
 ## 🌐 Translation
 
-The widget follows your system language automatically. It currently ships with English and Bulgarian translations, and more are welcome - see the [translation guide](translate/readme.md) for how to contribute a new one.
+The widget follows your system language automatically. It currently ships with English, Italian and Bulgarian translations, and more are welcome - see the [translation guide](translate/readme.md) for how to contribute a new one.
 
 ## 🐛 Bug Reports & Feedback
 If you encounter any issues or have suggestions, please open a [GitHub Issue](https://github.com/pnedyalkov91/sports-widget-for-plasma/issues). Please include your distribution, Plasma version, and the sport/competition you were viewing.
 
 ## External resources
 
-- Football, Basketball, Cricket and Tennis data is sourced from [SportScore](https://sportscore.com/).
-- All other sports (American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball, Water Polo) are sourced from ESPN's public (unofficial, undocumented) endpoints, in the same way as the [Public-ESPN-API](https://github.com/pseudo-r/Public-ESPN-API) reference project.
+- All sports (Football, Basketball, Cricket, Tennis, American Football, Baseball, Ice Hockey, Golf, Racing, MMA, Rugby, Australian Football, Field Hockey, Lacrosse, Volleyball and Water Polo) are sourced from ESPN's public (unofficial, undocumented) endpoints, in the same way as the [Public-ESPN-API](https://github.com/pseudo-r/Public-ESPN-API) reference project.
+- [SportScore](https://sportscore.com/) is used for **Football only**, as a supplementary source for the leagues that ESPN's unofficial API doesn't support.
 
 ## ❤️ Support the project
 
