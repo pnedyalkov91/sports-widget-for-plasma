@@ -39,7 +39,10 @@ QtObject {
     // 9: hockey match rows gained home/awayRecordText (NHL record line under team names).
     // 10: baseball match details moved the line score from tennisSets (rendered as bare dots in
     //     the Details tab) to periodScore (innings + R/H/E table in the Information tab).
-    readonly property int cacheVersion: 10
+    // 11: racing match rows gained racingEvent/racingCircuit/racingLocation/racingSession/
+    //     racingTop/racingData (Grand Prix header, podium and session pills). Rows written by
+    //     older builds lack them and were seeded into the Schedules/Recent tabs on startup.
+    readonly property int cacheVersion: 11
 
     function _database() {
         if (cache._db)

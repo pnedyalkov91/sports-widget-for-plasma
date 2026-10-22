@@ -1357,9 +1357,18 @@ PlasmoidItem {
         // Racing rows carry the whole weekend's classification (racingData). The cache key
         // below ignores it, so a live running order that changed outside the top two would
         // be served stale - racing rows are never memoized (there are only a handful).
-        const memoize = !(match && match.racingData);
+        // That has to hold for the LOOKUP as well as the store: a racing row that lacks the
+        // racing* fields (restored from the on-disk cache written by an older build, or
+        // rebuilt from latestScheduleMatches/latestRecentMatches before the fresh response
+        // lands) used to be stored under the same key as the fresh row, and the fresh row
+        // was then answered with that stale copy - no Grand Prix name, podium or session
+        // pills - until the next full refresh happened to clear the memo.
+        const racing = String(match && match.sport || "").toLowerCase() === "racing"
+            || String(match && match.espnSport || "").toLowerCase() === "racing"
+            || Boolean(match && match.racingData);
+        const memoize = !racing;
         const key = root.matchModelCacheKey(match);
-        const cached = root._matchModelCache[key];
+        const cached = memoize ? root._matchModelCache[key] : undefined;
         if (cached !== undefined)
             return Object.assign({}, cached);
 

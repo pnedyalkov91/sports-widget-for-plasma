@@ -377,7 +377,7 @@ const SHARED_SPORTS = ["football", "basketball", "tennis"];
 // step and ends on the Top page for them.
 const NO_COUNTRY_BROWSE_SPORTS = [
     "american-football", "baseball", "hockey", "racing", "mma", "rugby",
-    "australian-football", "volleyball", "cricket"
+    "australian-football", "lacrosse", "volleyball", "cricket"
 ];
 
 // Maps a SportScore competition identity to an ESPN league, so SportScore's saved

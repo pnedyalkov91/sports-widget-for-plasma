@@ -1579,6 +1579,10 @@ function espnIsCricket(espnSport) {
     return stringValue(espnSport).toLowerCase() === "cricket";
 }
 
+function espnIsLacrosse(espnSport) {
+    return stringValue(espnSport).toLowerCase() === "lacrosse";
+}
+
 // Plan the requests for a YYYYMMDD-YYYYMMDD range. Returns null when `dates` is not a
 // range (empty, a single day, a month...), meaning "send it as it is".
 function espnScoreboardChunks(dates, limit, espnSport) {
@@ -3349,9 +3353,10 @@ function fetchEspnStandings(espnSport, league, options, onSuccess, onError) {
             rows.forEach(row => { if (row.crest.length > 0) _espnCricketLogos[normalizedTeamName(row.team)] = row.crest; });
             rows.forEach(row => { if (row.crest.length === 0) row.crest = espnCricketBadgeForName(row.team); });
         }
-        // Cricket and racing tables carry no form column, so skip the form lookup's extra
-        // fetches (for racing it would pull a year of scoreboards for nothing).
-        if (rows.length === 0 || isCricket || espnIsRacing(espnSport)) {
+        // Cricket, racing and lacrosse tables carry no form column (lacrosse mirrors ESPN's
+        // W / L / PCT / PF / PA / DIFF page), so skip the form lookup's extra fetches (for
+        // racing it would pull a year of scoreboards for nothing).
+        if (rows.length === 0 || isCricket || espnIsRacing(espnSport) || espnIsLacrosse(espnSport)) {
             finish(onSuccess, rows);
             return;
         }

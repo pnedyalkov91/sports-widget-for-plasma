@@ -126,12 +126,27 @@ Item {
         { "key": "streak", "label": i18nc("@title:column hockey streak short", "STRK"), "tooltip": i18nc("@info:tooltip", "Current winning / losing streak"), "width": 2.6, "emphasized": false, "priority": 2 },
         { "key": "divisionRecord", "label": i18nc("@title:column hockey record in own division short", "DIV"), "tooltip": i18nc("@info:tooltip", "Record against the team's own division (W-L-OTL)"), "width": 2.9, "emphasized": false, "priority": 8, "expandedOnly": true }
     ]
+    // Lacrosse (PLL / NLL / NCAA) mirrors ESPN's PLL standings page: one ranked table with
+    // W, L, PCT, PF, PA and DIFF - no draws, no league points and no form badges. ESPN's own
+    // glossary for the columns is repeated under the table (see TableLegend).
+    // PCT and DIFF are derived from the row's W / L / PF / PA when ESPN does not send them in
+    // the expected format, and the order falls back to PCT then DIFF when ESPN sends no rank.
+    readonly property bool isLacrosse: String(root.sport || "").toLowerCase() === "lacrosse"
+    readonly property var lacrosseColumns: [
+        { "key": "won", "label": i18nc("@title:column lacrosse wins short", "W"), "tooltip": i18nc("@info:tooltip", "Wins"), "width": 2.0, "emphasized": true },
+        { "key": "lost", "label": i18nc("@title:column lacrosse losses short", "L"), "tooltip": i18nc("@info:tooltip", "Losses"), "width": 2.0, "emphasized": false },
+        { "key": "winPercent", "label": i18nc("@title:column lacrosse win percentage short", "PCT"), "tooltip": i18nc("@info:tooltip", "Winning percentage"), "width": 2.6, "emphasized": false },
+        { "key": "goalsFor", "label": i18nc("@title:column lacrosse points for short", "PF"), "tooltip": i18nc("@info:tooltip", "Total points for"), "width": 2.4, "emphasized": false },
+        { "key": "goalsAgainst", "label": i18nc("@title:column lacrosse points against short", "PA"), "tooltip": i18nc("@info:tooltip", "Total points against"), "width": 2.4, "emphasized": false },
+        { "key": "goalDifference", "label": i18nc("@title:column lacrosse point differential short", "DIFF"), "tooltip": i18nc("@info:tooltip", "Point differential"), "width": 2.6, "emphasized": false }
+    ]
     // Either of the two view-switched standings (MLB or NHL) is showing.
     readonly property bool viewsActive: root.isBaseball || root.hockeyViewsActive
     readonly property string activeView: root.isBaseball ? root.selectedBaseballView : root.selectedHockeyView
     readonly property bool viewsExpanded: root.baseballExpanded || root.hockeyExpanded
     readonly property var tableColumns: root.isRacing ? root.racingColumns
-        : (root.viewsActive ? root.visibleViewColumns(root.width) : SportScoreSports.standingsColumns(root.sport, i18nc))
+        : (root.isLacrosse ? root.lacrosseColumns
+        : (root.viewsActive ? root.visibleViewColumns(root.width) : SportScoreSports.standingsColumns(root.sport, i18nc)))
     // Total row width (px) of the Expanded view, which scrolls sideways instead of
     // dropping columns; 0 for every other view/sport.
     readonly property real expandedContentWidth: {
@@ -143,7 +158,7 @@ Item {
         root.tableColumns.forEach(column => { units += column.width + gap; });
         return units * unit + 4 * Kirigami.Units.smallSpacing;
     }
-    readonly property bool tableHasForm: (root.isRacing || root.viewsActive) ? false : SportScoreSports.standingsHasForm(root.sport)
+    readonly property bool tableHasForm: (root.isRacing || root.viewsActive || root.isLacrosse) ? false : SportScoreSports.standingsHasForm(root.sport)
     readonly property color tablePrimaryTextColor: Kirigami.Theme.textColor
     readonly property color tableSecondaryTextColor: Kirigami.Theme.disabledTextColor
     readonly property color tableHighlightTextColor: Kirigami.Theme.linkColor
@@ -462,8 +477,90 @@ Item {
         return i18nc("@title:tab hockey standings by division", "Standings");
     }
 
+    // Winning percentage as a number: wins over decided games (a tie counts as half a win).
+    // Computed from the record because ESPN's own value is not always a 0..1 ratio.
+    function lacrossePctValue(row) {
+        const won = Number(row && row.won) || 0;
+        const lost = Number(row && row.lost) || 0;
+        const tied = Number(row && row.draw) || 0;
+        const games = won + lost + tied;
+        return games > 0 ? (won + tied / 2) / games : 0;
+    }
+
+    // ESPN's PCT cell: ".750", "1.000", ".000". ESPN's own text is used when it already has
+    // that shape, otherwise the value is derived from the record ("-" before the first game).
+    function lacrossePctText(row) {
+        const given = String(row && row.winPercent || "").trim();
+        if (/^(1\.000|\.\d{3})$/.test(given))
+            return given;
+        const games = (Number(row && row.won) || 0) + (Number(row && row.lost) || 0) + (Number(row && row.draw) || 0);
+        if (games <= 0)
+            return "-";
+        const pct = root.lacrossePctValue(row);
+        return pct >= 1 ? "1.000" : pct.toFixed(3).replace(/^0/, "");
+    }
+
+    // Point differential: PF - PA when either is known, else ESPN's own differential.
+    function lacrosseDiffValue(row) {
+        const pointsFor = Number(row && row.goalsFor) || 0;
+        const pointsAgainst = Number(row && row.goalsAgainst) || 0;
+        if (pointsFor > 0 || pointsAgainst > 0)
+            return pointsFor - pointsAgainst;
+        return Number(row && row.goalDifference) || 0;
+    }
+
+    // Ranks one lacrosse table. ESPN's own rank is kept when every team has a distinct one;
+    // otherwise PCT, then point differential, then points for decide (which reproduces the
+    // order of ESPN's PLL standings page). Teams are always numbered 1..n within the table.
+    function lacrosseSorted(list) {
+        const rows = list.slice();
+        const seen = {};
+        let distinct = rows.length > 0;
+        rows.forEach(row => {
+            const rank = Number(row.position) || 0;
+            if (rank <= 0 || seen[rank] === true)
+                distinct = false;
+            seen[rank] = true;
+        });
+        rows.sort((left, right) => {
+            if (distinct)
+                return Number(left.position) - Number(right.position);
+            return root.lacrossePctValue(right) - root.lacrossePctValue(left)
+                || root.lacrosseDiffValue(right) - root.lacrosseDiffValue(left)
+                || (Number(right.goalsFor) || 0) - (Number(left.goalsFor) || 0)
+                || String(left.team || "").localeCompare(String(right.team || ""));
+        });
+        return rows.map((row, index) => Object.assign({}, row, { "position": index + 1 }));
+    }
+
+    // Lacrosse rows: one table per ESPN group (NCAA conferences), in ESPN's group order. A
+    // league with a single table (PLL, NLL) gets no section header, like ESPN's page.
+    function lacrosseGroups() {
+        const rows = root.tableRows || [];
+        const groups = [];
+        const byName = {};
+        rows.forEach(row => {
+            const name = String(row.group || "").trim();
+            if (byName[name] === undefined) {
+                byName[name] = groups.length;
+                groups.push({ "name": name, "rows": [] });
+            }
+            groups[byName[name]].rows.push(row);
+        });
+
+        let result = [];
+        groups.forEach(group => {
+            if (group.name.length > 0)
+                result.push({ "isGroupHeader": true, "group": group.name });
+            result = result.concat(root.lacrosseSorted(group.rows));
+        });
+        return result;
+    }
+
     function groupedRows() {
         const rows = root.tableRows || [];
+        if (root.isLacrosse && rows.length > 0)
+            return root.lacrosseGroups();
         if (root.isBaseball && rows.length > 0)
             return root.baseballGroups();
         if (root.hockeyViewsActive)
@@ -506,7 +603,7 @@ Item {
             return label.length > 0 ? i18nc("@label", "%1 Rankings", label) : i18nc("@label", "Rankings");
         if (root.isRacing)
             return label.length > 0 ? i18nc("@label", "%1 Standings", label) : i18nc("@label", "Championship Standings");
-        if (root.viewsActive)
+        if (root.viewsActive || root.isLacrosse)
             return label.length > 0 ? i18nc("@label", "%1 Standings", label) : i18nc("@label", "Standings");
         return label.length > 0 ? i18nc("@label", "%1 Table", label) : i18nc("@label", "League Table");
     }
@@ -783,6 +880,13 @@ Item {
                         title: root.leagueTitle()
                     }
 
+                    // Lacrosse: ESPN's column glossary under the table, as on its standings page.
+                    footer: TableLegend {
+                        width: tableList.contentColumnWidth
+                        visible: root.isLacrosse && root.rowCount > 0
+                        text: i18nc("@info column glossary of the lacrosse standings", "W: Wins · L: Losses · PCT: Winning percentage · PF: Total points for · PA: Total points against · DIFF: Point differential")
+                    }
+
                     delegate: Loader {
                         id: rowLoader
 
@@ -940,6 +1044,28 @@ Item {
         }
     }
 
+    // Small wrapped note under a table (column glossary). Takes no space while hidden.
+    component TableLegend: Item {
+        property string text: ""
+
+        height: visible ? legendLabel.implicitHeight + Kirigami.Units.largeSpacing * 2 : 0
+
+        PlasmaComponents.Label {
+            id: legendLabel
+
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.leftMargin: Kirigami.Units.smallSpacing
+            anchors.rightMargin: Kirigami.Units.smallSpacing
+            anchors.topMargin: Kirigami.Units.largeSpacing
+            text: parent.text
+            color: root.tableSecondaryTextColor
+            wrapMode: Text.WordWrap
+            font: Kirigami.Theme.smallFont
+        }
+    }
+
     component HeaderLabel: PlasmaComponents.Label {
         property string tooltip: ""
 
@@ -1011,6 +1137,16 @@ Item {
         function valueForColumn(column) {
             const key = String(column && column.key || "");
             const value = rowData && rowData[key] !== undefined && rowData[key] !== null ? rowData[key] : 0;
+            if (root.isLacrosse) {
+                // ESPN-style cells: ".750" for PCT and a signed "+14" / "-6" for DIFF.
+                if (key === "winPercent")
+                    return root.lacrossePctText(rowData);
+                if (key === "goalDifference") {
+                    const diff = root.lacrosseDiffValue(rowData);
+                    return diff > 0 ? "+" + diff : String(diff);
+                }
+                return String(value);
+            }
             if (root.viewsActive) {
                 // ESPN-style cells: a signed run differential and "-" for
                 // anything the API did not provide (streak before a first game ...).
@@ -1030,6 +1166,17 @@ Item {
         // Baseball colouring: winning streak / positive run differential in green, losing
         // streak / negative differential in red; everything else keeps the theme colour.
         function colorForColumn(column) {
+            // Lacrosse: only the point differential is coloured (green ahead, red behind).
+            if (root.isLacrosse) {
+                if (String(column && column.key || "") === "goalDifference") {
+                    const lacrosseDiff = root.lacrosseDiffValue(rowData);
+                    if (lacrosseDiff > 0)
+                        return root.tablePositiveColor;
+                    if (lacrosseDiff < 0)
+                        return root.tableNegativeColor;
+                }
+                return root.tablePrimaryTextColor;
+            }
             if (!root.viewsActive)
                 return root.tablePrimaryTextColor;
             const key = String(column && column.key || "");
